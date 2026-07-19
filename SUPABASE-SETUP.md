@@ -187,11 +187,37 @@ If nothing arrives, check in this order:
 
 1. **Provider dashboard → Logs** — did the email leave? Resend and SendGrid
    both show delivery, bounce, and rejection per message.
-2. **Supabase → Logs → Auth Logs** — `Error sending confirmation email`
-   means Supabase could not hand it off; the message usually names the cause.
+2. **Supabase → Logs**, source **Auth Logs** — not Edge Logs. Edge Logs only
+   record the HTTP envelope (`POST /otp | 500`) and never say why. The Auth
+   source carries the actual SMTP error.
 3. **Domain status** — still Pending in the provider means step 1 is unfinished.
 4. **Spam folder** — a newly verified domain has no sending reputation, so
    early messages often land there. It improves with volume.
+
+### Reading the failure
+
+| Auth log says | Meaning |
+| --- | --- |
+| `535 Authentication credentials invalid` | SMTP username/password rejected. See below. |
+| `Database error saving new user` | The `handle_new_user` trigger threw; nothing to do with email. |
+| `550` / `553` / relay denied | Sender address is not on a verified domain. |
+| Timeout | Wrong host or port, or the provider is unreachable. |
+
+**535 is nearly always the username.** Resend's SMTP username is the literal
+string `resend` and SendGrid's is the literal string `apikey` — neither is an
+email address. The password is the API key.
+
+Also worth ruling out on a 535:
+
+- The API key was truncated when copied. Resend shows it once; generate a new
+  one rather than trying to recover a partial paste.
+- Trailing whitespace or a newline came along with the paste.
+- The key lacks **Sending access** permission.
+
+A near-instant 500 with `"latency": 0` in the edge log suggests the failure
+happened before any network round trip — which points at the database rather
+than SMTP. A slower 500 points at the mail provider. Neither is conclusive,
+but it tells you which log to open first.
 
 ---
 
