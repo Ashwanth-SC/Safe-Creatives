@@ -123,18 +123,75 @@ Then under **Authentication → Providers → Email**, confirm:
 
 ---
 
-## 3. Email sending limits
+## 3. Custom SMTP
 
-**Dashboard → Project Settings → Auth → SMTP Settings.**
+Supabase's built-in sender is rate limited to a handful of messages per hour
+and is explicitly not for production. With OTP login, that limit *is* your
+signup capacity — a few customers in a row and everyone after them silently
+gets nothing.
 
-Supabase's built-in email sender is rate limited to a handful of messages per
-hour and is explicitly not for production. With OTP login that limit is your
-signup capacity — a few customers in a row and the rest silently get nothing.
+### Step 1 — pick a provider and verify your domain
 
-Set up custom SMTP before you launch. Resend, SendGrid, and Amazon SES all
-work. You'll need a verified sending domain for `safecreatives.com`.
+**Resend** is the easiest at this scale: 3,000 emails/month free, clean
+domain setup, good deliverability. SendGrid and Amazon SES also work.
 
-While testing, if codes stop arriving, this is almost certainly why.
+The domain verification is the part that takes real time, and skipping it is
+the single most common cause of SMTP failure. Your sender address is
+`@safecreatives.com`, so the provider needs proof you control that domain.
+
+In Resend: **Domains → Add Domain → `safecreatives.com`**. It gives you DNS
+records — typically a TXT for verification and one or more CNAME/TXT records
+for DKIM. Add them at whoever hosts your DNS, then click Verify. Propagation
+is usually minutes but can take hours.
+
+You cannot send as `@safecreatives.com` until this shows Verified. Attempting
+it is what produces a 500 with no email — the symptom you already hit.
+
+### Step 2 — get SMTP credentials
+
+| Provider | Host | Port | Username | Password |
+| --- | --- | --- | --- | --- |
+| Resend | `smtp.resend.com` | 587 | `resend` (literal) | your API key, `re_…` |
+| SendGrid | `smtp.sendgrid.net` | 587 | `apikey` (literal) | your API key |
+| Amazon SES | `email-smtp.<region>.amazonaws.com` | 587 | SES SMTP username | SES SMTP password |
+
+For Resend and SendGrid the username is that literal word, not your email
+address. Getting this wrong looks like an authentication failure.
+
+### Step 3 — enter them in Supabase
+
+**Dashboard → Project Settings → Authentication → SMTP Settings.**
+
+Turn on **Enable Custom SMTP**, then:
+
+- **Sender email** — `noreply@safecreatives.com` (must be on the verified domain)
+- **Sender name** — `Safe Creatives`
+- **Host** / **Port** / **Username** / **Password** — from the table above
+
+Save.
+
+### Step 4 — raise the rate limit
+
+**Dashboard → Authentication → Rate Limits → "Rate limit for sending emails".**
+
+This does *not* lift automatically when you enable custom SMTP. It stays low
+by default, so you can have working SMTP and still hit a wall during a busy
+day. Set it to something realistic for your signup volume.
+
+### Step 5 — test
+
+Sign in with an address that has **no account yet**, so you exercise the
+signup path and the Confirm signup template together.
+
+If nothing arrives, check in this order:
+
+1. **Provider dashboard → Logs** — did the email leave? Resend and SendGrid
+   both show delivery, bounce, and rejection per message.
+2. **Supabase → Logs → Auth Logs** — `Error sending confirmation email`
+   means Supabase could not hand it off; the message usually names the cause.
+3. **Domain status** — still Pending in the provider means step 1 is unfinished.
+4. **Spam folder** — a newly verified domain has no sending reputation, so
+   early messages often land there. It improves with volume.
 
 ---
 
@@ -336,7 +393,9 @@ means `--no-verify-jwt` was missed or the webhook secret does not match.
 - [ ] `seed-catalog.sql` run, verification query matches the table above
 - [ ] BOTH Magic Link AND Confirm signup templates use `{{ .Token }}`
 - [ ] Signup tested with a brand-new email address, not just an existing one
-- [ ] Custom SMTP configured
+- [ ] Sending domain verified with the SMTP provider
+- [ ] Custom SMTP configured in Supabase
+- [ ] Auth email rate limit raised
 - [ ] Site URL and redirect URLs set
 - [ ] RLS enabled on all 16 tables, `orders`/`payments` SELECT-only
 - [ ] Cross-account read tested from the browser, returns one row
