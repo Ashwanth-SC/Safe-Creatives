@@ -101,14 +101,32 @@ Deno.serve(async (req) => {
   // Every query below is filtered by userId. The service role would happily
   // return someone else's rows otherwise.
 
-  const { data: cart } = await admin
+  // Check the error, not just the data. A failed query also returns null
+  // data, so skipping this reports every backend failure as "empty cart" and
+  // sends you looking in entirely the wrong place.
+  const { data: cart, error: cartError } = await admin
     .from("carts")
     .select("id")
     .eq("user_id", userId)
     .eq("status", "active")
     .maybeSingle();
 
-  if (!cart) return json({ error: "Your cart is empty" }, 400);
+  if (cartError) {
+    console.error("Cart lookup failed for user", userId, cartError);
+    return json(
+      { error: `Could not read your cart: ${cartError.message}` },
+      500
+    );
+  }
+
+  if (!cart) {
+    return json(
+      { error: "You have no active cart. Add a package and try again." },
+      400
+    );
+  }
+
+  console.log("Reserving from cart", cart.id, "for user", userId);
 
   const { data: items, error: itemsError } = await admin
     .from("cart_items")
@@ -122,20 +140,49 @@ Deno.serve(async (req) => {
     .eq("cart_id", cart.id)
     .order("created_at");
 
-  if (itemsError) return json({ error: itemsError.message }, 500);
-  if (!items?.length) return json({ error: "Your cart is empty" }, 400);
+  if (itemsError) {
+    console.error("Cart item lookup failed for cart", cart.id, itemsError);
+    return json(
+      { error: `Could not read your cart contents: ${itemsError.message}` },
+      500
+    );
+  }
+
+  if (!items?.length) {
+    return json(
+      { error: "Your cart has no packages in it. Add one and try again." },
+      400
+    );
+  }
+
+  console.log("Cart", cart.id, "has", items.length, "item(s)");
 
   // ----------------------------------------------------------------
   // 3. Load the profile for the contact/delivery snapshot
   // ----------------------------------------------------------------
 
-  const { data: profile } = await admin
+  const { data: profile, error: profileError } = await admin
     .from("profiles")
     .select("full_name, email, phone, address")
     .eq("id", userId)
     .maybeSingle();
 
-  if (!profile?.address) {
+  if (profileError) {
+    console.error("Profile lookup failed for user", userId, profileError);
+    return json(
+      { error: `Could not read your profile: ${profileError.message}` },
+      500
+    );
+  }
+
+  if (!profile) {
+    return json(
+      { error: "Your profile could not be found. Please sign out and back in." },
+      400
+    );
+  }
+
+  if (!profile.address) {
     return json(
       { error: "Please add a delivery address to your profile before reserving." },
       400
