@@ -183,13 +183,28 @@ This needs the Supabase CLI, which isn't installed on your machine yet.
 winget install --id Supabase.CLI
 ```
 
-Then, from the project folder:
+Then, **from this project folder**:
 
 ```bash
 supabase login
+supabase init          # creates supabase/config.toml
 supabase link --project-ref zcdcalwgyvlcawcflojl
 supabase functions deploy create-order
 ```
+
+`supabase init` is not optional. Without `supabase/config.toml` the CLI does
+not treat this folder as the project root, and deploy fails with a confusing
+
+```
+WARN: failed to read file: open supabase/functions/create-order/index.ts: no such file or directory
+unexpected deploy status 400: Entrypoint path does not exist
+```
+
+even though the file is sitting right there. `supabase/functions/` already
+exists in the repo, so `init` will just add the config alongside it.
+
+Ignore `WARNING: Docker is not running` — Docker is only needed for the local
+stack (`supabase start`), not for deploying to the hosted project.
 
 ### Function secrets
 
