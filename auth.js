@@ -9,7 +9,7 @@
 //
 // Load order on every page:
 //   1. supabase-js CDN
-//   2. supabase-client.js   (defines `supabase`)
+//   2. supabase-client.js   (defines `sb`)
 //   3. auth.js              (this file, defines `SC`)
 //   4. the page's own script
 //
@@ -67,7 +67,7 @@ window.SC = (function () {
   }
 
   async function loadProfile(userId) {
-    const { data, error } = await supabase
+    const { data, error } = await sb
       .from("profiles")
       .select("id, full_name, email, phone, address")
       .eq("id", userId)
@@ -86,7 +86,7 @@ window.SC = (function () {
     try {
       ({
         data: { session },
-      } = await supabase.auth.getSession());
+      } = await sb.auth.getSession());
     } catch (sessionError) {
       // A network failure here must not leave a guarded page permanently
       // blank. Reveal it and treat the visitor as signed out; the guard
@@ -121,13 +121,13 @@ window.SC = (function () {
   // --------------------------------------------------------------------
 
   async function logout() {
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     window.location.href = "index.html";
   }
 
   // Signing out in another tab should not leave this one showing a
   // logged-in view of a guarded page.
-  supabase.auth.onAuthStateChange((event) => {
+  sb.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_OUT" && isGuarded) toLogin();
   });
 

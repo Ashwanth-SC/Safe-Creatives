@@ -25,7 +25,7 @@ let pendingUser = {};
 
     const {
         data: { session }
-    } = await supabase.auth.getSession();
+    } = await sb.auth.getSession();
 
     if (session) {
         window.location.replace(nextPage);
@@ -37,7 +37,7 @@ let pendingUser = {};
 // Auth State Listener
 // ======================================================
 
-supabase.auth.onAuthStateChange((event) => {
+sb.auth.onAuthStateChange((event) => {
 
     console.log("Auth Event:", event);
 
@@ -97,7 +97,7 @@ detailsForm.addEventListener("submit", async (e) => {
 
     showMessage("Sending verification code...");
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await sb.auth.signInWithOtp({
 
         email,
 
@@ -153,7 +153,7 @@ otpForm.addEventListener("submit", async (e) => {
     }
 
     const { data, error } =
-        await supabase.auth.verifyOtp({
+        await sb.auth.verifyOtp({
 
             email: pendingUser.email,
 
@@ -181,7 +181,7 @@ otpForm.addEventListener("submit", async (e) => {
     // fill in the name and phone the visitor just typed. The previous
     // select-then-insert-or-update round trip is no longer needed.
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await sb
         .from("profiles")
         .update({
 
@@ -237,7 +237,7 @@ document
         showMessage("Sending new verification code...");
 
         const { error } =
-            await supabase.auth.signInWithOtp({
+            await sb.auth.signInWithOtp({
 
                 email: pendingUser.email,
 
@@ -271,7 +271,7 @@ document
 
 async function logout() {
 
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
 
     window.location.href = "index.html";
 

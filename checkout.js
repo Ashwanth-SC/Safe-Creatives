@@ -59,7 +59,7 @@
   // ------------------------------------------------------------------
 
   async function loadCart() {
-    const { data: cart } = await supabase
+    const { data: cart } = await sb
       .from("carts")
       .select("id")
       .eq("user_id", SC.userId)
@@ -71,8 +71,8 @@
     // Line totals come from the view; names and selections come from the
     // catalog through the cart's foreign keys.
     const [{ data: totals }, { data: items }] = await Promise.all([
-      supabase.from("cart_item_totals").select("*").eq("cart_id", cart.id),
-      supabase
+      sb.from("cart_item_totals").select("*").eq("cart_id", cart.id),
+      sb
         .from("cart_items")
         .select(
           `id, created_at,
@@ -189,7 +189,7 @@
       .querySelector(".cart-confirm-save")
       .addEventListener("click", async () => {
         // cart_item_colours and cart_item_addons cascade on delete.
-        const { error } = await supabase
+        const { error } = await sb
           .from("cart_items")
           .delete()
           .eq("id", item.id);
@@ -210,7 +210,7 @@
     message("Reserving your order...");
 
     try {
-      const { data, error } = await supabase.functions.invoke("create-order");
+      const { data, error } = await sb.functions.invoke("create-order");
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 

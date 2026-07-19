@@ -32,7 +32,7 @@
   // Load catalog
   // ------------------------------------------------------------------
 
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from("packages")
     .select(
       `id, key, name, base_price_paise,
@@ -74,7 +74,7 @@
   async function loadExistingSelection() {
     if (!editItemId) return false;
 
-    const { data: item } = await supabase
+    const { data: item } = await sb
       .from("cart_items")
       .select(
         `id, package_id,
@@ -247,7 +247,7 @@
   // ------------------------------------------------------------------
 
   async function getOrCreateActiveCart() {
-    const { data: existing } = await supabase
+    const { data: existing } = await sb
       .from("carts")
       .select("id")
       .eq("user_id", SC.userId)
@@ -256,7 +256,7 @@
 
     if (existing) return existing.id;
 
-    const { data: created, error: createError } = await supabase
+    const { data: created, error: createError } = await sb
       .from("carts")
       .insert({ user_id: SC.userId })
       .select("id")
@@ -269,14 +269,14 @@
   async function writeSelection(cartItemId) {
     // Replace rather than diff: the selection is small and this keeps the
     // stored rows exactly matching what is on screen.
-    await supabase.from("cart_item_colours").delete().eq("cart_item_id", cartItemId);
-    await supabase.from("cart_item_addons").delete().eq("cart_item_id", cartItemId);
+    await sb.from("cart_item_colours").delete().eq("cart_item_id", cartItemId);
+    await sb.from("cart_item_addons").delete().eq("cart_item_id", cartItemId);
 
     const colourRows = [...chosenColour.entries()].map(
       ([product_id, colour_id]) => ({ cart_item_id: cartItemId, product_id, colour_id })
     );
     if (colourRows.length) {
-      const { error } = await supabase.from("cart_item_colours").insert(colourRows);
+      const { error } = await sb.from("cart_item_colours").insert(colourRows);
       if (error) throw error;
     }
 
@@ -285,14 +285,14 @@
       addon_id,
     }));
     if (addonRows.length) {
-      const { error } = await supabase.from("cart_item_addons").insert(addonRows);
+      const { error } = await sb.from("cart_item_addons").insert(addonRows);
       if (error) throw error;
     }
   }
 
   async function saveAsNewItem() {
     const cartId = await getOrCreateActiveCart();
-    const { data: item, error } = await supabase
+    const { data: item, error } = await sb
       .from("cart_items")
       .insert({ cart_id: cartId, package_id: pkg.id })
       .select("id")
@@ -303,7 +303,7 @@
   }
 
   async function saveOverExistingItem() {
-    await supabase
+    await sb
       .from("cart_items")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", editItemId);
@@ -313,7 +313,7 @@
 
   async function countExistingCopies() {
     const cartId = await getOrCreateActiveCart();
-    const { count } = await supabase
+    const { count } = await sb
       .from("cart_items")
       .select("id", { count: "exact", head: true })
       .eq("cart_id", cartId)

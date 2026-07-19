@@ -27,6 +27,42 @@ Both files are safe to run more than once.
 > `cart_packages`, or `cart_addons` already exist from the earlier draft,
 > drop them first or the `create table` statements will error.
 
+### If you ran the schema before 19 July 2026
+
+An earlier version was missing the `grant` statements, so the site failed
+with **`permission denied for table packages`** — RLS policies alone are not
+enough, the roles also need table privileges. Run this once:
+
+```sql
+grant usage on schema public to anon, authenticated;
+
+grant select on
+  packages, package_products, product_colours, package_addons
+  to anon, authenticated;
+
+grant select, insert, update on profiles to authenticated;
+
+grant select, insert, update, delete on
+  carts, cart_items, cart_item_colours, cart_item_addons
+  to authenticated;
+
+grant select on
+  orders, order_items, order_item_colours, order_item_addons,
+  payments, refunds
+  to authenticated;
+
+grant select on cart_item_totals, cart_totals to authenticated;
+```
+
+Verify with, from the browser console on the running site:
+
+```js
+await sb.from('packages').select('key, base_price_paise')
+```
+
+You should get two rows without signing in. That single call proves the anon
+key, the grants, and the public-read policy all line up.
+
 ---
 
 ## 2. Email OTP — the one that will catch you out

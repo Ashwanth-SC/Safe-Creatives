@@ -420,6 +420,37 @@ alter table payment_events     enable row level security;
 alter table refunds            enable row level security;
 
 
+-- ---- Table privileges -----------------------------------------------------
+-- RLS and GRANT are two separate gates and BOTH must pass. A policy decides
+-- which rows a role may see; a grant decides whether it may touch the table
+-- at all. Policies without grants fail with "permission denied for table",
+-- which reads like an RLS problem and is not one.
+--
+-- Grants are deliberately narrow: the browser roles get exactly the verbs
+-- their policies allow and nothing more. Note there is no insert/update on
+-- orders or payments for any client role — those are service_role only, and
+-- service_role bypasses all of this anyway.
+
+grant usage on schema public to anon, authenticated;
+
+grant select on
+  packages, package_products, product_colours, package_addons
+  to anon, authenticated;
+
+grant select, insert, update on profiles to authenticated;
+
+grant select, insert, update, delete on
+  carts, cart_items, cart_item_colours, cart_item_addons
+  to authenticated;
+
+grant select on
+  orders, order_items, order_item_colours, order_item_addons,
+  payments, refunds
+  to authenticated;
+
+grant select on cart_item_totals, cart_totals to authenticated;
+
+
 -- ---- Catalog: world-readable when active, never client-writable -----------
 -- Browsable without logging in. Writes happen in the Supabase dashboard or
 -- via service_role, which bypasses RLS entirely.

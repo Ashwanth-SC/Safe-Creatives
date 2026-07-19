@@ -43,7 +43,7 @@
     return;
   }
 
-  const { data: order, error } = await supabase
+  const { data: order, error } = await sb
     .from("orders")
     .select(
       `order_number, status, subtotal_paise, advance_amount_paise, balance_paise,
