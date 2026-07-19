@@ -19,3 +19,12 @@
 .reserve-button { width:100%; padding:16px 20px; border:1px solid #6f222a; background:#6f222a; color:#fff; font:12px "DM Sans",sans-serif; letter-spacing:.04em; cursor:pointer; }
 .reserve-button:disabled { opacity:.55; cursor:progress; }
 .reserve-note { margin:14px 0 0; color:#59635d; font-size:12px; line-height:1.6; }
+
+/* Delivery address editor */
+.address-editor { margin-top:22px; padding-top:20px; border-top:1px solid rgba(23,23,23,.12); }
+.address-editor label { display:block; margin-bottom:8px; color:#777; font:9px "DM Mono",monospace; letter-spacing:.12em; }
+.address-editor textarea { width:100%; padding:12px; border:1px solid rgba(23,23,23,.25); background:#fff; font:13px "DM Sans",sans-serif; line-height:1.5; resize:vertical; }
+.address-editor textarea:focus { outline:2px solid #0c4444; outline-offset:1px; }
+.address-editor button { margin-top:10px; padding:10px 16px; border:1px solid #0c4444; background:transparent; color:#0c4444; font:11px "DM Sans",sans-serif; cursor:pointer; }
+.address-editor button:disabled { opacity:.5; cursor:progress; }
+.address-message { min-height:16px; margin:8px 0 0; font-size:12px; }

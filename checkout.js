@@ -24,6 +24,9 @@
   const cartReserve = document.querySelector("#cart-reserve");
   const reserveButton = document.querySelector("#reserve-order");
   const checkoutMessage = document.querySelector("#checkout-message");
+  const addressField = document.querySelector("#delivery-address");
+  const addressButton = document.querySelector("#save-address");
+  const addressMessage = document.querySelector("#address-message");
 
   // Kept in sync with the ADVANCE_PERCENT constant in the create-order
   // Edge Function. Displayed here, enforced there.
@@ -52,7 +55,56 @@
   addDetail("Full name", profile?.full_name);
   addDetail("Email", profile?.email);
   addDetail("Phone number", profile?.phone);
-  addDetail("Address", profile?.address);
+
+  // ------------------------------------------------------------------
+  // Delivery address
+  // ------------------------------------------------------------------
+  // create-order refuses to reserve without one, and until now there was no
+  // way for a customer to provide it.
+
+  let savedAddress = profile?.address || "";
+  addressField.value = savedAddress;
+
+  async function saveAddress() {
+    const value = addressField.value.trim();
+    if (!value) {
+      addressMessage.textContent = "Please enter a delivery address.";
+      addressMessage.style.color = "#6f222a";
+      return false;
+    }
+
+    addressButton.disabled = true;
+    const { error } = await sb
+      .from("profiles")
+      .update({ address: value })
+      .eq("id", SC.userId);
+    addressButton.disabled = false;
+
+    if (error) {
+      addressMessage.textContent = `Could not save address: ${error.message}`;
+      addressMessage.style.color = "#6f222a";
+      return false;
+    }
+
+    savedAddress = value;
+    addressMessage.textContent = "Address saved.";
+    addressMessage.style.color = "#0c4444";
+    updateReserveState();
+    return true;
+  }
+
+  function updateReserveState() {
+    // Unsaved edits count as no address: the Edge Function reads the profile
+    // row, not this textarea.
+    const ready = Boolean(savedAddress) && addressField.value.trim() === savedAddress;
+    reserveButton.disabled = !ready;
+    reserveButton.title = ready
+      ? ""
+      : "Save your delivery address before reserving.";
+  }
+
+  addressButton.addEventListener("click", saveAddress);
+  addressField.addEventListener("input", updateReserveState);
 
   // ------------------------------------------------------------------
   // Cart
@@ -205,6 +257,70 @@
   // Reserve
   // ------------------------------------------------------------------
 
+  function toConfirmation(orderNumber) {
+    window.location.href = `order-confirmation.html?order=${encodeURIComponent(
+      orderNumber
+    )}`;
+  }
+
+  function openRazorpay(data) {
+    // Nothing this callback receives is trusted. Razorpay's server-to-server
+    // webhook is what marks the order paid; this handler only decides which
+    // page the customer lands on. A tampered response changes the redirect
+    // and nothing else.
+    const options = {
+      key: data.razorpay_key_id,
+      order_id: data.razorpay_order_id,
+      amount: data.advance_amount_paise,
+      currency: data.currency || "INR",
+      name: "Safe Creatives",
+      description: `Refundable advance — ${data.order_number}`,
+      prefill: {
+        name: profile?.full_name || "",
+        email: profile?.email || "",
+        contact: profile?.phone || "",
+      },
+      notes: { order_number: data.order_number },
+      theme: { color: "#6f222a" },
+      handler: function () {
+        message("Payment received. Confirming...");
+        toConfirmation(data.order_number);
+      },
+      modal: {
+        ondismiss: function () {
+          // There is no self-service retry yet -- paying again would need a
+          // fresh Razorpay session, which only create-order can mint, and it
+          // works from the cart rather than an existing order. Don't promise
+          // the customer a button that isn't there.
+          message(
+            `Payment cancelled. Order ${data.order_number} is reserved but unpaid — our team will follow up with payment details.`,
+            true
+          );
+          reserveButton.disabled = false;
+        },
+      },
+    };
+
+    if (typeof window.Razorpay !== "function") {
+      message(
+        "The payment window could not load. Check your connection and try again.",
+        true
+      );
+      reserveButton.disabled = false;
+      return;
+    }
+
+    const checkout = new window.Razorpay(options);
+    checkout.on("payment.failed", function (response) {
+      message(
+        `Payment failed: ${response?.error?.description || "unknown error"}. Your order is still reserved.`,
+        true
+      );
+      reserveButton.disabled = false;
+    });
+    checkout.open();
+  }
+
   async function reserve() {
     reserveButton.disabled = true;
     message("Reserving your order...");
@@ -214,12 +330,22 @@
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // The function returns the authoritative amounts. If they differ from
-      // what this page displayed, the customer sees the real figure before
-      // being sent to pay.
-      window.location.href = `order-confirmation.html?order=${encodeURIComponent(
-        data.order_number
-      )}`;
+      // create-order recomputes the total from the catalog, so these amounts
+      // are authoritative and may differ from what this page displayed.
+      if (!data.razorpay_order_id) {
+        // Order reserved, but no payment session — gateway keys are probably
+        // not configured. Better to land the customer on a page that says so
+        // than to leave them on a checkout that looks broken.
+        toConfirmation(data.order_number);
+        return;
+      }
+
+      message(
+        `Reserved as ${data.order_number}. Opening payment for ${SC.money(
+          data.advance_amount_paise
+        )}...`
+      );
+      openRazorpay(data);
     } catch (reserveError) {
       message(
         `Could not reserve your order: ${reserveError.message}. Nothing has been charged.`,
@@ -260,6 +386,7 @@
     );
     cartAdvance.hidden = false;
     cartReserve.hidden = false;
+    updateReserveState();
   }
 
   reserveButton.addEventListener("click", reserve);

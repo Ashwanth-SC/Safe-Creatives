@@ -171,7 +171,7 @@ select count(*) from profiles;   -- expect 1, not 2
 
 Note the SQL Editor runs as a superuser by default and bypasses RLS. The
 honest test is from the browser: sign in as user A, open devtools, and run
-`await supabase.from('profiles').select('*')`. You must get exactly one row.
+`await sb.from('profiles').select('*')`. You must get exactly one row.
 
 ---
 
@@ -227,21 +227,87 @@ under this folder. It bypasses RLS entirely.
 
 ---
 
-## 7. What is still not wired up
+## 7. Razorpay
 
-**Payments.** The `create-order` function reserves an order and computes the
-advance, but charges nothing. `payment_session` comes back `null`.
+### Keys
 
-Finishing it needs a provider decision, then two pieces:
+**Razorpay Dashboard → Account & Settings → API Keys → Generate Test Key.**
 
-1. In `create-order`, create a payment session for `advance_amount_paise`,
-   insert a `payments` row, return the session to the browser.
-2. A **new** `payment-webhook` function that the gateway calls
-   server-to-server: verify the signature, log to `payment_events`, then
-   move the payment to `captured` and the order to `advance_paid`.
+Use **test mode** until the whole flow works. Test keys start `rzp_test_`;
+live keys start `rzp_live_`. Card `4111 1111 1111 1111` with any future
+expiry and any CVV succeeds in test mode.
 
-The order must never be marked paid by the browser. Anything the checkout
-page can call, a customer can call directly with any arguments they like.
+```bash
+supabase secrets set RAZORPAY_KEY_ID=rzp_test_xxxxxxxx
+supabase secrets set RAZORPAY_KEY_SECRET=your_secret_here
+```
+
+The key **ID** is public and gets sent to the browser, exactly like the
+Supabase anon key. The **secret** must never leave the Edge Function — not
+into a file in this repo, not into the browser, not into git.
+
+### Webhook
+
+**Razorpay Dashboard → Account & Settings → Webhooks → Add New Webhook.**
+
+- **URL**: `https://zcdcalwgyvlcawcflojl.supabase.co/functions/v1/payment-webhook`
+- **Secret**: invent a long random string — this is yours, not Razorpay's
+- **Events**: `payment.captured`, `payment.failed`, `refund.processed`,
+  `refund.failed`
+
+Then give the same secret to the function:
+
+```bash
+supabase secrets set RAZORPAY_WEBHOOK_SECRET=the_same_string_you_just_invented
+```
+
+### Deploy
+
+```bash
+supabase functions deploy create-order
+supabase functions deploy payment-webhook --no-verify-jwt
+```
+
+**`--no-verify-jwt` on the webhook is mandatory.** Razorpay does not send a
+Supabase JWT, so with default gateway auth every callback is rejected before
+your code runs — payments succeed at Razorpay and orders sit unpaid forever.
+The HMAC signature check inside the function is what secures that endpoint.
+
+`create-order` keeps JWT verification ON. It is called by a signed-in
+customer and must know who they are.
+
+### What decides "paid"
+
+Only the webhook. The browser's success callback just chooses which page the
+customer lands on — a customer can call anything the checkout page calls, so
+nothing it reports is trusted.
+
+The webhook also refuses to advance an order when the amount Razorpay reports
+differs from the amount this system recorded as owed. That case is written to
+`payments.failure_reason` and left for a human rather than auto-approved.
+
+### Testing it end to end
+
+1. Reserve an order on the checkout page, pay with the test card
+2. `select order_number, status from orders order by placed_at desc limit 1;`
+   → should read `advance_paid`
+3. `select provider_payment_id, status, amount_paise from payments order by created_at desc limit 1;`
+   → should read `captured`
+4. `select event_type, processed_at, process_error from payment_events order by received_at desc limit 5;`
+   → `processed_at` set, `process_error` null
+
+If the order is still `pending_advance` but Razorpay shows the payment,
+check **Dashboard → Edge Functions → payment-webhook → Logs**. A 401 there
+means `--no-verify-jwt` was missed or the webhook secret does not match.
+
+### Before going live
+
+- Swap test keys for live keys and redeploy
+- Set `SITE_ORIGIN` to your real domain so CORS is not `*`
+- Confirm your refund terms. Razorpay does **not** return its fee (~2% +
+  18% GST on the fee) when you refund, so a refunded ₹37,000 advance costs
+  you roughly ₹870. Decide whether you absorb that or say "refundable less
+  processing charges" in your terms.
 
 ---
 
@@ -256,3 +322,7 @@ page can call, a customer can call directly with any arguments they like.
 - [ ] Cross-account read tested from the browser, returns one row
 - [ ] Supabase CLI installed and project linked
 - [ ] `create-order` deployed, secrets set
+- [ ] Razorpay test keys set (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`)
+- [ ] Webhook created in Razorpay, `RAZORPAY_WEBHOOK_SECRET` matches
+- [ ] `payment-webhook` deployed with `--no-verify-jwt`
+- [ ] Test payment moves the order to `advance_paid`

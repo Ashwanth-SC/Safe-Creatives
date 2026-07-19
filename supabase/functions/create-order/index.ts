@@ -195,39 +195,102 @@ Deno.serve(async (req) => {
   }
 
   // ----------------------------------------------------------------
-  // 6. Retire the cart
+  // 6. Open a payment session with Razorpay
   // ----------------------------------------------------------------
+  // The amount sent here is the one computed above from catalog prices.
+  // Nothing the browser submitted influences it.
+
+  const razorpayKeyId = Deno.env.get("RAZORPAY_KEY_ID");
+  const razorpayKeySecret = Deno.env.get("RAZORPAY_KEY_SECRET");
+
+  let razorpayOrderId: string | null = null;
+
+  if (razorpayKeyId && razorpayKeySecret) {
+    try {
+      const rzpResponse = await fetch("https://api.razorpay.com/v1/orders", {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${btoa(`${razorpayKeyId}:${razorpayKeySecret}`)}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: advanceAmountPaise,
+          currency: "INR",
+          // Razorpay caps receipt at 40 characters.
+          receipt: order.order_number.slice(0, 40),
+          notes: {
+            order_id: order.id,
+            order_number: order.order_number,
+            user_id: userId,
+          },
+        }),
+      });
+
+      const rzpBody = await rzpResponse.json();
+
+      if (!rzpResponse.ok) {
+        throw new Error(
+          rzpBody?.error?.description ?? `Razorpay returned ${rzpResponse.status}`
+        );
+      }
+
+      razorpayOrderId = rzpBody.id;
+
+      const { error: paymentError } = await admin.from("payments").insert({
+        order_id: order.id,
+        user_id: userId,
+        provider: "razorpay",
+        provider_order_id: razorpayOrderId,
+        purpose: "advance",
+        amount_paise: advanceAmountPaise,
+        currency: "INR",
+        status: "created",
+      });
+
+      if (paymentError) throw new Error(paymentError.message);
+    } catch (paymentSetupError) {
+      // Roll the order back rather than leaving a reservation the customer
+      // has no way to pay for. order_items and their children cascade.
+      await admin.from("orders").delete().eq("id", order.id);
+      return json(
+        {
+          error:
+            `Could not start payment: ${paymentSetupError.message}. ` +
+            `Nothing has been charged and your cart is unchanged.`,
+        },
+        502
+      );
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // 7. Retire the cart
+  // ----------------------------------------------------------------
+  // Only once the order and its payment session exist. Doing this earlier
+  // would empty the cart on a failed reservation.
+  //
   // Marking it 'ordered' frees the one-active-cart-per-user index, so the
   // customer's next visit starts a fresh cart rather than editing an order.
 
   await admin.from("carts").update({ status: "ordered" }).eq("id", cart.id);
 
   // ----------------------------------------------------------------
-  // 7. Payment — NOT IMPLEMENTED
+  // 8. Hand the session back
   // ----------------------------------------------------------------
+  // razorpay_key_id is the PUBLIC key and is safe in the browser, exactly
+  // like the Supabase anon key. The secret never leaves this function.
   //
-  // The order now exists with status 'pending_advance' and nothing has been
-  // charged. Wiring up a gateway means, once a provider is chosen:
-  //
-  //   a. Call the provider here to create a payment session for
-  //      advanceAmountPaise, insert a `payments` row with status 'created'
-  //      and the provider's ID, and return the session details below.
-  //
-  //   b. Add a SEPARATE `payment-webhook` function that the provider calls
-  //      server-to-server. It must verify the signature against a secret,
-  //      log the raw body to payment_events (whose unique constraint on
-  //      provider_event_id makes replays harmless), then move the payment to
-  //      'captured' and the order to 'advance_paid'.
-  //
-  // The order must NEVER be marked paid from the browser — a customer can
-  // call any endpoint this page can call.
+  // The order stays 'pending_advance' until payment-webhook verifies a
+  // signed callback from Razorpay. It is never marked paid from the browser:
+  // anything the checkout page can call, a customer can call directly.
 
   return json({
     order_number: order.order_number,
     status: order.status,
     subtotal_paise: order.subtotal_paise,
     advance_amount_paise: order.advance_amount_paise,
-    payment_required: true,
-    payment_session: null, // populated once a gateway is wired up
+    currency: "INR",
+    razorpay_key_id: razorpayOrderId ? razorpayKeyId : null,
+    razorpay_order_id: razorpayOrderId,
   });
 });
