@@ -28,7 +28,13 @@
 create table profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   full_name   text not null,
-  email       text not null unique,
+  -- Deliberately NOT unique. auth.users.email already enforces uniqueness,
+  -- and duplicating it here only adds a way for profile creation to fail.
+  -- That matters because carts.user_id references profiles(id): an account
+  -- with no profile row cannot create a cart, so a failed profile insert
+  -- surfaces later as an unrelated-looking foreign key error at "Save to
+  -- cart" rather than at signup.
+  email       text not null,
   phone       text,
   address     text,
   created_at  timestamptz not null default now(),
@@ -607,6 +613,18 @@ begin
   )
   on conflict (id) do nothing;
   return new;
+exception
+  when others then
+    -- Never fail authentication because the profile row failed. Raising here
+    -- rolls back user creation and returns an opaque 500 with no OTP sent.
+    --
+    -- This is a last resort, not the safety net: a swallowed failure leaves
+    -- an account with no profile, which then breaks cart creation. The real
+    -- protection is that nothing above can realistically conflict now that
+    -- profiles.email is not unique. If this warning ever fires, treat it as
+    -- a bug rather than an expected path.
+    raise warning 'handle_new_user failed for %: %', new.id, sqlerrm;
+    return new;
 end;
 $$;
 

@@ -63,6 +63,25 @@ await sb.from('packages').select('key, base_price_paise')
 You should get two rows without signing in. That single call proves the anon
 key, the grants, and the public-read policy all line up.
 
+Also run this once — an early version made `profiles.email` unique, which
+could leave an account with no profile row and break "Save to cart" with a
+foreign key error:
+
+```sql
+alter table profiles drop constraint if exists profiles_email_key;
+
+delete from profiles p
+where not exists (select 1 from auth.users u where u.id = p.id);
+
+insert into public.profiles (id, email, full_name)
+select u.id, u.email, coalesce(u.raw_user_meta_data ->> 'full_name', '')
+from auth.users u
+where not exists (select 1 from profiles p where p.id = u.id);
+```
+
+Then re-run section 9 of `database-schema.sql` to pick up the current
+`handle_new_user`.
+
 ---
 
 ## 2. Email OTP — the one that will catch you out
