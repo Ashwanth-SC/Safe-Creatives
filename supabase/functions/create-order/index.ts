@@ -21,22 +21,54 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // ADVANCE_PERCENT in checkout.js, which only displays it.
 const ADVANCE_PERCENT = Number(Deno.env.get("ADVANCE_PERCENT") ?? "20");
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("SITE_ORIGIN") ?? "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// SITE_ORIGIN takes a COMMA-SEPARATED allowlist, so one deployment can serve
+// local development and production without swapping secrets:
+//
+//   supabase secrets set SITE_ORIGIN=http://localhost:8000,https://safecreatives.com
+//
+// Access-Control-Allow-Origin may name exactly one origin -- returning the
+// whole list is rejected by every browser -- so the caller's origin is echoed
+// back when it appears on the list. Vary: Origin stops a cache from serving
+// one origin's response to another.
+//
+// Unset means "*", which is right for local work and too loose for
+// production.
+function corsHeadersFor(req: Request): Record<string, string> {
+  const configured = (Deno.env.get("SITE_ORIGIN") ?? "*")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  const requestOrigin = req.headers.get("Origin") ?? "";
+
+  const allowOrigin = configured.includes("*")
+    ? "*"
+    : configured.includes(requestOrigin)
+    ? requestOrigin
+    : configured[0] ?? "*";
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    // supabase-js sends apikey and x-client-info alongside authorization.
+    // Omitting them fails preflight before the request is ever made.
+    "Access-Control-Allow-Headers":
+      "authorization, content-type, apikey, x-client-info",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    Vary: "Origin",
+  };
 }
 
 Deno.serve(async (req) => {
+  const cors = corsHeadersFor(req);
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: cors });
   }
   if (req.method !== "POST") {
     return json({ error: "Method not allowed" }, 405);

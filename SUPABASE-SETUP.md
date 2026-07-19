@@ -310,14 +310,33 @@ stack (`supabase start`), not for deploying to the hosted project.
 
 ```bash
 supabase secrets set ADVANCE_PERCENT=20
-supabase secrets set SITE_ORIGIN=https://your-production-domain.com
 ```
 
 - `ADVANCE_PERCENT` — the refundable advance, default 20. Changing it here
   changes what customers are charged; `checkout.js` only *displays* the
   number, so update the `ADVANCE_PERCENT` constant there to match.
-- `SITE_ORIGIN` — locks CORS to your domain. Defaults to `*`, which is fine
-  for local development and sloppy for production.
+
+- `SITE_ORIGIN` — **leave this unset while developing.** Unset means `*`,
+  which is what you want on localhost.
+
+  When you do set it, it takes a **comma-separated allowlist**, and every
+  origin you actually use must be in it — including localhost, or local
+  development breaks with a CORS preflight failure:
+
+  ```bash
+  # Only once you have a real domain. Substitute it; do not paste as-is.
+  supabase secrets set SITE_ORIGIN=http://localhost:8000,https://<your-domain>
+  ```
+
+  Setting it to a single production origin blocks localhost. Setting it to a
+  placeholder string blocks everything, with:
+
+  ```
+  The 'Access-Control-Allow-Origin' header has a value
+  'https://your-production-domain.com' that is not equal to the supplied origin
+  ```
+
+  To recover: `supabase secrets unset SITE_ORIGIN`, then redeploy.
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically —
 do not set them yourself, and never put the service role key in any file
