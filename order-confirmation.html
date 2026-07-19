@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order Reserved | Safe Creatives</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="checkout.css" />
+  </head>
+  <body data-requires-auth="true">
+    <header class="site-header checkout-header">
+      <a class="brand" href="index.html"><img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" /><span>SAFE CREATIVES</span></a>
+      <a class="catalog-back" href="sensory-rooms.html">← Sensory rooms</a>
+    </header>
+    <main class="checkout-page">
+      <section class="checkout-intro">
+        <p class="eyebrow">ORDER RESERVED</p>
+        <h1>Thank<br /><em>you.</em></h1>
+        <p>Your order reference is <strong id="order-number">—</strong>. Keep this for your records.</p>
+      </section>
+      <div class="checkout-layout">
+        <section class="customer-card" aria-labelledby="summary-title">
+          <p class="eyebrow">SUMMARY</p>
+          <h2 id="summary-title">Your order</h2>
+          <dl id="order-details"></dl>
+        </section>
+        <section class="cart-card" aria-labelledby="next-title">
+          <div class="cart-card-heading"><div><p class="eyebrow">WHAT HAPPENS NEXT</p><h2 id="next-title">Next steps</h2></div></div>
+          <div id="order-packages"></div>
+          <p class="reserve-note" id="next-steps">
+            Our team will be in touch to arrange a visit and verify the space.
+            Production begins once that verification is complete.
+          </p>
+        </section>
+      </div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="auth.js"></script>
+    <script src="order-confirmation.js"></script>
+  </body>
+</html>

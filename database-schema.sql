@@ -64,6 +64,12 @@ create table package_products (
   package_id  uuid not null references packages(id) on delete cascade,
   key         text not null,                      -- matches data-product in HTML
   name        text not null,
+  description text,
+  -- Extra spec rows beyond finish/material, which vary per product:
+  -- SIZE + PROFILE on a bed, CONTROL + LIGHT on a lamp. Shape is
+  -- [{"label": "SIZE", "value": "Queen / King"}, ...] so the page can render
+  -- however many a product happens to have.
+  specs       jsonb not null default '[]'::jsonb,
   sort_order  integer not null default 0,
   unique (package_id, key)
 );
@@ -78,6 +84,11 @@ create table product_colours (
   image_path        text not null,                -- data-image
   finish            text,                         -- data-finish
   material          text,                         -- data-material
+  -- The swatch dot colour. packages.css currently hardcodes three of these as
+  -- [data-color="Sand"] etc, which means a fourth colour would render as an
+  -- invisible button. Storing the hex here keeps the catalog self-describing.
+  swatch_hex        text not null default '#cccccc'
+                    check (swatch_hex ~ '^#[0-9a-fA-F]{6}$'),
   price_delta_paise bigint not null default 0,    -- lets a premium finish cost more
   is_active         boolean not null default true,
   sort_order        integer not null default 0,
@@ -90,6 +101,7 @@ create table package_addons (
   key         text not null,                      -- matches data-id on .addon-card
   name        text not null,
   description text,
+  image_path  text,
   price_paise bigint not null check (price_paise >= 0),
   is_active   boolean not null default true,
   sort_order  integer not null default 0,

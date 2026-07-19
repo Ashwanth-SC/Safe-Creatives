@@ -176,77 +176,29 @@ otpForm.addEventListener("submit", async (e) => {
 
     const user = data.user;
 
-    // Check whether profile exists
+    // The profiles row is created automatically by the on_auth_user_created
+    // trigger (see database-schema.sql section 9), so this only ever needs to
+    // fill in the name and phone the visitor just typed. The previous
+    // select-then-insert-or-update round trip is no longer needed.
 
-    const {
-        data: existingProfile,
-        error: selectError
-    } = await supabase
+    const { error: updateError } = await supabase
         .from("profiles")
-        .select("id")
-        .eq("id", user.id)
-        .maybeSingle();
+        .update({
 
-    if (selectError) {
+            full_name: pendingUser.fullName,
+            phone: pendingUser.phone
+
+        })
+        .eq("id", user.id);
+
+    if (updateError) {
 
         showMessage(
-            selectError.message,
+            updateError.message,
             "error"
         );
 
         return;
-
-    }
-
-    if (existingProfile) {
-
-        const { error: updateError } =
-            await supabase
-                .from("profiles")
-                .update({
-
-                    full_name: pendingUser.fullName,
-                    phone: pendingUser.phone,
-                    email: pendingUser.email
-
-                })
-                .eq("id", user.id);
-
-        if (updateError) {
-
-            showMessage(
-                updateError.message,
-                "error"
-            );
-
-            return;
-
-        }
-
-    } else {
-
-        const { error: insertError } =
-            await supabase
-                .from("profiles")
-                .insert({
-
-                    id: user.id,
-                    full_name: pendingUser.fullName,
-                    phone: pendingUser.phone,
-                    email: pendingUser.email
-
-                });
-
-        if (insertError) {
-
-            showMessage(
-                insertError.message,
-                "error"
-            );
-
-            return;
-
-        }
 
     }
 

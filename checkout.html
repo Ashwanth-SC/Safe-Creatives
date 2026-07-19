@@ -16,10 +16,12 @@
       <section class="checkout-intro"><p class="eyebrow">YOUR SAVED DETAILS</p><h1>Review<br /><em>your order.</em></h1><p>Confirm your saved package choices before we move to the next step.</p></section>
       <div class="checkout-layout">
         <section class="customer-card" aria-labelledby="customer-title"><p class="eyebrow">CUSTOMER INFORMATION</p><h2 id="customer-title">Your profile</h2><dl id="profile-details"></dl></section>
-        <section class="cart-card" aria-labelledby="cart-title"><div class="cart-card-heading"><div><p class="eyebrow">YOUR CART</p><h2 id="cart-title">Package summary</h2></div><a href="sensory-rooms.html">Add package ↗</a></div><div id="cart-packages"></div><div class="cart-total"><span>Total</span><strong id="cart-total">₹0</strong></div><p id="cart-empty" class="cart-empty" hidden>No packages have been saved yet. Choose a Sensory Room package to begin.</p></section>
+        <section class="cart-card" aria-labelledby="cart-title"><div class="cart-card-heading"><div><p class="eyebrow">YOUR CART</p><h2 id="cart-title">Package summary</h2></div><a href="sensory-rooms.html">Add package ↗</a></div><div id="cart-packages"></div><div class="cart-total"><span>Total</span><strong id="cart-total">₹0</strong></div><div class="cart-advance" id="cart-advance" hidden><span>Refundable advance (<span id="advance-percent">20</span>%)</span><strong id="advance-amount">₹0</strong></div><p id="cart-empty" class="cart-empty" hidden>No packages have been saved yet. Choose a Sensory Room package to begin.</p><div class="cart-reserve" id="cart-reserve" hidden><button type="button" id="reserve-order" class="reserve-button">Reserve order</button><p class="reserve-note">We collect a refundable advance to reserve your order. Our team then verifies the space before production begins.</p></div><p id="checkout-message" class="save-message"></p></section>
       </div>
     </main>
-    <script src="auth-local.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="auth.js"></script>
     <script src="checkout.js"></script>
   </body>
 </html>

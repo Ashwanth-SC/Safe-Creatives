@@ -11,3 +11,11 @@
  .cart-confirm-actions button:hover { color:#171717; border-color:#d0b28e; background:#d0b28e; }
  @keyframes confirmFade { from { opacity:0; } to { opacity:1; } }
  @keyframes confirmCardIn { from { opacity:0; transform:translateY(12px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+/* Refundable advance + reserve action */
+.cart-advance { display:flex; justify-content:space-between; margin-top:12px; padding-top:12px; border-top:1px dashed rgba(23,23,23,.2); color:#59635d; font-size:13px; }
+.cart-advance strong { color:#6f222a; font-size:15px; }
+.cart-reserve { margin-top:26px; }
+.reserve-button { width:100%; padding:16px 20px; border:1px solid #6f222a; background:#6f222a; color:#fff; font:12px "DM Sans",sans-serif; letter-spacing:.04em; cursor:pointer; }
+.reserve-button:disabled { opacity:.55; cursor:progress; }
+.reserve-note { margin:14px 0 0; color:#59635d; font-size:12px; line-height:1.6; }
