@@ -28,32 +28,19 @@
         <h1 id="auth-title">Let's save your design.</h1>
 
         <p class="form-intro">
-          Continue with your email to save your customized rooms, reservations and future projects.
+          Enter your email and we'll send you a verification code. New here?
+          We'll ask for your details after that.
         </p>
 
-        <!-- STEP 1 : CUSTOMER DETAILS -->
+        <!-- STEP 1 : EMAIL ONLY -->
+        <!-- Name and phone are deliberately NOT collected here. Whether this
+             email already has an account is not knowable until after the code
+             is verified, so asking for details up front means asking returning
+             customers for information we already hold. -->
 
         <div id="details-section">
 
           <form id="details-form">
-
-            <label for="full-name">Full Name</label>
-            <input
-              id="full-name"
-              type="text"
-              placeholder="Your full name"
-              autocomplete="name"
-              required
-            />
-
-            <label for="phone">Phone Number</label>
-            <input
-              id="phone"
-              type="tel"
-              placeholder="+91 98765 43210"
-              autocomplete="tel"
-              required
-            />
 
             <label for="email">Email Address</label>
             <input

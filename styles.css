@@ -263,3 +263,8 @@ button:hover { background:transparent; color:var(--ink); }
 .site-footer .footer-grid, .site-footer .footer-group + .footer-group, .site-footer .footer-bottom { border-color:rgba(255,255,255,.3); }
 .site-footer .social-links a { border-color:rgba(255,255,255,.55); color:#fff; }
 .site-footer .social-links a:hover { color:#0c4444; background:#d0b28e; }
+
+/* Registration form: textarea matches the underlined input treatment */
+.auth-card textarea { width:100%; margin-bottom:12px; padding:13px 0; border:0; border-bottom:1px solid #9ea39a; background:transparent; color:var(--ink); font:14px inherit; line-height:1.5; outline:none; resize:vertical; }
+.auth-card textarea:focus { border-color:var(--ink); }
+.label-hint { color:#8b8f88; font-weight:400; text-transform:none; letter-spacing:0; }

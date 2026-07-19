@@ -1,7 +1,21 @@
-// ======================================================
+// ============================================================================
 // SAFE CREATIVES LOGIN
-// Supabase Email OTP Authentication
-// ======================================================
+// Email OTP — email only, details collected after verification
+// ============================================================================
+//
+// Whether an email already has an account is NOT knowable before the code is
+// verified, and deliberately so: an endpoint that answered "is this address
+// registered?" would let anyone enumerate your customer list.
+//
+// So the code goes out either way, and the branch happens after:
+//
+//   verified + profile has a name  ->  straight on to `next`
+//   verified + profile incomplete  ->  register.html to collect details
+//
+// A profile row always exists by this point — the on_auth_user_created
+// trigger creates it at signup with an empty full_name — so "incomplete"
+// means an empty name rather than a missing row.
+// ============================================================================
 
 const nextPage =
     new URLSearchParams(window.location.search).get("next") ||
@@ -15,7 +29,7 @@ const otpForm = document.getElementById("otp-form");
 
 const message = document.getElementById("auth-message");
 
-let pendingUser = {};
+let pendingEmail = "";
 
 // ======================================================
 // Already Logged In?
@@ -28,20 +42,10 @@ let pendingUser = {};
     } = await sb.auth.getSession();
 
     if (session) {
-        window.location.replace(nextPage);
+        window.location.replace(await destinationFor(session.user.id));
     }
 
 })();
-
-// ======================================================
-// Auth State Listener
-// ======================================================
-
-sb.auth.onAuthStateChange((event) => {
-
-    console.log("Auth Event:", event);
-
-});
 
 // ======================================================
 // Helper
@@ -54,50 +58,27 @@ function showMessage(text, type = "") {
 
 }
 
-// ======================================================
-// SEND OTP
-// ======================================================
+// Where a verified user should land. Registration carries `next` through so
+// the customer resumes whatever they were trying to reach.
+async function destinationFor(userId) {
 
-detailsForm.addEventListener("submit", async (e) => {
+    const { data: profile } = await sb
+        .from("profiles")
+        .select("full_name")
+        .eq("id", userId)
+        .maybeSingle();
 
-    e.preventDefault();
+    const registered = Boolean(profile?.full_name?.trim());
 
-    const fullName = document
-        .getElementById("full-name")
-        .value
-        .trim();
+    return registered
+        ? nextPage
+        : `register.html?next=${encodeURIComponent(nextPage)}`;
 
-    const phone = document
-        .getElementById("phone")
-        .value
-        .trim();
+}
 
-    const email = document
-        .getElementById("email")
-        .value
-        .trim()
-        .toLowerCase();
+async function sendCode(email) {
 
-    if (!fullName || !phone || !email) {
-
-        showMessage(
-            "Please fill all fields.",
-            "error"
-        );
-
-        return;
-
-    }
-
-    pendingUser = {
-        fullName,
-        phone,
-        email
-    };
-
-    showMessage("Sending verification code...");
-
-    const { error } = await sb.auth.signInWithOtp({
+    return sb.auth.signInWithOtp({
 
         email,
 
@@ -106,6 +87,39 @@ detailsForm.addEventListener("submit", async (e) => {
         }
 
     });
+
+}
+
+// ======================================================
+// SEND OTP
+// ======================================================
+
+detailsForm.addEventListener("submit", async (e) => {
+
+    e.preventDefault();
+
+    const email = document
+        .getElementById("email")
+        .value
+        .trim()
+        .toLowerCase();
+
+    if (!email) {
+
+        showMessage(
+            "Please enter your email address.",
+            "error"
+        );
+
+        return;
+
+    }
+
+    pendingEmail = email;
+
+    showMessage("Sending verification code...");
+
+    const { error } = await sendCode(email);
 
     if (error) {
 
@@ -122,9 +136,11 @@ detailsForm.addEventListener("submit", async (e) => {
     otpSection.hidden = false;
 
     showMessage(
-        "Verification code sent to your email.",
+        `Verification code sent to ${email}.`,
         "success"
     );
+
+    document.getElementById("otp").focus();
 
 });
 
@@ -155,7 +171,7 @@ otpForm.addEventListener("submit", async (e) => {
     const { data, error } =
         await sb.auth.verifyOtp({
 
-            email: pendingUser.email,
+            email: pendingEmail,
 
             token,
 
@@ -174,44 +190,12 @@ otpForm.addEventListener("submit", async (e) => {
 
     }
 
-    const user = data.user;
-
-    // The profiles row is created automatically by the on_auth_user_created
-    // trigger (see database-schema.sql section 9), so this only ever needs to
-    // fill in the name and phone the visitor just typed. The previous
-    // select-then-insert-or-update round trip is no longer needed.
-
-    const { error: updateError } = await sb
-        .from("profiles")
-        .update({
-
-            full_name: pendingUser.fullName,
-            phone: pendingUser.phone
-
-        })
-        .eq("id", user.id);
-
-    if (updateError) {
-
-        showMessage(
-            updateError.message,
-            "error"
-        );
-
-        return;
-
-    }
-
     showMessage(
-        "Login successful!",
+        "Verified.",
         "success"
     );
 
-    setTimeout(() => {
-
-        window.location.href = nextPage;
-
-    }, 700);
+    window.location.href = await destinationFor(data.user.id);
 
 });
 
@@ -223,10 +207,10 @@ document
     .getElementById("resend-otp")
     .addEventListener("click", async () => {
 
-        if (!pendingUser.email) {
+        if (!pendingEmail) {
 
             showMessage(
-                "Please enter your details first.",
+                "Please enter your email first.",
                 "error"
             );
 
@@ -236,16 +220,7 @@ document
 
         showMessage("Sending new verification code...");
 
-        const { error } =
-            await sb.auth.signInWithOtp({
-
-                email: pendingUser.email,
-
-                options: {
-                    shouldCreateUser: true
-                }
-
-            });
+        const { error } = await sendCode(pendingEmail);
 
         if (error) {
 

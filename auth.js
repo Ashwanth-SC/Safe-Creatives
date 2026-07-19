@@ -39,6 +39,9 @@ window.SC = (function () {
   // visitor is allowed to see them. Hide immediately, reveal once resolved.
 
   const isGuarded = document.body?.dataset.requiresAuth === "true";
+  // register.html sets this: it is the page that completes a profile, so the
+  // incomplete-profile redirect below must skip it or it would loop.
+  const allowIncomplete = document.body?.dataset.allowIncomplete === "true";
   let revealStyle = null;
 
   if (isGuarded) {
@@ -64,6 +67,18 @@ window.SC = (function () {
     window.location.replace(
       `login.html?next=${encodeURIComponent(nextPage || currentPage())}`
     );
+  }
+
+  function toRegister(nextPage) {
+    window.location.replace(
+      `register.html?next=${encodeURIComponent(nextPage || currentPage())}`
+    );
+  }
+
+  // A profile row always exists once signup has run, so "registered" means
+  // the name has actually been filled in rather than the row being present.
+  function isRegistered(profile) {
+    return Boolean(profile?.full_name?.trim());
   }
 
   async function loadProfile(userId) {
@@ -110,6 +125,15 @@ window.SC = (function () {
     }
 
     state.profile = await loadProfile(session.user.id);
+
+    // Verified but never finished registering. Deep-linking to a guarded page
+    // must not skip this: create-order needs a name and phone, and the
+    // checkout would otherwise render a profile card full of blanks.
+    if (isGuarded && !allowIncomplete && !isRegistered(state.profile)) {
+      toRegister();
+      return new Promise(() => {});
+    }
+
     reveal();
     return state;
   }
