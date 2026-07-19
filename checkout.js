@@ -321,13 +321,38 @@
     checkout.open();
   }
 
+  // supabase-js collapses every non-2xx into "Edge Function returned a
+  // non-2xx status code" and leaves the actual response on error.context.
+  // create-order puts a human-readable reason in that body, so dig it out --
+  // otherwise every server-side failure looks identical from the UI.
+  async function describeFunctionError(error) {
+    const response = error?.context;
+    if (!response || typeof response.clone !== "function") return error;
+
+    try {
+      const body = await response.clone().json();
+      if (body?.error) return new Error(body.error);
+    } catch {
+      // Not JSON; fall through to text.
+    }
+
+    try {
+      const text = await response.clone().text();
+      if (text) return new Error(`${response.status}: ${text}`);
+    } catch {
+      // Body already consumed or unreadable.
+    }
+
+    return error;
+  }
+
   async function reserve() {
     reserveButton.disabled = true;
     message("Reserving your order...");
 
     try {
       const { data, error } = await sb.functions.invoke("create-order");
-      if (error) throw error;
+      if (error) throw await describeFunctionError(error);
       if (data?.error) throw new Error(data.error);
 
       // create-order recomputes the total from the catalog, so these amounts
