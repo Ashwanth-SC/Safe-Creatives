@@ -1,0 +1,36 @@
+# Supabase CLI project config.
+#
+# Written by hand rather than by `supabase init`, which refuses to run when a
+# supabase/ directory already exists -- and this repo ships supabase/functions/
+# in version control. Without this file the CLI does not recognise the folder
+# as a project root and `functions deploy` fails with:
+#
+#   WARN: failed to read file: open supabase/functions/create-order/index.ts:
+#         no such file or directory
+#   unexpected deploy status 400: Entrypoint path does not exist
+#
+# ...while the file sits right there.
+#
+# This is deliberately minimal: enough for `functions deploy` against the
+# linked hosted project. If you later want the local stack (`supabase start`,
+# which needs Docker), run `supabase init --force` to regenerate a full config
+# and re-add the [functions] blocks below.
+
+project_id = "safe-creatives"
+
+[functions.create-order]
+# Called by a signed-in customer. The function reads the caller's JWT to know
+# whose cart to price, so gateway verification stays ON.
+verify_jwt = true
+
+[functions.payment-webhook]
+# Razorpay calls this server-to-server and sends no Supabase JWT. With
+# verification on, every callback is rejected before the handler runs --
+# payments succeed at Razorpay while orders sit unpaid forever.
+#
+# The endpoint is secured instead by the HMAC-SHA256 signature check over the
+# raw request body, which is the mechanism Razorpay actually provides.
+#
+# Setting it here means you no longer need --no-verify-jwt on the command
+# line, and cannot forget it.
+verify_jwt = false

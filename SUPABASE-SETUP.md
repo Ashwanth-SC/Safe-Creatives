@@ -187,21 +187,23 @@ Then, **from this project folder**:
 
 ```bash
 supabase login
-supabase init          # creates supabase/config.toml
 supabase link --project-ref zcdcalwgyvlcawcflojl
 supabase functions deploy create-order
 ```
 
-`supabase init` is not optional. Without `supabase/config.toml` the CLI does
-not treat this folder as the project root, and deploy fails with a confusing
+**Do not run `supabase init`.** `supabase/config.toml` is committed to the
+repo. `init` refuses to run when a `supabase/` directory already exists, and
+this one ships `supabase/functions/` in version control — so `init` fails
+silently-ish and you end up with no config, which produces this misleading
+error even though the file is right there:
 
 ```
 WARN: failed to read file: open supabase/functions/create-order/index.ts: no such file or directory
 unexpected deploy status 400: Entrypoint path does not exist
 ```
 
-even though the file is sitting right there. `supabase/functions/` already
-exists in the repo, so `init` will just add the config alongside it.
+Without `config.toml` the CLI does not recognise the folder as a project root
+and resolves the functions path somewhere else entirely.
 
 Ignore `WARNING: Docker is not running` — Docker is only needed for the local
 stack (`supabase start`), not for deploying to the hosted project.
@@ -265,13 +267,17 @@ supabase secrets set RAZORPAY_WEBHOOK_SECRET=the_same_string_you_just_invented
 
 ```bash
 supabase functions deploy create-order
-supabase functions deploy payment-webhook --no-verify-jwt
+supabase functions deploy payment-webhook
 ```
 
-**`--no-verify-jwt` on the webhook is mandatory.** Razorpay does not send a
-Supabase JWT, so with default gateway auth every callback is rejected before
-your code runs — payments succeed at Razorpay and orders sit unpaid forever.
-The HMAC signature check inside the function is what secures that endpoint.
+No `--no-verify-jwt` flag needed — `supabase/config.toml` sets
+`verify_jwt = false` for `payment-webhook`, so it applies automatically and
+cannot be forgotten.
+
+It matters because Razorpay does not send a Supabase JWT: with gateway auth
+on, every callback is rejected before your code runs, and payments succeed at
+Razorpay while orders sit unpaid forever. The HMAC signature check inside the
+function is what secures that endpoint instead.
 
 `create-order` keeps JWT verification ON. It is called by a signed-in
 customer and must know who they are.
@@ -324,5 +330,5 @@ means `--no-verify-jwt` was missed or the webhook secret does not match.
 - [ ] `create-order` deployed, secrets set
 - [ ] Razorpay test keys set (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`)
 - [ ] Webhook created in Razorpay, `RAZORPAY_WEBHOOK_SECRET` matches
-- [ ] `payment-webhook` deployed with `--no-verify-jwt`
+- [ ] `payment-webhook` deployed (verify_jwt=false comes from config.toml)
 - [ ] Test payment moves the order to `advance_paid`
