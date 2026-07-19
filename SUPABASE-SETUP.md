@@ -34,6 +34,15 @@ with **`permission denied for table packages`** — RLS policies alone are not
 enough, the roles also need table privileges. Run this once:
 
 ```sql
+-- service_role bypasses RLS but still needs table privileges. Without these,
+-- every Edge Function query fails with "permission denied for table" -- which
+-- looks nothing like a permissions problem from the browser.
+grant usage on schema public to service_role;
+grant all privileges on all tables in schema public to service_role;
+grant all privileges on all sequences in schema public to service_role;
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+
 grant usage on schema public to anon, authenticated;
 
 grant select on

@@ -437,6 +437,23 @@ alter table refunds            enable row level security;
 -- orders or payments for any client role — those are service_role only, and
 -- service_role bypasses all of this anyway.
 
+-- service_role first. It BYPASSES RLS, which makes it easy to assume it needs
+-- no grants -- but bypassing row policies is not the same as having table
+-- privileges, and without these every Edge Function query fails with
+-- "permission denied for table". Supabase's default privileges usually cover
+-- this; stating it explicitly means the schema does not depend on them.
+--
+-- The sequence grant is not optional: orders.order_number defaults to
+-- nextval('order_number_seq'), so inserts fail without it even when the
+-- table grant is present.
+grant usage on schema public to service_role;
+grant all privileges on all tables in schema public to service_role;
+grant all privileges on all sequences in schema public to service_role;
+
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+
+
 grant usage on schema public to anon, authenticated;
 
 grant select on
