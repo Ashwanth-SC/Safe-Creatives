@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Turnkey Solutions | Safe Creatives</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="turnkey-solutions.css" />
+  </head>
+  <body>
+    <main>
+      <header class="site-header turnkey-header" aria-label="Primary navigation">
+        <a class="brand" href="index.html" aria-label="Safe Creatives home">
+          <img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" />
+          <span>SAFE CREATIVES</span>
+        </a>
+      </header>
+
+      <section class="turnkey-hero" aria-labelledby="turnkey-hero-title">
+        <div class="turnkey-hero-slides" aria-hidden="true"><div class="turnkey-hero-slide turnkey-slide-one"></div><div class="turnkey-hero-slide turnkey-slide-two"></div><div class="turnkey-hero-slide turnkey-slide-three"></div></div>
+        <div class="turnkey-hero-shade"></div>
+        <div class="turnkey-hero-content">
+          <p class="eyebrow">SAFE CREATIVES</p>
+          <h1 id="turnkey-hero-title">SENSORY HARMONY <span>|</span> AUTOMATION INCLUSIVITY <span>|</span> SUSTAINABLE PRACTICES <em>in every space.</em></h1>
+        </div>
+      </section>
+
+      <section class="services-intro" aria-labelledby="services-title">
+        <div class="service-page-heading"><p class="eyebrow">HOW WE WORK</p><h2 id="services-title">Our services<span>.</span></h2><p>From the first conversation to the final handover, we make each decision clear, collaborative, and considered.</p></div>
+        <div class="service-page-grid">
+          <article><span>01</span><h3>Interior design consultation</h3><p>A focused conversation to clarify your needs, possibilities, and design direction.</p></article>
+          <article><span>02</span><h3>Turnkey interior design</h3><p>A complete design and delivery partnership, coordinated from concept through installation.</p></article>
+          <article><span>03</span><h3>Architectural &amp; construction consultation</h3><p>Practical guidance that connects the creative vision to the realities of building it well.</p></article>
+        </div>
+        <div class="service-workflow" aria-label="Turnkey solutions workflow">
+          <div class="service-workflow-line"></div>
+          <div><b>01</b><i></i><strong>On-boarding</strong></div><div><b>02</b><i></i><strong>Design initiation</strong></div><div><b>03</b><i></i><strong>Design Sign Off</strong></div><div><b>04</b><i></i><strong>Execution</strong></div><div><b>05</b><i></i><strong>Handover</strong></div>
+        </div>
+      </section>
+
+      <section class="enquiry-section" aria-labelledby="enquiry-title">
+        <div class="enquiry-heading"><p class="eyebrow">LET’S MAKE A START</p><h2 id="enquiry-title">Get in touch<span>.</span></h2><p>Tell us a little about your project. We’ll take it from there.</p></div>
+        <form id="enquiry-form" class="enquiry-card" action="https://api.web3forms.com/submit" method="POST">
+          <input type="hidden" name="access_key" value="YOUR_WEB3FORMS_ACCESS_KEY" />
+          <input type="hidden" name="subject" value="New Safe Creatives project enquiry" />
+          <input type="hidden" name="from_name" value="Safe Creatives website" />
+          <div class="form-step active"><span class="form-count">01 / 05</span><label for="full-name">What’s your full name?</label><input id="full-name" name="full_name" type="text" autocomplete="name" required placeholder="Your name" /><button type="button" class="form-next">Next ↗</button></div>
+          <div class="form-step"><span class="form-count">02 / 05</span><label for="phone">What’s your 10 digit phone number?</label><input id="phone" name="phone" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" required placeholder="9876543210" /><div class="form-actions"><button type="button" class="form-prev">← Previous</button><button type="button" class="form-next">Next ↗</button></div></div>
+          <div class="form-step"><span class="form-count">03 / 05</span><label for="pincode">What’s your 6 digit pin code?</label><input id="pincode" name="pin_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="600001" /><div class="form-actions"><button type="button" class="form-prev">← Previous</button><button type="button" class="form-next">Next ↗</button></div></div>
+          <div class="form-step"><span class="form-count">04 / 05</span><label for="area">What’s the project area in sq. ft.?</label><input id="area" name="area_sqft" type="number" min="1" required placeholder="1200" /><div class="form-actions"><button type="button" class="form-prev">← Previous</button><button type="button" class="form-next">Next ↗</button></div></div>
+          <div class="form-step"><span class="form-count">05 / 05</span><label for="category">Tell us about your project</label><select id="category" name="project_category" required><option value="" disabled selected>Project category</option><option>Residential</option><option>Commercial</option></select><select id="requirement" name="requirement" required><option value="" disabled selected>Your requirement</option><option>Interior consultation</option><option>Turnkey interiors</option><option>Construction consultation</option></select><div class="form-actions"><button type="button" class="form-prev">← Previous</button><button type="submit" class="form-submit">Submit enquiry ↗</button></div></div>
+          <p id="form-message" class="form-message" role="status"></p>
+        </form>
+      </section>
+
+      <footer class="site-footer" aria-label="Footer">
+        <div class="footer-top">
+          <a class="footer-brand" href="#home">SAFE CREATIVES<span>.</span></a>
+          <p>Spaces with purpose.<br />Built with care.</p>
+        </div>
+        <div class="footer-grid">
+          <div class="footer-group">
+            <p class="footer-label">EXPLORE OUR WORK</p>
+            <a class="footer-link" href="https://drive.google.com/file/d/1_qE9CsGezCKQYdxqn00OKPz2BCh9Ky6Z/view">Portfolio <span>↗</span></a>
+            <a class="footer-link" href="https://drive.google.com/file/d/18ucYNPWpFsL9WWq6ZI1qrLuopE4Obi5e/view">Terms & Conditions <span>↗</span></a>
+          </div>
+          <div class="footer-group">
+            <p class="footer-label">CONNECT WITH SAFE CREATIVES</p>
+            <div class="social-links">
+              <a href="https://www.instagram.com/safe_creatives?igsh=dGdza3Zkejd4bHNh" aria-label="Instagram"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r=".8" fill="currentColor" stroke="none"></circle></svg></a>
+              <a href="https://www.linkedin.com/in/ashwanth-sara" aria-label="LinkedIn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8.5V19M5 5v.1M10 19v-5.5a3.5 3.5 0 0 1 7 0V19M10 10v9"></path></svg></a>
+              <a href="https://share.google/NJi7irC5AkYhdK3BD" aria-label="Location"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 10c0 5-7 10-7 10S5 15 5 10a7 7 0 1 1 14 0Z"></path><circle cx="12" cy="10" r="2"></circle></svg></a>
+              <a href="tel:+919789890877" aria-label="Phone number"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 4.5 9 4l2 4-2 1.5a13 13 0 0 0 5.5 5.5L16 13l4 2-.5 2.5c-.3 1.4-1.6 2.3-3 2A15.5 15.5 0 0 1 4.5 7.5c-.3-1.4.6-2.7 2-3Z"></path></svg></a>
+            </div>
+            <p class="footer-contact">+919789890877<br />Ashwanth@safecreatives.com</p>
+          </div>
+          <div class="footer-group">
+            <p class="footer-label">GROW WITH US</p>
+            <a class="footer-link" href="mailto:ashwanth@safecreatives.com">Be our vendor <span>↗</span></a>
+            <a class="footer-link" href="mailto:ashwanth@safecreatives.com">Join our team <span>↗</span></a>
+          </div>
+        </div>
+        <div class="footer-bottom"><span>© 2026 Safe Creatives</span><span>Made for more inclusive spaces</span></div>
+      </footer>
+    </main>
+    <script src="auth-local.js"></script>
+    <script src="turnkey-solutions.js"></script>
+  </body>
+</html>

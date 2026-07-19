@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Review Order | Safe Creatives</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="checkout.css" />
+  </head>
+  <body data-requires-auth="true">
+    <header class="site-header checkout-header">
+      <a class="brand" href="index.html"><img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" /><span>SAFE CREATIVES</span></a>
+      <a class="catalog-back" href="sensory-rooms.html">← Sensory rooms</a>
+    </header>
+    <main class="checkout-page">
+      <section class="checkout-intro"><p class="eyebrow">YOUR SAVED DETAILS</p><h1>Review<br /><em>your order.</em></h1><p>Confirm your saved package choices before we move to the next step.</p></section>
+      <div class="checkout-layout">
+        <section class="customer-card" aria-labelledby="customer-title"><p class="eyebrow">CUSTOMER INFORMATION</p><h2 id="customer-title">Your profile</h2><dl id="profile-details"></dl></section>
+        <section class="cart-card" aria-labelledby="cart-title"><div class="cart-card-heading"><div><p class="eyebrow">YOUR CART</p><h2 id="cart-title">Package summary</h2></div><a href="sensory-rooms.html">Add package ↗</a></div><div id="cart-packages"></div><div class="cart-total"><span>Total</span><strong id="cart-total">₹0</strong></div><p id="cart-empty" class="cart-empty" hidden>No packages have been saved yet. Choose a Sensory Room package to begin.</p></section>
+      </div>
+    </main>
+    <script src="auth-local.js"></script>
+    <script src="checkout.js"></script>
+  </body>
+</html>

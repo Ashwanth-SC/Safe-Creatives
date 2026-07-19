@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login | Safe Creatives</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header" aria-label="Primary navigation">
+      <a class="brand" href="index.html" aria-label="Safe Creatives home">
+        <img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" />
+        <span>SAFE CREATIVES</span>
+      </a>
+      <nav class="primary-nav" aria-label="Main links">
+        <a href="index.html#sensory-rooms">Sensory rooms</a>
+        <a href="index.html#turnkey-solutions">Turnkey Solutions</a>
+      </nav>
+      <a class="account-link" href="login.html" aria-label="Open login and registration" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20c.5-4 3.4-6.5 7.5-6.5s7 2.5 7.5 6.5"></path></svg>
+      </a>
+    </header>
+    <main class="auth-page">
+      <section class="auth-card" aria-labelledby="auth-title">
+
+        <p class="eyebrow">SAFE CREATIVES</p>
+
+        <h1 id="auth-title">Let's save your design.</h1>
+
+        <p class="form-intro">
+          Continue with your email to save your customized rooms, reservations and future projects.
+        </p>
+
+        <!-- STEP 1 : CUSTOMER DETAILS -->
+
+        <div id="details-section">
+
+          <form id="details-form">
+
+            <label for="full-name">Full Name</label>
+            <input
+              id="full-name"
+              type="text"
+              placeholder="Your full name"
+              autocomplete="name"
+              required
+            />
+
+            <label for="phone">Phone Number</label>
+            <input
+              id="phone"
+              type="tel"
+              placeholder="+91 98765 43210"
+              autocomplete="tel"
+              required
+            />
+
+            <label for="email">Email Address</label>
+            <input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              autocomplete="email"
+              required
+            />
+
+            <button
+              class="primary-button"
+              id="send-otp"
+              type="submit"
+            >
+              Continue
+            </button>
+
+          </form>
+
+        </div>
+
+        <!-- STEP 2 : OTP -->
+
+        <div id="otp-section" hidden>
+
+          <p class="form-intro">
+            Enter the verification code sent to your email.
+          </p>
+
+          <form id="otp-form">
+
+            <label for="otp">Verification Code</label>
+
+            <input
+              id="otp"
+              type="text"
+              maxlength="6"
+              inputmode="numeric"
+              placeholder="123456"
+              required
+            />
+
+            <button
+              class="primary-button"
+              id="verify-otp"
+              type="submit"
+            >
+              Verify
+            </button>
+
+          </form>
+
+          <button
+            class="inline-button"
+            id="resend-otp"
+            type="button"
+          >
+            Resend Code
+          </button>
+
+        </div>
+
+        <p
+          id="auth-message"
+          class="form-message"
+          role="status"
+        ></p>
+
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="login.js"></script>
+  </body>
+</html>
