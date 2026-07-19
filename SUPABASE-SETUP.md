@@ -89,9 +89,19 @@ Then re-run section 9 of `database-schema.sql` to pick up the current
 `login.js` calls `verifyOtp()` with a **6-digit code**. Out of the box,
 Supabase emails a **magic link** instead, and the login form will never work.
 
-**Dashboard → Authentication → Emails → Magic Link template.**
+**You must edit TWO templates, not one.** `signInWithOtp` picks a different
+one depending on whether the account already exists:
 
-Replace the template body with something that includes `{{ .Token }}`:
+| Situation | Template used |
+| --- | --- |
+| Email already has an account | **Magic Link** |
+| New email + `shouldCreateUser: true` | **Confirm signup** |
+
+Fixing only Magic Link is a trap: your own account keeps working while every
+first-time customer — the ones who matter — gets an unusable link.
+
+**Dashboard → Authentication → Emails.** Apply the same body to *both*
+**Magic Link** and **Confirm signup**:
 
 ```html
 <h2>Your Safe Creatives verification code</h2>
@@ -102,6 +112,9 @@ Replace the template body with something that includes `{{ .Token }}`:
 
 The key change is `{{ .Token }}` (the 6-digit code) instead of
 `{{ .ConfirmationURL }}` (the magic link).
+
+To test the signup path specifically, use an address with no account yet —
+Gmail's `you+test1@gmail.com` trick works and lands in the same inbox.
 
 Then under **Authentication → Providers → Email**, confirm:
 
@@ -321,7 +334,8 @@ means `--no-verify-jwt` was missed or the webhook secret does not match.
 
 - [ ] `database-schema.sql` run, no errors
 - [ ] `seed-catalog.sql` run, verification query matches the table above
-- [ ] Magic Link email template uses `{{ .Token }}`
+- [ ] BOTH Magic Link AND Confirm signup templates use `{{ .Token }}`
+- [ ] Signup tested with a brand-new email address, not just an existing one
 - [ ] Custom SMTP configured
 - [ ] Site URL and redirect URLs set
 - [ ] RLS enabled on all 16 tables, `orders`/`payments` SELECT-only
