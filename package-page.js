@@ -2,13 +2,17 @@
 // Safe Creatives — package configurator
 // ============================================================================
 //
-// Renders products, colours, and add-ons from the catalog tables and writes
-// the customer's selection to their Supabase cart.
+// Renders products, their option groups (Size, Colour, anything added later),
+// and add-ons from the catalog tables, then writes the selection to the
+// customer's Supabase cart.
 //
-// The cart stores IDs only — never prices. The total shown here is a
-// convenience for the customer; the authoritative figure is recomputed
-// server-side at checkout. Tampering with this page changes what you see,
-// not what you are charged.
+// Nothing here is aware of what a group MEANS. A group renders from its
+// display_as hint, so adding "Fabric" or "Wood finish" in the admin page needs
+// no change to this file.
+//
+// The cart stores IDs only -- never prices. The total shown is a convenience;
+// the authoritative figure is recomputed server-side at checkout. Tampering
+// with this page changes what you see, not what you are charged.
 // ============================================================================
 
 (async function () {
@@ -22,8 +26,8 @@
   const totalElement = document.querySelector("#package-total");
   const saveMessage = document.querySelector("#save-message");
 
-  // Current selection: productId -> colourId, and a Set of addon IDs.
-  const chosenColour = new Map();
+  // groupId -> optionId, and a Set of addon IDs.
+  const chosenOption = new Map();
   const chosenAddons = new Set();
 
   let pkg = null;
@@ -38,8 +42,11 @@
       `id, key, name, base_price_paise,
        package_products (
          id, key, name, description, specs, sort_order,
-         product_colours ( id, key, name, image_path, finish, material,
-                           swatch_hex, price_delta_paise, sort_order )
+         product_option_groups (
+           id, key, name, display_as, sort_order,
+           product_options ( id, key, name, description, price_delta_paise,
+                             image_path, swatch_hex, finish, material, sort_order )
+         )
        ),
        package_addons ( id, key, name, description, image_path, price_paise, sort_order )`
     )
@@ -58,18 +65,27 @@
 
   pkg = data;
 
-  // PostgREST does not order embedded rows for us, so sort here.
+  // PostgREST does not order embedded rows, so sort every level here.
   const bySort = (a, b) => a.sort_order - b.sort_order;
   pkg.package_products.sort(bySort);
-  pkg.package_products.forEach((p) => p.product_colours.sort(bySort));
+  pkg.package_products.forEach((product) => {
+    product.product_option_groups.sort(bySort);
+    product.product_option_groups.forEach((group) =>
+      group.product_options.sort(bySort)
+    );
+  });
   pkg.package_addons.sort(bySort);
+
+  const allGroups = pkg.package_products.flatMap((p) => p.product_option_groups);
+  const groupById = new Map(allGroups.map((g) => [g.id, g]));
+
+  function optionById(groupId, optionId) {
+    return groupById.get(groupId)?.product_options.find((o) => o.id === optionId);
+  }
 
   // ------------------------------------------------------------------
   // Restore a previous configuration
   // ------------------------------------------------------------------
-  // Arriving from "Edit package" carries ?item=<cart_item_id>, which loads
-  // that exact line item so editing updates it in place rather than
-  // silently adding a second copy to the cart.
 
   async function loadExistingSelection() {
     if (!editItemId) return false;
@@ -78,7 +94,7 @@
       .from("cart_items")
       .select(
         `id, package_id,
-         cart_item_colours ( product_id, colour_id ),
+         cart_item_options ( group_id, option_id ),
          cart_item_addons ( addon_id )`
       )
       .eq("id", editItemId)
@@ -86,19 +102,23 @@
 
     if (!item || item.package_id !== pkg.id) return false;
 
-    item.cart_item_colours.forEach((c) =>
-      chosenColour.set(c.product_id, c.colour_id)
-    );
+    item.cart_item_options.forEach((choice) => {
+      // Ignore selections whose option has since been removed from the
+      // catalog; the default below fills the gap.
+      if (optionById(choice.group_id, choice.option_id)) {
+        chosenOption.set(choice.group_id, choice.option_id);
+      }
+    });
     item.cart_item_addons.forEach((a) => chosenAddons.add(a.addon_id));
     return true;
   }
 
   const isEditing = await loadExistingSelection();
 
-  // Anything not restored falls back to the first colour.
-  pkg.package_products.forEach((product) => {
-    if (!chosenColour.has(product.id) && product.product_colours.length) {
-      chosenColour.set(product.id, product.product_colours[0].id);
+  // Anything not restored falls back to the first option in its group.
+  allGroups.forEach((group) => {
+    if (!chosenOption.has(group.id) && group.product_options.length) {
+      chosenOption.set(group.id, group.product_options[0].id);
     }
   });
 
@@ -106,16 +126,10 @@
   // Totals (display only)
   // ------------------------------------------------------------------
 
-  function colourById(productId, colourId) {
-    return pkg.package_products
-      .find((p) => p.id === productId)
-      ?.product_colours.find((c) => c.id === colourId);
-  }
-
   function totalPaise() {
     let total = pkg.base_price_paise;
-    chosenColour.forEach((colourId, productId) => {
-      total += colourById(productId, colourId)?.price_delta_paise || 0;
+    chosenOption.forEach((optionId, groupId) => {
+      total += optionById(groupId, optionId)?.price_delta_paise || 0;
     });
     pkg.package_addons.forEach((addon) => {
       if (chosenAddons.has(addon.id)) total += addon.price_paise;
@@ -127,14 +141,22 @@
     totalElement.textContent = SC.money(totalPaise());
   }
 
+  // The product image comes from whichever selected option carries one --
+  // normally the colour. If no group has images, the first available wins.
+  function activeImageFor(product) {
+    for (const group of product.product_option_groups) {
+      const selected = optionById(group.id, chosenOption.get(group.id));
+      if (selected?.image_path) return selected;
+    }
+    return null;
+  }
+
   // ------------------------------------------------------------------
   // Render
   // ------------------------------------------------------------------
 
   function renderProducts() {
     pkg.package_products.forEach((product, index) => {
-      const activeColour = colourById(product.id, chosenColour.get(product.id));
-
       const article = document.createElement("article");
       article.className = "product-block";
       article.dataset.product = product.name;
@@ -150,13 +172,13 @@
       article.innerHTML = `
         <div class="product-gallery">
           <span class="product-number">${String(index + 1).padStart(2, "0")}</span>
-          <img src="${activeColour?.image_path || ""}" alt="${product.name}" />
+          <img src="" alt="${product.name}" />
         </div>
         <div class="product-info">
           <p class="product-type">MAIN PRODUCT</p>
           <h2>${product.name}</h2>
           <p class="product-description">${product.description || ""}</p>
-          <div class="color-options"></div>
+          <div class="option-groups"></div>
           <div class="specs">
             <div><span>FINISH</span><strong data-spec="finish"></strong></div>
             <div><span>MATERIAL</span><strong data-spec="material"></strong></div>
@@ -164,48 +186,115 @@
           </div>
         </div>`;
 
-      const options = article.querySelector(".color-options");
-
-      product.product_colours.forEach((colour) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "color-option";
-        // data-color keeps the existing packages.css rules working; the
-        // inline background is what actually guarantees a swatch renders,
-        // including for colours the stylesheet has never heard of.
-        button.dataset.color = colour.name;
-        button.style.background = colour.swatch_hex;
-        button.setAttribute("aria-label", `${product.name} in ${colour.name}`);
-        if (colour.id === chosenColour.get(product.id)) {
-          button.classList.add("active");
-        }
-        button.addEventListener("click", () => {
-          chosenColour.set(product.id, colour.id);
-          applyColour(article, product, colour);
-          updateTotal();
-        });
-        options.appendChild(button);
-      });
+      const groupsWrap = article.querySelector(".option-groups");
+      product.product_option_groups.forEach((group) =>
+        groupsWrap.appendChild(renderGroup(article, product, group))
+      );
 
       productsWrap.appendChild(article);
-      if (activeColour) applyColour(article, product, activeColour);
+      refreshProduct(article, product);
     });
   }
 
-  function applyColour(article, product, colour) {
+  function renderGroup(article, product, group) {
+    const wrap = document.createElement("div");
+    wrap.className = "option-group";
+    wrap.dataset.groupId = group.id;
+
+    const label = document.createElement("p");
+    label.className = "option-group-label";
+    label.textContent = group.name;
+    wrap.appendChild(label);
+
+    const isSwatch = group.display_as === "swatch";
+
+    if (group.display_as === "dropdown") {
+      const select = document.createElement("select");
+      select.className = "option-select";
+      select.setAttribute("aria-label", `${product.name} — ${group.name}`);
+      group.product_options.forEach((option) => {
+        const el = document.createElement("option");
+        el.value = option.id;
+        el.textContent = labelFor(option);
+        if (option.id === chosenOption.get(group.id)) el.selected = true;
+        select.appendChild(el);
+      });
+      select.addEventListener("change", () => {
+        chosenOption.set(group.id, select.value);
+        refreshProduct(article, product);
+        updateTotal();
+      });
+      wrap.appendChild(select);
+      return wrap;
+    }
+
+    const list = document.createElement("div");
+    list.className = isSwatch ? "color-options" : "chip-options";
+
+    group.product_options.forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.optionId = option.id;
+
+      if (isSwatch) {
+        // data-color keeps the existing packages.css rules working; the inline
+        // background is what guarantees a swatch renders, including for
+        // colours the stylesheet has never heard of.
+        button.className = "color-option";
+        button.dataset.color = option.name;
+        button.style.background = option.swatch_hex || "#cccccc";
+        button.setAttribute("aria-label", `${product.name} in ${option.name}`);
+      } else {
+        button.className = "chip-option";
+        button.textContent = labelFor(option);
+      }
+
+      if (option.id === chosenOption.get(group.id)) button.classList.add("active");
+
+      button.addEventListener("click", () => {
+        chosenOption.set(group.id, option.id);
+        refreshProduct(article, product);
+        updateTotal();
+      });
+
+      list.appendChild(button);
+    });
+
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  function labelFor(option) {
+    return option.price_delta_paise
+      ? `${option.name} (+${SC.money(option.price_delta_paise)})`
+      : option.name;
+  }
+
+  // Re-syncs image, specs, and which buttons look selected. Called after any
+  // change rather than mutating individual bits, so the DOM can never drift
+  // out of step with chosenOption.
+  function refreshProduct(article, product) {
     const image = article.querySelector("img");
-    image.src = colour.image_path;
-    image.alt = `${product.name} in ${colour.name}`;
+    const shown = activeImageFor(product);
+
+    if (shown) {
+      image.src = shown.image_path;
+      image.alt = `${product.name} in ${shown.name}`;
+    }
+
     article.querySelector('[data-spec="finish"]').textContent =
-      colour.finish || "—";
+      shown?.finish || "—";
     article.querySelector('[data-spec="material"]').textContent =
-      colour.material || "—";
-    article
-      .querySelectorAll(".color-option")
-      .forEach((b) => b.classList.remove("active"));
-    article
-      .querySelector(`.color-option[aria-label="${product.name} in ${colour.name}"]`)
-      ?.classList.add("active");
+      shown?.material || "—";
+
+    product.product_option_groups.forEach((group) => {
+      const selectedId = chosenOption.get(group.id);
+      article
+        .querySelectorAll(`[data-group-id="${group.id}"] button`)
+        .forEach((button) =>
+          button.classList.toggle("active", button.dataset.optionId === selectedId)
+        );
+    });
   }
 
   function renderAddons() {
@@ -247,13 +336,14 @@
   // ------------------------------------------------------------------
 
   async function getOrCreateActiveCart() {
-    const { data: existing } = await sb
+    const { data: existing, error: readError } = await sb
       .from("carts")
       .select("id")
       .eq("user_id", SC.userId)
       .eq("status", "active")
       .maybeSingle();
 
+    if (readError) throw readError;
     if (existing) return existing.id;
 
     const { data: created, error: createError } = await sb
@@ -267,16 +357,18 @@
   }
 
   async function writeSelection(cartItemId) {
-    // Replace rather than diff: the selection is small and this keeps the
+    // Replace rather than diff: the selection is small, and this keeps the
     // stored rows exactly matching what is on screen.
-    await sb.from("cart_item_colours").delete().eq("cart_item_id", cartItemId);
+    await sb.from("cart_item_options").delete().eq("cart_item_id", cartItemId);
     await sb.from("cart_item_addons").delete().eq("cart_item_id", cartItemId);
 
-    const colourRows = [...chosenColour.entries()].map(
-      ([product_id, colour_id]) => ({ cart_item_id: cartItemId, product_id, colour_id })
-    );
-    if (colourRows.length) {
-      const { error } = await sb.from("cart_item_colours").insert(colourRows);
+    const optionRows = [...chosenOption.entries()].map(([group_id, option_id]) => ({
+      cart_item_id: cartItemId,
+      group_id,
+      option_id,
+    }));
+    if (optionRows.length) {
+      const { error } = await sb.from("cart_item_options").insert(optionRows);
       if (error) throw error;
     }
 
@@ -378,7 +470,7 @@
         const addAnother = await confirmDialog({
           eyebrow: "PACKAGE ALREADY SAVED",
           title: "Add another one?",
-          body: "This package is already in your cart. Would you like to add a second one with the add-ons currently selected?",
+          body: "This package is already in your cart. Would you like to add a second one with the options currently selected?",
           cancelText: "Cancel",
           confirmText: "Add another",
         });

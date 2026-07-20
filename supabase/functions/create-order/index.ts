@@ -133,8 +133,10 @@ Deno.serve(async (req) => {
     .select(
       `id,
        packages ( key, name, base_price_paise ),
-       cart_item_colours ( package_products ( name ),
-                           product_colours ( name, finish, material, price_delta_paise ) ),
+       cart_item_options (
+         product_option_groups ( name, package_products ( name ) ),
+         product_options ( name, finish, material, price_delta_paise )
+       ),
        cart_item_addons ( package_addons ( key, name, price_paise ) )`
     )
     .eq("cart_id", cart.id)
@@ -196,15 +198,15 @@ Deno.serve(async (req) => {
   let subtotalPaise = 0;
   const lines = items.map((item) => {
     const pkg = item.packages;
-    const colourDelta = (item.cart_item_colours ?? []).reduce(
-      (sum, c) => sum + Number(c.product_colours?.price_delta_paise ?? 0),
+    const optionDelta = (item.cart_item_options ?? []).reduce(
+      (sum, c) => sum + Number(c.product_options?.price_delta_paise ?? 0),
       0
     );
     const addonTotal = (item.cart_item_addons ?? []).reduce(
       (sum, a) => sum + Number(a.package_addons?.price_paise ?? 0),
       0
     );
-    const lineTotal = Number(pkg.base_price_paise) + colourDelta + addonTotal;
+    const lineTotal = Number(pkg.base_price_paise) + optionDelta + addonTotal;
     subtotalPaise += lineTotal;
 
     return { item, pkg, lineTotal };
@@ -250,16 +252,17 @@ Deno.serve(async (req) => {
 
     if (lineError) return json({ error: lineError.message }, 500);
 
-    const colourRows = (item.cart_item_colours ?? []).map((c) => ({
+    const optionRows = (item.cart_item_options ?? []).map((c) => ({
       order_item_id: orderItem.id,
-      product_name: c.package_products?.name ?? "",
-      colour_name: c.product_colours?.name ?? "",
-      finish: c.product_colours?.finish ?? null,
-      material: c.product_colours?.material ?? null,
-      price_delta_paise: Number(c.product_colours?.price_delta_paise ?? 0),
+      product_name: c.product_option_groups?.package_products?.name ?? "",
+      group_name: c.product_option_groups?.name ?? "",
+      option_name: c.product_options?.name ?? "",
+      finish: c.product_options?.finish ?? null,
+      material: c.product_options?.material ?? null,
+      price_delta_paise: Number(c.product_options?.price_delta_paise ?? 0),
     }));
-    if (colourRows.length) {
-      await admin.from("order_item_colours").insert(colourRows);
+    if (optionRows.length) {
+      await admin.from("order_item_options").insert(optionRows);
     }
 
     const addonRows = (item.cart_item_addons ?? []).map((a) => ({

@@ -49,7 +49,7 @@
       `order_number, status, subtotal_paise, advance_amount_paise, balance_paise,
        delivery_address, placed_at,
        order_items ( package_name, line_total_paise,
-                     order_item_colours ( product_name, colour_name ),
+                     order_item_options ( product_name, group_name, option_name, price_delta_paise ),
                      order_item_addons ( addon_name, price_paise ) )`
     )
     .eq("order_number", orderNumber)
@@ -82,9 +82,12 @@
     list.style.cssText =
       "margin:4px 0 0; padding:0; list-style:none; color:#59635d; font-size:12px; line-height:1.8;";
 
-    item.order_item_colours.forEach((colour) => {
+    item.order_item_options.forEach((option) => {
+      const delta = Number(option.price_delta_paise || 0);
       const row = document.createElement("li");
-      row.textContent = `${colour.product_name}: ${colour.colour_name}`;
+      row.textContent =
+        `${option.product_name} — ${option.group_name}: ${option.option_name}` +
+        (delta ? ` (+${SC.money(delta)})` : "");
       list.appendChild(row);
     });
     item.order_item_addons.forEach((addon) => {

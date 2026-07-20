@@ -129,7 +129,10 @@
         .select(
           `id, created_at,
            packages ( key, name ),
-           cart_item_colours ( package_products ( name ), product_colours ( name ) ),
+           cart_item_options (
+             product_option_groups ( name, package_products ( name ) ),
+             product_options ( name, price_delta_paise )
+           ),
            cart_item_addons ( package_addons ( name, price_paise ) )`
         )
         .eq("cart_id", cart.id)
@@ -159,23 +162,29 @@
     const selections = document.createElement("div");
     selections.className = "review-selections";
 
-    const colourTitle = document.createElement("p");
-    colourTitle.textContent = "Main product colours";
-    selections.appendChild(colourTitle);
+    const optionTitle = document.createElement("p");
+    optionTitle.textContent = "Your selections";
+    selections.appendChild(optionTitle);
 
-    const colourList = document.createElement("ul");
-    if (item.cart_item_colours?.length) {
-      item.cart_item_colours.forEach((choice) => {
+    const optionList = document.createElement("ul");
+    if (item.cart_item_options?.length) {
+      // "Restful Bed Frame — Size: King (+₹18,000)"
+      item.cart_item_options.forEach((choice) => {
+        const group = choice.product_option_groups;
+        const option = choice.product_options;
+        const delta = Number(option?.price_delta_paise || 0);
         const row = document.createElement("li");
-        row.textContent = `${choice.package_products?.name}: ${choice.product_colours?.name}`;
-        colourList.appendChild(row);
+        row.textContent =
+          `${group?.package_products?.name} — ${group?.name}: ${option?.name}` +
+          (delta ? ` (+${SC.money(delta)})` : "");
+        optionList.appendChild(row);
       });
     } else {
       const row = document.createElement("li");
-      row.textContent = "No colours selected";
-      colourList.appendChild(row);
+      row.textContent = "No options selected";
+      optionList.appendChild(row);
     }
-    selections.appendChild(colourList);
+    selections.appendChild(optionList);
 
     const addonTitle = document.createElement("p");
     addonTitle.textContent = "Add-ons";
@@ -240,7 +249,7 @@
     overlay
       .querySelector(".cart-confirm-save")
       .addEventListener("click", async () => {
-        // cart_item_colours and cart_item_addons cascade on delete.
+        // cart_item_options and cart_item_addons cascade on delete.
         const { error } = await sb
           .from("cart_items")
           .delete()

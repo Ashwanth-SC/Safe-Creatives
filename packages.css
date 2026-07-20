@@ -34,3 +34,16 @@
  .cart-confirm-actions button:hover { color:#171717; border-color:#d0b28e; background:#d0b28e; }
  @keyframes confirmFade { from { opacity:0; } to { opacity:1; } }
  @keyframes confirmCardIn { from { opacity:0; transform:translateY(12px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+/* Option groups (Size, Colour, and anything added later) */
+.option-groups { margin:27px 0 25px; }
+.option-group { margin-bottom:20px; }
+.option-group:last-child { margin-bottom:0; }
+.option-group-label { margin:0 0 9px; color:#777; font:9px "DM Mono",monospace; letter-spacing:.12em; text-transform:uppercase; }
+.option-group .color-options { margin:0; }
+.chip-options { display:flex; flex-wrap:wrap; gap:8px; }
+.chip-option { padding:9px 13px; border:1px solid rgba(23,23,23,.25); background:transparent; color:#171717; font:12px "DM Sans",sans-serif; cursor:pointer; transition:border-color .15s, background .15s; }
+.chip-option:hover { border-color:#0c4444; }
+.chip-option.active { border-color:#0c4444; background:#0c4444; color:#fff; }
+.option-select { width:100%; max-width:340px; padding:10px 12px; border:1px solid rgba(23,23,23,.25); background:#fff; font:13px "DM Sans",sans-serif; cursor:pointer; }
+.option-select:focus { outline:2px solid #0c4444; outline-offset:1px; }
