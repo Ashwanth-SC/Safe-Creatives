@@ -84,7 +84,7 @@ window.SC = (function () {
   async function loadProfile(userId) {
     const { data, error } = await sb
       .from("profiles")
-      .select("id, full_name, email, phone, address, is_admin")
+      .select("id, full_name, email, phone, address_line, city, pin_code, is_admin")
       .eq("id", userId)
       .maybeSingle();
 
