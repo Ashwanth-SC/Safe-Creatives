@@ -68,6 +68,11 @@
             autocomplete="address-level2"
           />
 
+          <label for="state">State</label>
+          <select id="state">
+            <option value="">Select state</option>
+          </select>
+
           <label for="pin-code">PIN Code</label>
           <input
             id="pin-code"
@@ -76,6 +81,15 @@
             maxlength="6"
             placeholder="600001"
             autocomplete="postal-code"
+          />
+
+          <label for="gstin">GST Number <span class="label-hint">(optional — only if you are claiming input credit)</span></label>
+          <input
+            id="gstin"
+            type="text"
+            maxlength="15"
+            placeholder="33AAAAA0000A1Z5"
+            autocapitalize="characters"
           />
 
           <button

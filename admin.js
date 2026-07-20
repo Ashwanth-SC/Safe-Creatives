@@ -70,9 +70,10 @@
     const { data, error } = await sb
       .from("packages")
       .select(
-        `id, key, name, description, base_price_paise, cover_image_path, is_active, sort_order,
+        `id, key, name, description, base_price_paise, cover_image_path,
+         hsn_code, is_active, sort_order,
          package_products (
-           id, key, name, description, sort_order,
+           id, key, name, description, hsn_code, sort_order,
            product_option_groups (
              id, key, name, display_as, sort_order,
              product_options ( id, key, name, price_delta_paise, image_paths,
@@ -80,7 +81,7 @@
            )
          ),
          package_addons ( id, key, name, description, image_path, price_paise,
-                          is_default_selected, is_active, sort_order )`
+                          hsn_code, is_default_selected, is_active, sort_order )`
       )
       .order("sort_order");
 
@@ -415,10 +416,14 @@
       rows: 2,
     });
     const sort = field("Order", product.sort_order, { type: "number" });
+    const hsn = field("HSN code", product.hsn_code, {
+      placeholder: "9403",
+      hint: "For reference and line descriptions",
+    });
 
     const head = document.createElement("div");
     head.className = "admin-inline";
-    head.append(name, sort);
+    head.append(name, sort, hsn);
     box.append(head, description);
 
     const saveBtn = button("Save product", "admin-small", () => {});
@@ -430,6 +435,7 @@
           save("package_products", product.id, {
             name: name.input.value.trim(),
             description: description.input.value.trim() || null,
+            hsn_code: hsn.input.value.trim() || null,
             sort_order: Number(sort.input.value) || 0,
           }),
         "Product saved"
@@ -497,6 +503,7 @@
       rows: 2,
     });
     const image = field("Image", addon.image_path, { placeholder: "https://..." });
+    const hsn = field("HSN code", addon.hsn_code, { placeholder: "9404" });
     const preselected = select(
       "Pre-selected",
       String(addon.is_default_selected),
@@ -508,7 +515,7 @@
 
     const head = document.createElement("div");
     head.className = "admin-inline";
-    head.append(name, price, sort, preselected);
+    head.append(name, price, sort, hsn, preselected);
     row.append(head, description, image);
 
     const saveBtn = button("Save", "admin-small", () => {});
@@ -521,6 +528,7 @@
             name: name.input.value.trim(),
             description: description.input.value.trim() || null,
             image_path: image.input.value.trim() || null,
+            hsn_code: hsn.input.value.trim() || null,
             price_paise: toPaise(price.input.value),
             is_default_selected: preselected.input.value === "true",
             sort_order: Number(sort.input.value) || 0,
@@ -581,11 +589,15 @@
       placeholder: "https://...",
       hint: "Shown on the Sensory Rooms cards",
     });
+    const hsn = field("HSN / SAC code", pkg.hsn_code, {
+      placeholder: "9403",
+      hint: "Printed on invoice lines for this package",
+    });
 
     const head = document.createElement("div");
     head.className = "admin-inline";
     head.append(name, price, sort, active);
-    box.append(head, description, cover);
+    box.append(head, description, cover, hsn);
 
     const saveBtn = button("Save package", "admin-primary-small", () => {});
     saveBtn.addEventListener(
@@ -598,6 +610,7 @@
             description: description.input.value.trim() || null,
             base_price_paise: toPaise(price.input.value),
             cover_image_path: cover.input.value.trim() || null,
+            hsn_code: hsn.input.value.trim() || null,
             is_active: active.input.value === "true",
             sort_order: Number(sort.input.value) || 0,
           }),

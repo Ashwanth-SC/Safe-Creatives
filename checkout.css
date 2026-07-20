@@ -51,3 +51,8 @@
 .terms-accept input { width:auto; margin:2px 0 0; flex:none; }
 
 @media (max-width:520px) { .address-split { grid-template-columns:1fr; } }
+.gstin-part { margin-top:12px; }
+.gstin-part small { text-transform:none; letter-spacing:0; opacity:.7; }
+.address-part select { width:100%; margin:0; padding:11px 12px; border:1px solid rgba(23,23,23,.25); background:#fff; font:13px "DM Sans",sans-serif; cursor:pointer; }
+.address-part select:focus { outline:2px solid #0c4444; outline-offset:1px; border-color:#0c4444; }
+@media (min-width:521px) { .address-split { grid-template-columns:1fr 1fr .8fr; } }

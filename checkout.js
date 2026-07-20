@@ -25,7 +25,11 @@
   const checkoutMessage = document.querySelector("#checkout-message");
   const addressField = document.querySelector("#delivery-address");
   const cityField = document.querySelector("#delivery-city");
+  const stateField = document.querySelector("#delivery-state");
   const pinField = document.querySelector("#delivery-pin");
+  const gstinField = document.querySelector("#customer-gstin");
+
+  const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
   const addressButton = document.querySelector("#save-address");
   const addressMessage = document.querySelector("#address-message");
   const gstLine = document.querySelector("#cart-gst-line");
@@ -81,12 +85,16 @@
   let saved = {
     line: profile?.address_line || "",
     city: profile?.city || "",
+    state: profile?.state_code || "",
     pin: profile?.pin_code || "",
+    gstin: profile?.gstin || "",
   };
 
   addressField.value = saved.line;
   cityField.value = saved.city;
+  SC.fillStateSelect(stateField, saved.state);
   pinField.value = saved.pin;
+  gstinField.value = saved.gstin;
 
   function addressMsg(text, isError) {
     addressMessage.textContent = text;
@@ -96,17 +104,44 @@
   async function saveAddress() {
     const line = addressField.value.trim();
     const city = cityField.value.trim();
+    const state = stateField.value;
     const pin = pinField.value.trim();
+    const gstin = gstinField.value.trim().toUpperCase();
 
     if (!line) return addressMsg("Please enter your full address.", true), false;
     if (!city) return addressMsg("Please enter your city.", true), false;
+    // The state decides whether the invoice carries CGST+SGST or IGST, so it
+    // cannot be inferred or left blank.
+    if (!state) return addressMsg("Please select your state.", true), false;
     if (!/^\d{6}$/.test(pin))
       return addressMsg("PIN code should be 6 digits.", true), false;
+    if (gstin && !GSTIN_PATTERN.test(gstin))
+      return (
+        addressMsg("That does not look like a valid 15-character GSTIN.", true),
+        false
+      );
+    // A GSTIN embeds its state in the first two digits. A mismatch means one
+    // of the two is wrong, and the invoice would carry the wrong tax split.
+    if (gstin && gstin.slice(0, 2) !== state)
+      return (
+        addressMsg(
+          "Your GSTIN starts with a different state code than the state selected.",
+          true
+        ),
+        false
+      );
 
     addressButton.disabled = true;
     const { error } = await sb
       .from("profiles")
-      .update({ address_line: line, city, pin_code: pin })
+      .update({
+        address_line: line,
+        city,
+        state_code: state,
+        state_name: SC.stateNameOf(state),
+        pin_code: pin,
+        gstin: gstin || null,
+      })
       .eq("id", SC.userId);
     addressButton.disabled = false;
 
@@ -115,7 +150,7 @@
       return false;
     }
 
-    saved = { line, city, pin };
+    saved = { line, city, state, pin, gstin };
     addressMsg("Address saved.");
     updateReserveState();
     return true;
@@ -123,10 +158,14 @@
 
   function addressIsSaved() {
     return (
-      Boolean(saved.line && saved.city && saved.pin) &&
+      Boolean(saved.line && saved.city && saved.state && saved.pin) &&
       addressField.value.trim() === saved.line &&
       cityField.value.trim() === saved.city &&
-      pinField.value.trim() === saved.pin
+      stateField.value === saved.state &&
+      pinField.value.trim() === saved.pin &&
+      // GSTIN is optional, but an unsaved edit still counts as unsaved --
+      // it goes on the invoice, so it must be in the profile before reserving.
+      gstinField.value.trim().toUpperCase() === saved.gstin
     );
   }
 
@@ -142,9 +181,10 @@
   }
 
   addressButton.addEventListener("click", saveAddress);
-  [addressField, cityField, pinField].forEach((el) =>
+  [addressField, cityField, pinField, gstinField].forEach((el) =>
     el.addEventListener("input", updateReserveState)
   );
+  stateField.addEventListener("change", updateReserveState);
   acceptBox.addEventListener("change", updateReserveState);
 
   // ------------------------------------------------------------------

@@ -72,6 +72,158 @@ async function isSignatureValid(
   return timingSafeEqual(expected, signature);
 }
 
+// ----------------------------------------------------------------------
+// Advance invoice
+// ----------------------------------------------------------------------
+// Raised the moment the advance is captured -- that is when the tax point
+// occurs, so it cannot be left to a human to remember.
+//
+// The advance is GST-INCLUSIVE, so the taxable value is backed out of the
+// total rather than added on top: taxable = total / 1.18 at 18%.
+//
+// Intra-state (buyer state == seller state) splits into CGST + SGST;
+// anything else is IGST. The buyer's state comes from the order snapshot,
+// with the GSTIN prefix as fallback -- never guessed from PIN.
+//
+// deno-lint-ignore no-explicit-any
+async function createAdvanceInvoice(admin: any, orderId: string) {
+  // Idempotency: Razorpay retries webhooks, and an invoice number, once
+  // allocated, cannot be un-allocated. One advance invoice per order, ever.
+  const { data: existing } = await admin
+    .from("invoices")
+    .select("id, invoice_number")
+    .eq("order_id", orderId)
+    .eq("phase_label", "Advance")
+    .maybeSingle();
+
+  if (existing) return existing;
+
+  const { data: order, error: orderError } = await admin
+    .from("orders")
+    .select(
+      `id, order_number, user_id, advance_amount_paise, gst_percent,
+       contact_name, contact_email, contact_phone,
+       delivery_address_line, delivery_city, delivery_state_name,
+       delivery_state_code, delivery_pin_code,
+       order_items ( package_name, hsn_code )`
+    )
+    .eq("id", orderId)
+    .single();
+  if (orderError) throw new Error(`Invoice: order lookup failed: ${orderError.message}`);
+
+  const { data: buyer } = await admin
+    .from("profiles")
+    .select("gstin, customer_number")
+    .eq("id", order.user_id)
+    .maybeSingle();
+
+  const { data: seller, error: sellerError } = await admin
+    .from("seller_settings")
+    .select("*")
+    .eq("id", true)
+    .single();
+  if (sellerError) throw new Error(`Invoice: seller settings missing: ${sellerError.message}`);
+
+  // Buyer state: order snapshot first, GSTIN prefix as fallback. If neither
+  // exists (orders placed before migration 007), fall back to the seller's
+  // state -- intra-state -- and say so in the notes.
+  const buyerStateCode =
+    order.delivery_state_code ?? buyer?.gstin?.slice(0, 2) ?? seller.state_code;
+  const isInterstate = buyerStateCode !== seller.state_code;
+
+  const gstRate = Number(order.gst_percent ?? 18);
+  const totalPaise = Number(order.advance_amount_paise);
+  const taxablePaise = Math.round((totalPaise * 100) / (100 + gstRate));
+  const taxPaise = totalPaise - taxablePaise;
+  // Odd paise goes to SGST rather than being lost.
+  const cgstPaise = isInterstate ? 0 : Math.floor(taxPaise / 2);
+  const sgstPaise = isInterstate ? 0 : taxPaise - cgstPaise;
+  const igstPaise = isInterstate ? taxPaise : 0;
+
+  const { data: numbering, error: numberError } = await admin
+    .rpc("next_invoice_number", { p_user_id: order.user_id })
+    .single();
+  if (numberError) throw new Error(`Invoice numbering failed: ${numberError.message}`);
+
+  const buyerAddress = [
+    order.delivery_address_line,
+    order.delivery_city,
+    order.delivery_pin_code,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const { data: invoice, error: invoiceError } = await admin
+    .from("invoices")
+    .insert({
+      invoice_number: numbering.invoice_number,
+      order_id: order.id,
+      user_id: order.user_id,
+      financial_year: numbering.financial_year,
+      fy_short: numbering.fy_short,
+      customer_number: numbering.customer_number,
+      phase_number: numbering.phase_number,
+      sequence_number: numbering.sequence_number,
+      phase_label: "Advance",
+
+      seller_name: seller.legal_name,
+      seller_gstin: seller.gstin,
+      seller_address: [seller.address_line, seller.city, seller.pin_code]
+        .filter(Boolean)
+        .join(", "),
+      seller_state_name: seller.state_name,
+      seller_state_code: seller.state_code,
+
+      buyer_name: order.contact_name,
+      buyer_gstin: buyer?.gstin ?? null,
+      buyer_address: buyerAddress,
+      buyer_state_name: order.delivery_state_name,
+      buyer_state_code: buyerStateCode,
+      buyer_email: order.contact_email,
+      buyer_phone: order.contact_phone,
+
+      place_of_supply_state: order.delivery_state_name ?? seller.state_name,
+      place_of_supply_code: buyerStateCode,
+      is_interstate: isInterstate,
+
+      taxable_value_paise: taxablePaise,
+      cgst_paise: cgstPaise,
+      sgst_paise: sgstPaise,
+      igst_paise: igstPaise,
+      total_paise: totalPaise,
+      notes: order.delivery_state_code
+        ? null
+        : "Place of supply assumed intra-state: order predates state capture.",
+    })
+    .select("id, invoice_number")
+    .single();
+  if (invoiceError) throw new Error(`Invoice insert failed: ${invoiceError.message}`);
+
+  const packageNames = (order.order_items ?? [])
+    .map((i: { package_name: string }) => i.package_name)
+    .join(", ");
+
+  await admin.from("invoice_lines").insert({
+    invoice_id: invoice.id,
+    line_number: 1,
+    description: `Refundable reservation advance — Order ${order.order_number}`,
+    detail: packageNames || null,
+    hsn_code: order.order_items?.[0]?.hsn_code ?? null,
+    quantity: 1,
+    unit: "NOS",
+    unit_price_paise: taxablePaise,
+    taxable_value_paise: taxablePaise,
+    gst_rate: gstRate,
+    cgst_paise: cgstPaise,
+    sgst_paise: sgstPaise,
+    igst_paise: igstPaise,
+    line_total_paise: totalPaise,
+  });
+
+  console.log("Invoice", invoice.invoice_number, "raised for order", order.order_number);
+  return invoice;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -203,6 +355,18 @@ Deno.serve(async (req) => {
           .update({ status: "advance_paid" })
           .eq("id", payment.order_id)
           .eq("status", "pending_advance");
+
+        // The tax point is the receipt of payment, so the invoice is raised
+        // here and nowhere else. A failure is recorded on the event rather
+        // than failing the webhook: the payment DID capture, and telling
+        // Razorpay otherwise would trigger retries of a captured payment.
+        try {
+          await createAdvanceInvoice(admin, payment.order_id);
+        } catch (invoiceError) {
+          console.error("Invoice generation failed:", invoiceError);
+          await markProcessed(`Captured, but invoice failed: ${invoiceError}`);
+          return json({ status: "captured, invoice failed" }, 200);
+        }
 
         await markProcessed();
         return json({ status: "captured" }, 200);

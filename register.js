@@ -22,7 +22,12 @@
   const phoneField = document.querySelector("#phone");
   const addressField = document.querySelector("#address");
   const cityField = document.querySelector("#city");
+  const stateField = document.querySelector("#state");
   const pinField = document.querySelector("#pin-code");
+  const gstinField = document.querySelector("#gstin");
+
+  // 2 state code, 10 PAN, 1 entity, 'Z', 1 check character.
+  const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
   const button = document.querySelector("#save-profile");
   const message = document.querySelector("#register-message");
   const emailLabel = document.querySelector("#verified-email");
@@ -35,7 +40,9 @@
   phoneField.value = profile?.phone || "";
   addressField.value = profile?.address_line || "";
   cityField.value = profile?.city || "";
+  SC.fillStateSelect(stateField, profile?.state_code || "");
   pinField.value = profile?.pin_code || "";
+  gstinField.value = profile?.gstin || "";
 
   function show(text, type = "") {
     message.textContent = text;
@@ -49,7 +56,9 @@
     const phone = phoneField.value.trim();
     const address = addressField.value.trim();
     const city = cityField.value.trim();
+    const state = stateField.value;
     const pin = pinField.value.trim();
+    const gstin = gstinField.value.trim().toUpperCase();
 
     if (!fullName) {
       show("Please enter your full name.", "error");
@@ -72,12 +81,27 @@
       return;
     }
 
+    // Checked here as well as in the database, so a typo is caught before the
+    // save rather than surfacing as a constraint violation.
+    if (gstin && !GSTIN_PATTERN.test(gstin)) {
+      show("That does not look like a valid 15-character GSTIN.", "error");
+      gstinField.focus();
+      return;
+    }
+
     // Address parts are only written when provided, so returning here and
     // leaving them blank does not wipe an address set at checkout.
     const updates = { full_name: fullName, phone };
     if (address) updates.address_line = address;
     if (city) updates.city = city;
+    if (state) {
+      updates.state_code = state;
+      updates.state_name = SC.stateNameOf(state);
+    }
     if (pin) updates.pin_code = pin;
+    // Written even when blank, so a customer can clear a GSTIN they no longer
+    // want on their invoices.
+    updates.gstin = gstin || null;
 
     const { error } = await sb
       .from("profiles")

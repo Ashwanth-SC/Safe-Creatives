@@ -137,12 +137,12 @@ Deno.serve(async (req) => {
     .from("cart_items")
     .select(
       `id,
-       packages ( key, name, base_price_paise ),
+       packages ( key, name, base_price_paise, hsn_code ),
        cart_item_options (
          product_option_groups ( name, package_products ( name ) ),
          product_options ( name, finish, material, price_delta_paise )
        ),
-       cart_item_addons ( package_addons ( key, name, price_paise ) )`
+       cart_item_addons ( package_addons ( key, name, price_paise, hsn_code ) )`
     )
     .eq("cart_id", cart.id)
     .order("created_at");
@@ -170,7 +170,9 @@ Deno.serve(async (req) => {
 
   const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("full_name, email, phone, address_line, city, pin_code")
+    .select(
+      "full_name, email, phone, address_line, city, state_name, state_code, pin_code, gstin"
+    )
     .eq("id", userId)
     .maybeSingle();
 
@@ -189,11 +191,18 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (!profile.address_line || !profile.city || !profile.pin_code) {
+  // State included: it decides the CGST/SGST vs IGST split on the invoice,
+  // so an order without it cannot be invoiced correctly.
+  if (
+    !profile.address_line ||
+    !profile.city ||
+    !profile.state_code ||
+    !profile.pin_code
+  ) {
     return json(
       {
         error:
-          "Please add your full delivery address, city and PIN code before reserving.",
+          "Please add your full delivery address, city, state and PIN code before reserving.",
       },
       400
     );
@@ -285,6 +294,8 @@ Deno.serve(async (req) => {
       contact_phone: profile.phone,
       delivery_address_line: profile.address_line,
       delivery_city: profile.city,
+      delivery_state_name: profile.state_name,
+      delivery_state_code: profile.state_code,
       delivery_pin_code: profile.pin_code,
     })
     .select(
@@ -309,6 +320,9 @@ Deno.serve(async (req) => {
         order_id: order.id,
         package_key: pkg.key,
         package_name: pkg.name,
+        // Snapshot, like everything else on an order: the invoice must carry
+        // the HSN that applied at order time, not whatever admin says later.
+        hsn_code: pkg.hsn_code ?? null,
         base_price_paise: pkg.base_price_paise,
         line_total_paise: lineTotal,
       })
@@ -334,6 +348,7 @@ Deno.serve(async (req) => {
       order_item_id: orderItem.id,
       addon_key: a.package_addons?.key ?? "",
       addon_name: a.package_addons?.name ?? "",
+      hsn_code: a.package_addons?.hsn_code ?? null,
       price_paise: Number(a.package_addons?.price_paise ?? 0),
     }));
     if (addonRows.length) {

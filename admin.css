@@ -104,7 +104,7 @@ button:disabled { opacity: .5; cursor: progress; }
    Dashboard — dense tables meant for scanning, not browsing.
    ========================================================================= */
 
-.stat-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; max-width:1100px; margin:0 auto 26px; padding:0 7vw; }
+.stat-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; max-width:1100px; margin:0 auto 26px; padding:0 7vw; }
 .stat-card { padding:18px 20px; background:#fff; border:1px solid rgba(23,23,23,.12); border-left:3px solid #8b8f88; }
 .stat-card.stat-warn { border-left-color:#6f222a; }
 .stat-card.stat-ok { border-left-color:#0c4444; }
@@ -162,3 +162,8 @@ button:disabled { opacity: .5; cursor: progress; }
 .order-totals { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:10px 26px; padding:13px 16px; background:#fff; border:1px solid rgba(23,23,23,.12); }
 .order-total-line { display:flex; gap:8px; align-items:baseline; font-size:12px; color:#59635d; }
 .order-total-line strong { color:#171717; font-size:13px; }
+
+/* Invoice extras */
+.stat-value.is-text { font-size:15px; font-family:"DM Mono",monospace; letter-spacing:.02em; padding:7px 0 8px; display:block; }
+.invoice-open { color:#0c4444; font-size:12px; text-decoration:none; white-space:nowrap; }
+.invoice-open:hover { text-decoration:underline; }

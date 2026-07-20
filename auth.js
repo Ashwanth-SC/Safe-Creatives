@@ -20,6 +20,40 @@
 window.SC = (function () {
   const INACTIVITY_MS = 10 * 60 * 1000;
 
+  // GST state codes. Shared by the registration and checkout address forms;
+  // the code decides the CGST/SGST vs IGST split on invoices, so it comes
+  // from a fixed list rather than free text.
+  const STATES = [
+    ["01", "Jammu & Kashmir"], ["02", "Himachal Pradesh"], ["03", "Punjab"],
+    ["04", "Chandigarh"], ["05", "Uttarakhand"], ["06", "Haryana"],
+    ["07", "Delhi"], ["08", "Rajasthan"], ["09", "Uttar Pradesh"],
+    ["10", "Bihar"], ["11", "Sikkim"], ["12", "Arunachal Pradesh"],
+    ["13", "Nagaland"], ["14", "Manipur"], ["15", "Mizoram"],
+    ["16", "Tripura"], ["17", "Meghalaya"], ["18", "Assam"],
+    ["19", "West Bengal"], ["20", "Jharkhand"], ["21", "Odisha"],
+    ["22", "Chhattisgarh"], ["23", "Madhya Pradesh"], ["24", "Gujarat"],
+    ["26", "Dadra & Nagar Haveli and Daman & Diu"], ["27", "Maharashtra"],
+    ["29", "Karnataka"], ["30", "Goa"], ["31", "Lakshadweep"],
+    ["32", "Kerala"], ["33", "Tamil Nadu"], ["34", "Puducherry"],
+    ["35", "Andaman & Nicobar Islands"], ["36", "Telangana"],
+    ["37", "Andhra Pradesh"], ["38", "Ladakh"],
+  ];
+
+  // Fills a <select> with the states, keeping a leading placeholder option.
+  function fillStateSelect(select, selectedCode) {
+    STATES.forEach(([code, name]) => {
+      const option = document.createElement("option");
+      option.value = code;
+      option.textContent = name;
+      if (code === selectedCode) option.selected = true;
+      select.appendChild(option);
+    });
+  }
+
+  function stateNameOf(code) {
+    return STATES.find(([c]) => c === code)?.[1] ?? null;
+  }
+
   const state = { session: null, profile: null };
 
   // --------------------------------------------------------------------
@@ -84,7 +118,9 @@ window.SC = (function () {
   async function loadProfile(userId) {
     const { data, error } = await sb
       .from("profiles")
-      .select("id, full_name, email, phone, address_line, city, pin_code, is_admin")
+      .select(
+        "id, full_name, email, phone, address_line, city, state_name, state_code, pin_code, gstin, customer_number, is_admin"
+      )
       .eq("id", userId)
       .maybeSingle();
 
@@ -179,6 +215,10 @@ window.SC = (function () {
   }
 
   function setUpAccountMenu() {
+    // Print-oriented pages (the invoice) opt out: a floating account icon
+    // has no place on a document headed for paper.
+    if (document.body.dataset.noMenu === "true") return;
+
     let trigger = document.querySelector(".account-link");
     let container = trigger?.parentElement;
 
@@ -253,6 +293,9 @@ window.SC = (function () {
     money,
     logout,
     toLogin,
+    STATES,
+    fillStateSelect,
+    stateNameOf,
     get session() {
       return state.session;
     },

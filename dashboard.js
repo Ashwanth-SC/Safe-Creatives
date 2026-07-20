@@ -448,15 +448,24 @@
     const { data, error } = await sb
       .from("profiles")
       .select(
-        "id, full_name, email, phone, address_line, city, pin_code, is_admin, created_at"
+        "id, customer_number, full_name, email, phone, address_line, city, state_name, pin_code, gstin, is_admin, created_at"
       )
       .order("created_at", { ascending: false });
 
     if (error) throw error;
 
     const rows = data.map((person) => [
+      el(
+        "strong",
+        null,
+        // Padded to match how it appears inside invoice numbers.
+        person.customer_number != null
+          ? String(person.customer_number).padStart(2, "0")
+          : "—"
+      ),
       contactCell(person.full_name, person.email, person.phone),
       addressOf(person),
+      person.gstin || "—",
       person.is_admin ? pill("Staff", "ok") : "Customer",
       when(person.created_at),
     ]);
@@ -465,7 +474,66 @@
     frag.appendChild(
       el("p", "dash-note", `${data.length} registered account(s), newest first.`)
     );
-    frag.appendChild(table(["Customer", "Address", "Type", "Registered"], rows));
+    frag.appendChild(
+      table(["Cus ID", "Customer", "Address", "GSTIN", "Type", "Registered"], rows)
+    );
+    return frag;
+  }
+
+  // ------------------------------------------------------------------
+  // Invoices
+  // ------------------------------------------------------------------
+
+  async function invoicesPanel() {
+    const { data, error } = await sb
+      .from("invoices")
+      .select(
+        `invoice_number, phase_label, phase_number, issue_date, buyer_name,
+         taxable_value_paise, cgst_paise, sgst_paise, igst_paise, total_paise,
+         is_interstate, created_at,
+         orders ( order_number )`
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const rows = data.map((invoice) => {
+      const open = el("a", "invoice-open", "Open ↗");
+      open.href = `invoice.html?number=${encodeURIComponent(invoice.invoice_number)}`;
+      open.target = "_blank";
+
+      const tax =
+        Number(invoice.cgst_paise) + Number(invoice.sgst_paise) + Number(invoice.igst_paise);
+
+      return [
+        el("strong", null, invoice.invoice_number),
+        invoice.phase_label || `Phase ${invoice.phase_number}`,
+        invoice.buyer_name,
+        invoice.orders?.order_number || "—",
+        SC.money(invoice.taxable_value_paise),
+        `${SC.money(tax)} (${invoice.is_interstate ? "IGST" : "CGST+SGST"})`,
+        SC.money(invoice.total_paise),
+        when(invoice.issue_date),
+        open,
+      ];
+    });
+
+    const frag = document.createDocumentFragment();
+    frag.appendChild(
+      el(
+        "p",
+        "dash-note",
+        data.length
+          ? `Latest invoice: ${data[0].invoice_number}. A manually raised invoice should use the next global sequence number.`
+          : "No invoices yet. The first is raised automatically when an advance payment is captured."
+      )
+    );
+    frag.appendChild(
+      table(
+        ["Invoice", "Phase", "Customer", "Order", "Taxable", "Tax", "Total", "Issued", ""],
+        rows
+      )
+    );
     return frag;
   }
 
@@ -537,26 +605,33 @@
   // ------------------------------------------------------------------
 
   async function renderStats() {
-    const [orders, carts, people, paid] = await Promise.all([
+    const [orders, carts, people, paid, lastInvoice] = await Promise.all([
       sb.from("orders").select("id", { count: "exact", head: true })
         .eq("status", "pending_advance"),
       sb.from("cart_items").select("id", { count: "exact", head: true }),
       sb.from("profiles").select("id", { count: "exact", head: true }),
       sb.from("payments").select("id", { count: "exact", head: true })
         .eq("status", "captured"),
+      // The latest number issued, so a manually raised invoice continues the
+      // sequence instead of colliding with or skipping it.
+      sb.from("invoices").select("invoice_number")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     const cards = [
-      ["Awaiting payment", orders.count ?? 0, "warn"],
-      ["Items in open carts", carts.count ?? 0, "muted"],
-      ["Registered accounts", people.count ?? 0, "muted"],
-      ["Payments captured", paid.count ?? 0, "ok"],
+      ["Awaiting payment", String(orders.count ?? 0), "warn", false],
+      ["Items in open carts", String(carts.count ?? 0), "muted", false],
+      ["Registered accounts", String(people.count ?? 0), "muted", false],
+      ["Payments captured", String(paid.count ?? 0), "ok", false],
+      ["Latest invoice", lastInvoice.data?.invoice_number ?? "None yet", "ok", true],
     ];
 
     stats.textContent = "";
-    cards.forEach(([label, value, tone]) => {
+    cards.forEach(([label, value, tone, isText]) => {
       const card = el("div", `stat-card stat-${tone}`);
-      card.appendChild(el("span", "stat-value", String(value)));
+      card.appendChild(
+        el("span", `stat-value${isText ? " is-text" : ""}`, value)
+      );
       card.appendChild(el("span", "stat-label", label));
       stats.appendChild(card);
     });
@@ -571,6 +646,7 @@
     carts: cartsPanel,
     people: peoplePanel,
     payments: paymentsPanel,
+    invoices: invoicesPanel,
   };
 
   async function show(tab) {
