@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard | Safe Creatives</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body data-requires-auth="true">
+    <header class="site-header admin-header">
+      <a class="brand" href="index.html"><img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" /><span>SAFE CREATIVES</span></a>
+      <span class="admin-badge">DASHBOARD</span>
+      <a class="catalog-back" href="admin.html">Catalog admin ↗</a>
+    </header>
+
+    <main class="admin-page">
+
+      <section id="denied" class="admin-denied" hidden>
+        <p class="eyebrow">NOT AVAILABLE</p>
+        <h1>Admin only.</h1>
+        <p>This dashboard shows customer and order data and is limited to staff accounts.</p>
+        <p><a href="index.html">Back to the site</a></p>
+      </section>
+
+      <div id="dash-body" hidden>
+        <section class="admin-intro">
+          <p class="eyebrow">OPERATIONS</p>
+          <h1>Dashboard<span>.</span></h1>
+          <p>
+            Everything that has happened on the site. Read-only by design —
+            order totals are what the server computed and are not editable here.
+          </p>
+        </section>
+
+        <!-- Headline counts, so the follow-up list is visible without hunting -->
+        <div class="stat-row" id="stats"></div>
+
+        <nav class="tab-bar" role="tablist">
+          <button type="button" class="tab is-active" data-tab="orders" role="tab">Orders</button>
+          <button type="button" class="tab" data-tab="carts" role="tab">Abandoned carts</button>
+          <button type="button" class="tab" data-tab="people" role="tab">Registrations</button>
+          <button type="button" class="tab" data-tab="payments" role="tab">Payments</button>
+        </nav>
+
+        <p id="dash-message" class="admin-message" role="status"></p>
+
+        <section id="panel" class="dash-panel"></section>
+      </div>
+
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="auth.js"></script>
+    <script src="dashboard.js"></script>
+  </body>
+</html>

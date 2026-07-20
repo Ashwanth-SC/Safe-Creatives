@@ -205,7 +205,8 @@ window.SC = (function () {
     // This is convenience, not security: admin.html is protected by RLS, so
     // anyone who finds the address without the flag sees "Admin only".
     const adminLink = state.profile?.is_admin
-      ? '<a class="account-admin-link" href="admin.html">Catalog admin</a>'
+      ? '<a class="account-admin-link" href="dashboard.html">Dashboard</a>' +
+        '<a class="account-admin-link" href="admin.html">Catalog admin</a>'
       : "";
 
     dropdown.innerHTML = `<span class="account-status"></span>${adminLink}<button type="button" class="logout-button">Log out</button>`;

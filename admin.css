@@ -99,3 +99,47 @@ button:disabled { opacity: .5; cursor: progress; }
   .admin-inline { gap: 10px; }
   .admin-inline .admin-field { flex: 1 1 100%; }
 }
+
+/* ============================================================================
+   Dashboard — dense tables meant for scanning, not browsing.
+   ========================================================================= */
+
+.stat-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; max-width:1100px; margin:0 auto 26px; padding:0 7vw; }
+.stat-card { padding:18px 20px; background:#fff; border:1px solid rgba(23,23,23,.12); border-left:3px solid #8b8f88; }
+.stat-card.stat-warn { border-left-color:#6f222a; }
+.stat-card.stat-ok { border-left-color:#0c4444; }
+.stat-value { display:block; font-size:30px; line-height:1; letter-spacing:-.04em; }
+.stat-label { display:block; margin-top:7px; color:#777; font:9px "DM Mono",monospace; letter-spacing:.12em; text-transform:uppercase; }
+
+.tab-bar { display:flex; flex-wrap:wrap; gap:4px; max-width:1100px; margin:0 auto 18px; padding:0 7vw; }
+.tab { padding:11px 17px; border:1px solid rgba(23,23,23,.16); border-bottom:none; background:#efefeb; color:#59635d; font:12px "DM Sans",sans-serif; cursor:pointer; }
+.tab:hover { background:#e6e6e1; }
+.tab.is-active { background:#fff; color:#171717; border-color:rgba(23,23,23,.18); }
+
+.dash-panel { max-width:1100px; margin:0 auto; padding:0 7vw 60px; }
+.dash-note { margin:0 0 14px; color:#59635d; font-size:12.5px; line-height:1.6; }
+
+/* Wide tables scroll inside their own box rather than the page. */
+.table-scroll { overflow-x:auto; background:#fff; border:1px solid rgba(23,23,23,.12); }
+.dash-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+.dash-table th { padding:12px 14px; text-align:left; white-space:nowrap; color:#777; font:9px "DM Mono",monospace; letter-spacing:.12em; text-transform:uppercase; background:#fafaf8; border-bottom:1px solid rgba(23,23,23,.14); }
+.dash-table td { padding:13px 14px; vertical-align:top; border-bottom:1px solid rgba(23,23,23,.08); line-height:1.5; }
+.dash-table tbody tr:hover { background:rgba(12,68,68,.03); }
+.dash-empty { padding:34px 14px !important; color:#8b8f88; text-align:center; }
+
+.contact-cell { display:flex; flex-direction:column; gap:2px; }
+.contact-cell strong { font-weight:500; }
+.contact-cell a { color:#0c4444; font-size:11.5px; text-decoration:none; }
+.contact-cell a:hover { text-decoration:underline; }
+
+.pill { display:inline-block; padding:4px 9px; font:10px "DM Mono",monospace; letter-spacing:.06em; white-space:nowrap; }
+.pill-ok { background:rgba(12,68,68,.1); color:#0c4444; }
+.pill-warn { background:rgba(111,34,42,.1); color:#6f222a; }
+.pill-bad { background:rgba(111,34,42,.16); color:#6f222a; }
+.pill-muted { background:rgba(23,23,23,.07); color:#59635d; }
+
+@media (max-width:900px) { .stat-row { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:760px) {
+  .stat-row, .tab-bar, .dash-panel { padding-left:24px; padding-right:24px; }
+  .tab { flex:1 1 auto; text-align:center; }
+}
