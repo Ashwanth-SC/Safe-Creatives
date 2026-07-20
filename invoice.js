@@ -1,11 +1,17 @@
 // ============================================================================
-// Safe Creatives — GST tax invoice renderer
+// Safe Creatives — order summary + GST tax invoice renderer
 // ============================================================================
 //
-// Renders one invoice by ?number=SCSR-27-01-1-001 for printing. Everything on
-// the page comes from the invoices/invoice_lines snapshot -- nothing is
-// recomputed here, because a printed invoice must match the stored record to
-// the paisa, every time it is printed.
+// Two printed pages from one URL (?number=SCSR-27-01-1-001):
+//
+//   Page 1  ORDER SUMMARY  — every package with its options, add-ons and the
+//           full money breakdown, read from the order_item_* snapshots.
+//   Page 2  TAX INVOICE    — the advance only, read from the invoice
+//           snapshot. This is the legal document; the summary is context.
+//
+// Nothing on either page is recomputed. A printed document must match the
+// stored record to the paisa, every time it is printed, whatever the catalog
+// says today.
 //
 // RLS decides who sees it: the customer it belongs to, or an admin. Anyone
 // else gets "not found" rather than a hint that the number exists.
@@ -14,7 +20,8 @@
 (async function () {
   await SC.ready;
 
-  const sheet = document.querySelector("#sheet");
+  const summarySheet = document.querySelector("#summary");
+  const invoiceSheet = document.querySelector("#sheet");
   const errorEl = document.querySelector("#invoice-error");
 
   const number = new URLSearchParams(window.location.search).get("number");
@@ -39,6 +46,31 @@
   }
 
   invoice.invoice_lines.sort((a, b) => a.line_number - b.line_number);
+
+  // The order behind the invoice, for the summary page. A manually raised
+  // invoice may have no order; the summary is simply skipped then.
+  let order = null;
+  if (invoice.order_id) {
+    const { data } = await sb
+      .from("orders")
+      .select(
+        `order_number, status, placed_at,
+         subtotal_paise, gst_percent, gst_paise, total_paise,
+         advance_amount_paise, balance_paise,
+         contact_name, contact_email, contact_phone,
+         delivery_address_line, delivery_city, delivery_state_name,
+         delivery_pin_code,
+         order_items (
+           package_name, hsn_code, base_price_paise, line_total_paise,
+           order_item_options ( product_name, group_name, option_name,
+                                finish, material, price_delta_paise ),
+           order_item_addons ( addon_name, hsn_code, price_paise )
+         )`
+      )
+      .eq("id", invoice.order_id)
+      .maybeSingle();
+    order = data;
+  }
 
   // ------------------------------------------------------------------
   // Formatting
@@ -95,128 +127,235 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
     );
 
+  const dateOf = (value) =>
+    new Date(value).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+
   // ------------------------------------------------------------------
-  // Render
+  // Page 1 — order summary
   // ------------------------------------------------------------------
 
-  const inter = invoice.is_interstate;
-  const issued = new Date(invoice.issue_date).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  function renderSummary() {
+    const address = [
+      order.delivery_address_line,
+      order.delivery_city,
+      order.delivery_state_name,
+      order.delivery_pin_code,
+    ]
+      .filter(Boolean)
+      .join(", ");
 
-  // Tax columns switch with the split: CGST+SGST inside the seller's state,
-  // IGST outside it. Showing both would be wrong on either kind of invoice.
-  const taxHead = inter
-    ? `<th colspan="2">IGST</th>`
-    : `<th colspan="2">CGST</th><th colspan="2">SGST</th>`;
-  const taxSubHead = inter
-    ? `<th>Rate</th><th>Amount</th>`
-    : `<th>Rate</th><th>Amount</th><th>Rate</th><th>Amount</th>`;
+    const itemBlocks = order.order_items
+      .map((item, index) => {
+        // Options grouped by product, so a three-product package reads as
+        // three specification blocks rather than one flat list.
+        const byProduct = new Map();
+        (item.order_item_options || []).forEach((option) => {
+          if (!byProduct.has(option.product_name)) byProduct.set(option.product_name, []);
+          byProduct.get(option.product_name).push(option);
+        });
 
-  const lineRows = invoice.invoice_lines
-    .map((line) => {
-      const half = (Number(line.gst_rate) / 2).toFixed(1).replace(/\.0$/, "");
-      const taxCells = inter
-        ? `<td class="num">${line.gst_rate}%</td><td class="num">${rupees(line.igst_paise)}</td>`
-        : `<td class="num">${half}%</td><td class="num">${rupees(line.cgst_paise)}</td>` +
-          `<td class="num">${half}%</td><td class="num">${rupees(line.sgst_paise)}</td>`;
-      return `<tr>
-        <td class="num">${line.line_number}</td>
-        <td>${esc(line.description)}${line.detail ? `<span class="line-detail">${esc(line.detail)}</span>` : ""}</td>
-        <td class="num">${esc(line.hsn_code) || "—"}</td>
-        <td class="num">${Number(line.quantity)}</td>
-        <td class="num">${esc(line.unit)}</td>
-        <td class="num">${rupees(line.unit_price_paise)}</td>
-        <td class="num">${rupees(line.taxable_value_paise)}</td>
-        ${taxCells}
-        <td class="num">${rupees(line.line_total_paise)}</td>
-      </tr>`;
-    })
-    .join("");
+        const productBlocks = [...byProduct.entries()]
+          .map(([productName, options]) => {
+            const rows = options
+              .map((option) => {
+                const delta = Number(option.price_delta_paise || 0);
+                const spec = [option.finish, option.material].filter(Boolean).join(", ");
+                return `<li>${esc(option.group_name)}: <strong>${esc(option.option_name)}</strong>${
+                  delta ? ` (+₹${rupees(delta)})` : ""
+                }${spec ? ` — ${esc(spec)}` : ""}</li>`;
+              })
+              .join("");
+            return `<div class="oi-product"><h3>${esc(productName)}</h3><ul>${rows}</ul></div>`;
+          })
+          .join("");
 
-  const taxFoot = inter
-    ? `<td></td><td class="num">${rupees(invoice.igst_paise)}</td>`
-    : `<td></td><td class="num">${rupees(invoice.cgst_paise)}</td>` +
-      `<td></td><td class="num">${rupees(invoice.sgst_paise)}</td>`;
+        const addons = item.order_item_addons || [];
+        const addonRows = addons.length
+          ? addons
+              .map(
+                (addon) =>
+                  `<li>${esc(addon.addon_name)}${
+                    addon.hsn_code ? ` (HSN ${esc(addon.hsn_code)})` : ""
+                  } — ₹${rupees(addon.price_paise)}</li>`
+              )
+              .join("")
+          : `<li class="oi-none">None selected</li>`;
 
-  sheet.innerHTML = `
-    <div class="doc-head">
-      <h1>TAX INVOICE</h1>
-      <span>ORIGINAL FOR RECIPIENT</span>
-    </div>
+        return `<div class="order-item">
+          <div class="oi-head">
+            <strong>${index + 1}. ${esc(item.package_name)}</strong>
+            <span>₹${rupees(item.line_total_paise)}</span>
+          </div>
+          <p class="oi-base">Base price ₹${rupees(item.base_price_paise)}${
+            item.hsn_code ? ` · HSN ${esc(item.hsn_code)}` : ""
+          }</p>
+          ${productBlocks}
+          <div class="oi-product"><h3>Add-ons</h3><ul>${addonRows}</ul></div>
+        </div>`;
+      })
+      .join("");
 
-    <div class="parties">
-      <div class="box">
-        <h2>Supplier</h2>
-        <strong class="name">${esc(invoice.seller_name)}</strong>
-        ${esc(invoice.seller_address)}<br />
-        ${esc(invoice.seller_state_name)} — ${esc(invoice.seller_state_code)}<br />
-        ${invoice.seller_gstin ? `GSTIN: ${esc(invoice.seller_gstin)}` : "<em>GSTIN pending registration</em>"}
+    summarySheet.innerHTML = `
+      <div class="doc-head">
+        <h1>ORDER SUMMARY</h1>
+        <span>ACCOMPANIES INVOICE ${esc(invoice.invoice_number)}</span>
       </div>
-      <div class="box">
-        <h2>Invoice</h2>
-        <strong class="name">${esc(invoice.invoice_number)}</strong>
-        Date: ${issued}<br />
-        Phase: ${esc(invoice.phase_label || invoice.phase_number)}<br />
-        Reverse charge: ${invoice.reverse_charge ? "Yes" : "No"}
+
+      <div class="parties">
+        <div class="box">
+          <h2>Customer</h2>
+          <strong class="name">${esc(order.contact_name)}</strong>
+          ${esc(address)}<br />
+          ${esc(order.contact_email || "")}${order.contact_phone ? ` · ${esc(order.contact_phone)}` : ""}
+        </div>
+        <div class="box">
+          <h2>Order</h2>
+          <strong class="name">${esc(order.order_number)}</strong>
+          Placed: ${dateOf(order.placed_at)}<br />
+          Packages: ${order.order_items.length}
+        </div>
       </div>
-    </div>
 
-    <div class="meta-grid">
-      <div class="box">
-        <h2>Billed &amp; shipped to</h2>
-        <strong class="name">${esc(invoice.buyer_name)}</strong>
-        ${esc(invoice.buyer_address)}<br />
-        ${invoice.buyer_gstin ? `GSTIN: ${esc(invoice.buyer_gstin)}` : "Unregistered (B2C)"}
+      ${itemBlocks}
+
+      <div class="sum-totals">
+        <div class="row"><span>Package total (ex GST)</span><span>₹${rupees(order.subtotal_paise)}</span></div>
+        <div class="row"><span>GST (${Number(order.gst_percent)}%)</span><span>₹${rupees(order.gst_paise)}</span></div>
+        <div class="row grand"><span>Total payable</span><span>₹${rupees(order.total_paise)}</span></div>
+        <div class="row paid"><span>Refundable advance — this invoice (incl. GST)</span><span>₹${rupees(order.advance_amount_paise)}</span></div>
+        <div class="row"><span>Balance after site verification</span><span>₹${rupees(order.balance_paise)}</span></div>
       </div>
-      <div class="box">
-        <h2>Place of supply</h2>
-        ${esc(invoice.place_of_supply_state)} — ${esc(invoice.place_of_supply_code)}<br />
-        Supply type: ${inter ? "Inter-state (IGST)" : "Intra-state (CGST + SGST)"}
+
+      <p class="doc-note">This summary describes the order as configured. The tax invoice on the following page covers the reservation advance only; the balance is invoiced at later phases.</p>
+    `;
+    summarySheet.hidden = false;
+  }
+
+  // ------------------------------------------------------------------
+  // Page 2 — tax invoice
+  // ------------------------------------------------------------------
+
+  function renderInvoice() {
+    const inter = invoice.is_interstate;
+
+    // Tax columns switch with the split: CGST+SGST inside the seller's
+    // state, IGST outside it. Showing both would be wrong on either kind.
+    const taxHead = inter
+      ? `<th colspan="2">IGST</th>`
+      : `<th colspan="2">CGST</th><th colspan="2">SGST</th>`;
+    const taxSubHead = inter
+      ? `<th>Rate</th><th>Amount</th>`
+      : `<th>Rate</th><th>Amount</th><th>Rate</th><th>Amount</th>`;
+
+    const lineRows = invoice.invoice_lines
+      .map((line) => {
+        const half = (Number(line.gst_rate) / 2).toFixed(1).replace(/\.0$/, "");
+        const taxCells = inter
+          ? `<td class="num">${line.gst_rate}%</td><td class="num">${rupees(line.igst_paise)}</td>`
+          : `<td class="num">${half}%</td><td class="num">${rupees(line.cgst_paise)}</td>` +
+            `<td class="num">${half}%</td><td class="num">${rupees(line.sgst_paise)}</td>`;
+        return `<tr>
+          <td class="num">${line.line_number}</td>
+          <td>${esc(line.description)}${line.detail ? `<span class="line-detail">${esc(line.detail)}</span>` : ""}</td>
+          <td class="num">${esc(line.hsn_code) || "—"}</td>
+          <td class="num">${Number(line.quantity)}</td>
+          <td class="num">${esc(line.unit)}</td>
+          <td class="num">${rupees(line.unit_price_paise)}</td>
+          <td class="num">${rupees(line.taxable_value_paise)}</td>
+          ${taxCells}
+          <td class="num">${rupees(line.line_total_paise)}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const taxFoot = inter
+      ? `<td></td><td class="num">${rupees(invoice.igst_paise)}</td>`
+      : `<td></td><td class="num">${rupees(invoice.cgst_paise)}</td>` +
+        `<td></td><td class="num">${rupees(invoice.sgst_paise)}</td>`;
+
+    invoiceSheet.innerHTML = `
+      <div class="doc-head">
+        <h1>TAX INVOICE</h1>
+        <span>ORIGINAL FOR RECIPIENT</span>
       </div>
-    </div>
 
-    <table class="lines">
-      <thead>
-        <tr>
-          <th rowspan="2">#</th><th rowspan="2">Description</th>
-          <th rowspan="2">HSN/SAC</th><th rowspan="2">Qty</th>
-          <th rowspan="2">Unit</th><th rowspan="2">Rate (₹)</th>
-          <th rowspan="2">Taxable (₹)</th>
-          ${taxHead}
-          <th rowspan="2">Total (₹)</th>
-        </tr>
-        <tr>${taxSubHead}</tr>
-      </thead>
-      <tbody>${lineRows}</tbody>
-      <tfoot>
-        <tr>
-          <td colspan="6">Total</td>
-          <td class="num">${rupees(invoice.taxable_value_paise)}</td>
-          ${taxFoot}
-          <td class="num">${rupees(invoice.total_paise)}</td>
-        </tr>
-      </tfoot>
-    </table>
-
-    <div class="words">Amount in words: <em>${amountInWords(invoice.total_paise)}</em></div>
-
-    <div class="foot">
-      <div class="box">
-        <h2>Notes</h2>
-        ${esc(invoice.notes) || "The reservation advance is refundable as per the accepted terms and conditions."}
+      <div class="parties">
+        <div class="box">
+          <h2>Supplier</h2>
+          <strong class="name">${esc(invoice.seller_name)}</strong>
+          ${esc(invoice.seller_address)}<br />
+          ${esc(invoice.seller_state_name)} — ${esc(invoice.seller_state_code)}<br />
+          ${invoice.seller_gstin ? `GSTIN: ${esc(invoice.seller_gstin)}` : "<em>GSTIN pending registration</em>"}
+        </div>
+        <div class="box">
+          <h2>Invoice</h2>
+          <strong class="name">${esc(invoice.invoice_number)}</strong>
+          Date: ${dateOf(invoice.issue_date)}<br />
+          Phase: ${esc(invoice.phase_label || invoice.phase_number)}<br />
+          Reverse charge: ${invoice.reverse_charge ? "Yes" : "No"}
+        </div>
       </div>
-      <div class="box signature">
-        <span class="for">For ${esc(invoice.seller_name)}</span>
-        <span class="line">Authorised signatory</span>
+
+      <div class="meta-grid">
+        <div class="box">
+          <h2>Billed &amp; shipped to</h2>
+          <strong class="name">${esc(invoice.buyer_name)}</strong>
+          ${esc(invoice.buyer_address)}<br />
+          ${invoice.buyer_gstin ? `GSTIN: ${esc(invoice.buyer_gstin)}` : "Unregistered (B2C)"}
+        </div>
+        <div class="box">
+          <h2>Place of supply</h2>
+          ${esc(invoice.place_of_supply_state)} — ${esc(invoice.place_of_supply_code)}<br />
+          Supply type: ${inter ? "Inter-state (IGST)" : "Intra-state (CGST + SGST)"}
+        </div>
       </div>
-    </div>
 
-    <p class="doc-note">This is a computer-generated invoice.</p>
-  `;
+      <table class="lines">
+        <thead>
+          <tr>
+            <th rowspan="2">#</th><th rowspan="2">Description</th>
+            <th rowspan="2">HSN/SAC</th><th rowspan="2">Qty</th>
+            <th rowspan="2">Unit</th><th rowspan="2">Rate (₹)</th>
+            <th rowspan="2">Taxable (₹)</th>
+            ${taxHead}
+            <th rowspan="2">Total (₹)</th>
+          </tr>
+          <tr>${taxSubHead}</tr>
+        </thead>
+        <tbody>${lineRows}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="6">Total</td>
+            <td class="num">${rupees(invoice.taxable_value_paise)}</td>
+            ${taxFoot}
+            <td class="num">${rupees(invoice.total_paise)}</td>
+          </tr>
+        </tfoot>
+      </table>
 
-  sheet.hidden = false;
+      <div class="words">Amount in words: <em>${amountInWords(invoice.total_paise)}</em></div>
+
+      <div class="foot">
+        <div class="box">
+          <h2>Notes</h2>
+          ${esc(invoice.notes) || "The reservation advance is refundable as per the accepted terms and conditions."}
+        </div>
+        <div class="box signature">
+          <span class="for">For ${esc(invoice.seller_name)}</span>
+          <span class="line">Authorised signatory</span>
+        </div>
+      </div>
+
+      <p class="doc-note">This is a computer-generated invoice.</p>
+    `;
+    invoiceSheet.hidden = false;
+  }
+
+  if (order) renderSummary();
+  renderInvoice();
   document.title = `${invoice.invoice_number} | Safe Creatives`;
 })();

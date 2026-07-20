@@ -50,10 +50,30 @@
       .doc-note { margin-top: 10px; color: #555; font-size: 10px; text-align: center; }
       .error { max-width: 480px; margin: 80px auto; text-align: center; color: #6f222a; }
 
+      /* --- Order summary page ------------------------------------------- */
+      .order-item { border: 1px solid #999; border-top: 0; padding: 10px 11px; }
+      .oi-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+      .oi-head strong { font-size: 13px; }
+      .oi-head span { font-variant-numeric: tabular-nums; }
+      .oi-base { color: #555; font-size: 10.5px; margin-bottom: 7px; }
+      .oi-product { margin: 0 0 7px; }
+      .oi-product h3 { font-size: 9px; letter-spacing: .12em; color: #6f222a; text-transform: uppercase; margin-bottom: 2px; }
+      .oi-product ul { margin: 0; padding-left: 14px; }
+      .oi-product li { margin: 1px 0; }
+      .oi-none { color: #777; font-style: italic; }
+      .sum-totals { border: 1px solid #999; border-top: 0; }
+      .sum-totals .row { display: flex; justify-content: space-between; padding: 5px 11px; border-top: 1px solid #e3e3de; font-variant-numeric: tabular-nums; }
+      .sum-totals .row:first-child { border-top: 0; }
+      .sum-totals .row.grand { font-weight: 600; background: #fafaf7; }
+      .sum-totals .row.paid { color: #0c4444; }
+
       @media print {
         body { background: #fff; }
         .toolbar { display: none; }
         .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+        /* Summary and tax invoice are separate pages on paper. */
+        .sheet { break-after: page; }
+        .sheet:last-of-type { break-after: auto; }
         @page { size: A4; margin: 12mm; }
       }
     </style>
@@ -64,6 +84,8 @@
       <a href="dashboard.html">← Back</a>
     </div>
 
+    <!-- Page 1: what was ordered. Page 2: the tax invoice for the advance. -->
+    <div class="sheet" id="summary" hidden></div>
     <div class="sheet" id="sheet" hidden></div>
     <p class="error" id="invoice-error" hidden></p>
 

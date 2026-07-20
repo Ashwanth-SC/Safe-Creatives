@@ -747,6 +747,67 @@
     });
   }
 
+  // ------------------------------------------------------------------
+  // Invoice settings
+  // ------------------------------------------------------------------
+  // Business-wide, not per-package: the advance is the same booking service
+  // whichever room it reserves, so its SAC lives on seller_settings.
+
+  async function renderInvoiceSettings() {
+    const container = document.querySelector("#invoice-settings");
+    container.textContent = "";
+
+    const { data: settings, error } = await sb
+      .from("seller_settings")
+      .select("advance_hsn_code")
+      .eq("id", true)
+      .maybeSingle();
+
+    if (error) {
+      message(`Could not load invoice settings: ${error.message}`, true);
+      return;
+    }
+
+    const box = document.createElement("div");
+    box.className = "admin-option admin-settings";
+
+    const title = document.createElement("p");
+    title.className = "admin-section-title";
+    title.style.margin = "0 0 10px";
+    title.textContent = "Invoice settings";
+
+    const hsn = field("Advance HSN / SAC code", settings?.advance_hsn_code, {
+      placeholder: "9954",
+      hint: "Printed on the advance line of every invoice. Confirm the classification with your CA — the advance is a service, not goods.",
+    });
+
+    const saveBtn = button("Save settings", "admin-small", () => {});
+    saveBtn.addEventListener(
+      "click",
+      action(
+        saveBtn,
+        async () => {
+          const { error: saveError } = await sb
+            .from("seller_settings")
+            .update({
+              advance_hsn_code: hsn.input.value.trim() || null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", true);
+          if (saveError) throw saveError;
+        },
+        "Invoice settings saved"
+      )
+    );
+
+    const actions = document.createElement("div");
+    actions.className = "admin-row-actions";
+    actions.appendChild(saveBtn);
+
+    box.append(title, hsn, actions);
+    container.appendChild(box);
+  }
+
   document.querySelector("#add-package").addEventListener("click", async () => {
     const label = window.prompt("Package name (e.g. Study Package)");
     if (!label) return;
@@ -765,5 +826,6 @@
     }
   });
 
+  await renderInvoiceSettings();
   await render();
 })();

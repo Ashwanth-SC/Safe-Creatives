@@ -208,7 +208,9 @@ async function createAdvanceInvoice(admin: any, orderId: string) {
     line_number: 1,
     description: `Refundable reservation advance — Order ${order.order_number}`,
     detail: packageNames || null,
-    hsn_code: order.order_items?.[0]?.hsn_code ?? null,
+    // The advance is a service, so it takes the SAC from seller_settings --
+    // NOT the package's goods HSN, which classifies furniture.
+    hsn_code: seller.advance_hsn_code ?? null,
     quantity: 1,
     unit: "NOS",
     unit_price_paise: taxablePaise,
