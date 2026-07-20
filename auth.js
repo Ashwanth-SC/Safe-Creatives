@@ -200,8 +200,15 @@ window.SC = (function () {
     const dropdown = document.createElement("div");
     dropdown.className = "account-dropdown";
     dropdown.hidden = true;
-    dropdown.innerHTML =
-      '<span class="account-status"></span><button type="button" class="logout-button">Log out</button>';
+
+    // Staff get a way into the catalog admin without memorising the URL.
+    // This is convenience, not security: admin.html is protected by RLS, so
+    // anyone who finds the address without the flag sees "Admin only".
+    const adminLink = state.profile?.is_admin
+      ? '<a class="account-admin-link" href="admin.html">Catalog admin</a>'
+      : "";
+
+    dropdown.innerHTML = `<span class="account-status"></span>${adminLink}<button type="button" class="logout-button">Log out</button>`;
     container.appendChild(dropdown);
 
     dropdown.querySelector(".account-status").textContent =
