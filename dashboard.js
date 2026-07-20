@@ -161,21 +161,177 @@
   // Orders
   // ------------------------------------------------------------------
 
+  // Renders one order's full contents: every package, its chosen options
+  // grouped by product, its add-ons, and the line total. Everything here is
+  // the snapshot taken at order time -- catalog renames and price changes
+  // since then do not alter it, which is the point.
+  function orderDetail(order) {
+    const wrap = el("div", "order-detail");
+
+    // Identical configurations are separate lines rather than a quantity, so
+    // count them for display without collapsing lines that only look alike.
+    const counts = new Map();
+    order.order_items.forEach((item) => {
+      const key = JSON.stringify([
+        item.package_name,
+        (item.order_item_options || [])
+          .map((o) => `${o.product_name}|${o.group_name}|${o.option_name}`)
+          .sort(),
+        (item.order_item_addons || []).map((a) => a.addon_name).sort(),
+      ]);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+
+    const seen = new Set();
+
+    order.order_items.forEach((item) => {
+      const key = JSON.stringify([
+        item.package_name,
+        (item.order_item_options || [])
+          .map((o) => `${o.product_name}|${o.group_name}|${o.option_name}`)
+          .sort(),
+        (item.order_item_addons || []).map((a) => a.addon_name).sort(),
+      ]);
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      const qty = counts.get(key);
+      const card = el("div", "order-line");
+
+      const head = el("div", "order-line-head");
+      head.appendChild(el("strong", null, `${qty} × ${item.package_name}`));
+      head.appendChild(
+        el("span", null, SC.money(item.line_total_paise * qty))
+      );
+      card.appendChild(head);
+
+      card.appendChild(
+        el("p", "order-line-base", `Base ${SC.money(item.base_price_paise)}`)
+      );
+
+      // Options grouped by product, so a three-product package reads as three
+      // blocks rather than one flat list of nine lines.
+      const byProduct = new Map();
+      (item.order_item_options || []).forEach((option) => {
+        if (!byProduct.has(option.product_name)) {
+          byProduct.set(option.product_name, []);
+        }
+        byProduct.get(option.product_name).push(option);
+      });
+
+      byProduct.forEach((options, productName) => {
+        const block = el("div", "order-product");
+        block.appendChild(el("span", "order-product-name", productName));
+        const list = el("ul");
+        options.forEach((option) => {
+          const delta = Number(option.price_delta_paise || 0);
+          list.appendChild(
+            el(
+              "li",
+              null,
+              `${option.group_name}: ${option.option_name}` +
+                (delta ? ` (+${SC.money(delta)})` : "") +
+                (option.finish ? ` — ${option.finish}` : "")
+            )
+          );
+        });
+        block.appendChild(list);
+        card.appendChild(block);
+      });
+
+      const addons = item.order_item_addons || [];
+      const addonBlock = el("div", "order-product");
+      addonBlock.appendChild(el("span", "order-product-name", "Add-ons"));
+      const addonList = el("ul");
+      if (addons.length) {
+        addons.forEach((addon) =>
+          addonList.appendChild(
+            el("li", null, `${addon.addon_name} — ${SC.money(addon.price_paise)}`)
+          )
+        );
+      } else {
+        addonList.appendChild(el("li", "order-none", "None selected"));
+      }
+      addonBlock.appendChild(addonList);
+      card.appendChild(addonBlock);
+
+      wrap.appendChild(card);
+    });
+
+    const totals = el("div", "order-totals");
+    [
+      ["Package total", order.subtotal_paise],
+      [`GST (${order.gst_percent}%)`, order.gst_paise],
+      ["Total payable", order.total_paise],
+      ["Advance", order.advance_amount_paise],
+      ["Balance", order.balance_paise],
+    ].forEach(([label, value]) => {
+      const line = el("div", "order-total-line");
+      line.appendChild(el("span", null, label));
+      line.appendChild(el("strong", null, SC.money(value)));
+      totals.appendChild(line);
+    });
+    wrap.appendChild(totals);
+
+    return wrap;
+  }
+
   async function ordersPanel() {
     const { data, error } = await sb
       .from("orders")
       .select(
-        `id, order_number, status, subtotal_paise, gst_paise, total_paise,
-         advance_amount_paise, balance_paise, placed_at,
+        `id, order_number, status, subtotal_paise, gst_percent, gst_paise,
+         total_paise, advance_amount_paise, balance_paise, placed_at,
          contact_name, contact_email, contact_phone,
          delivery_address_line, delivery_city, delivery_pin_code,
-         order_items ( package_name, line_total_paise )`
+         order_items (
+           package_name, base_price_paise, line_total_paise,
+           order_item_options ( product_name, group_name, option_name,
+                                finish, material, price_delta_paise ),
+           order_item_addons ( addon_name, price_paise )
+         )`
       )
       .order("placed_at", { ascending: false });
 
     if (error) throw error;
 
-    const rows = data.map((order) => {
+    const frag = document.createDocumentFragment();
+
+    const waiting = data.filter((o) => o.status === "pending_advance");
+    if (waiting.length) {
+      frag.appendChild(
+        el(
+          "p",
+          "dash-note",
+          `${waiting.length} order(s) reserved but not paid. These customers accepted terms and gave an address, then stopped at payment — worth a call.`
+        )
+      );
+    }
+
+    frag.appendChild(
+      el("p", "dash-note", "Click an order to see exactly what was ordered.")
+    );
+
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Order", "Customer", "Packages", "Delivery", "Total", "Advance", "Status", "Placed"]
+      .forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+
+    const tbody = el("tbody");
+
+    if (!data.length) {
+      const tr = el("tr");
+      const td = el("td", "dash-empty", "No orders yet.");
+      td.colSpan = 8;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+
+    data.forEach((order) => {
       const tone =
         order.status === "pending_advance"
           ? "warn"
@@ -183,40 +339,43 @@
           ? "muted"
           : "ok";
 
-      const packages = order.order_items.map((i) => i.package_name).join(", ");
-
-      return [
+      const summary = el("tr", "order-row");
+      const cells = [
         el("strong", null, order.order_number),
         contactCell(order.contact_name, order.contact_email, order.contact_phone),
-        packages || "—",
+        order.order_items.map((i) => i.package_name).join(", ") || "—",
         addressOf(order, "delivery_"),
         SC.money(order.total_paise),
         SC.money(order.advance_amount_paise),
         pill(ORDER_STATUS[order.status] || order.status, tone),
         when(order.placed_at),
       ];
+      cells.forEach((cell) => {
+        const td = el("td");
+        if (cell instanceof Node) td.appendChild(cell);
+        else td.textContent = cell ?? "—";
+        summary.appendChild(td);
+      });
+
+      const detailRow = el("tr", "order-detail-row");
+      detailRow.hidden = true;
+      const detailCell = el("td");
+      detailCell.colSpan = 8;
+      detailCell.appendChild(orderDetail(order));
+      detailRow.appendChild(detailCell);
+
+      summary.addEventListener("click", () => {
+        detailRow.hidden = !detailRow.hidden;
+        summary.classList.toggle("is-open", !detailRow.hidden);
+      });
+
+      tbody.append(summary, detailRow);
     });
 
-    const waiting = data.filter((o) => o.status === "pending_advance");
-
-    const panelWrap = document.createDocumentFragment();
-
-    if (waiting.length) {
-      const note = el(
-        "p",
-        "dash-note",
-        `${waiting.length} order(s) reserved but not paid. These customers accepted terms and gave an address, then stopped at payment — worth a call.`
-      );
-      panelWrap.appendChild(note);
-    }
-
-    panelWrap.appendChild(
-      table(
-        ["Order", "Customer", "Packages", "Delivery", "Total", "Advance", "Status", "Placed"],
-        rows
-      )
-    );
-    return panelWrap;
+    t.append(thead, tbody);
+    scroll.appendChild(t);
+    frag.appendChild(scroll);
+    return frag;
   }
 
   // ------------------------------------------------------------------
