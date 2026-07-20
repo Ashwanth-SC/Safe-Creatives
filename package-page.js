@@ -45,7 +45,7 @@
          product_option_groups (
            id, key, name, display_as, sort_order,
            product_options ( id, key, name, description, price_delta_paise,
-                             image_path, swatch_hex, finish, material, sort_order )
+                             image_paths, swatch_hex, finish, material, sort_order )
          )
        ),
        package_addons ( id, key, name, description, image_path, price_paise, sort_order )`
@@ -141,15 +141,20 @@
     totalElement.textContent = SC.money(totalPaise());
   }
 
-  // The product image comes from whichever selected option carries one --
-  // normally the colour. If no group has images, the first available wins.
-  function activeImageFor(product) {
+  // Images belong to whichever selected option carries them -- normally the
+  // colour. Size deliberately has none: a King bed in Sand looks like the Sand
+  // photos, so size changes price and nothing else.
+  function imageOptionFor(product) {
     for (const group of product.product_option_groups) {
       const selected = optionById(group.id, chosenOption.get(group.id));
-      if (selected?.image_path) return selected;
+      if (selected?.image_paths?.length) return selected;
     }
     return null;
   }
+
+  // Which photo in the current option's gallery is showing, per product.
+  // Resets to the first whenever the option changes.
+  const galleryIndex = new Map();
 
   // ------------------------------------------------------------------
   // Render
@@ -170,9 +175,12 @@
         .join("");
 
       article.innerHTML = `
-        <div class="product-gallery">
-          <span class="product-number">${String(index + 1).padStart(2, "0")}</span>
-          <img src="" alt="${product.name}" />
+        <div class="product-media">
+          <div class="product-gallery">
+            <span class="product-number">${String(index + 1).padStart(2, "0")}</span>
+            <img src="" alt="${product.name}" />
+          </div>
+          <div class="gallery-thumbs"></div>
         </div>
         <div class="product-info">
           <p class="product-type">MAIN PRODUCT</p>
@@ -253,6 +261,7 @@
 
       button.addEventListener("click", () => {
         chosenOption.set(group.id, option.id);
+        galleryIndex.set(product.id, 0);
         refreshProduct(article, product);
         updateTotal();
       });
@@ -274,12 +283,36 @@
   // change rather than mutating individual bits, so the DOM can never drift
   // out of step with chosenOption.
   function refreshProduct(article, product) {
-    const image = article.querySelector("img");
-    const shown = activeImageFor(product);
+    const image = article.querySelector(".product-gallery img");
+    const thumbs = article.querySelector(".gallery-thumbs");
+    const shown = imageOptionFor(product);
+    const gallery = shown?.image_paths ?? [];
 
-    if (shown) {
-      image.src = shown.image_path;
+    const index = Math.min(galleryIndex.get(product.id) ?? 0, Math.max(gallery.length - 1, 0));
+
+    if (gallery.length) {
+      image.src = gallery[index];
       image.alt = `${product.name} in ${shown.name}`;
+    }
+
+    // Only worth showing thumbnails when there is more than one photo.
+    thumbs.textContent = "";
+    if (gallery.length > 1) {
+      gallery.forEach((src, position) => {
+        const thumb = document.createElement("button");
+        thumb.type = "button";
+        thumb.className = `gallery-thumb${position === index ? " active" : ""}`;
+        thumb.setAttribute(
+          "aria-label",
+          `${product.name} in ${shown.name}, photo ${position + 1} of ${gallery.length}`
+        );
+        thumb.innerHTML = `<img src="${src}" alt="" />`;
+        thumb.addEventListener("click", () => {
+          galleryIndex.set(product.id, position);
+          refreshProduct(article, product);
+        });
+        thumbs.appendChild(thumb);
+      });
     }
 
     article.querySelector('[data-spec="finish"]').textContent =

@@ -47,3 +47,10 @@
 .chip-option.active { border-color:#0c4444; background:#0c4444; color:#fff; }
 .option-select { width:100%; max-width:340px; padding:10px 12px; border:1px solid rgba(23,23,23,.25); background:#fff; font:13px "DM Sans",sans-serif; cursor:pointer; }
 .option-select:focus { outline:2px solid #0c4444; outline-offset:1px; }
+
+/* Product image gallery (4 photos per colour) */
+.product-media { display:flex; flex-direction:column; gap:10px; }
+.gallery-thumbs { display:flex; gap:8px; }
+.gallery-thumb { width:64px; height:64px; padding:0; border:1px solid rgba(23,23,23,.2); background:#ddd; overflow:hidden; cursor:pointer; }
+.gallery-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.gallery-thumb.active { outline:2px solid #0c4444; outline-offset:2px; }

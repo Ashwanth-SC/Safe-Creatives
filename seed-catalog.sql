@@ -137,9 +137,9 @@ on conflict (group_id, key) do update set
 
 insert into product_options (
   group_id, key, name, price_delta_paise,
-  image_path, swatch_hex, finish, material, sort_order
+  image_paths, swatch_hex, finish, material, sort_order
 )
-select g.id, v.okey, v.oname, v.delta, v.img, v.hex, v.finish, v.material, v.sort
+select g.id, v.okey, v.oname, v.delta, array[v.img], v.hex, v.finish, v.material, v.sort
 from product_option_groups g
 join package_products pp on pp.id = g.product_id
 join packages p on p.id = pp.package_id
@@ -190,7 +190,7 @@ where p.key = v.pkey and pp.key = v.prodkey and g.key = 'colour'
 on conflict (group_id, key) do update set
   name              = excluded.name,
   price_delta_paise = excluded.price_delta_paise,
-  image_path        = excluded.image_path,
+  image_paths       = excluded.image_paths,
   swatch_hex        = excluded.swatch_hex,
   finish            = excluded.finish,
   material          = excluded.material,

@@ -1,0 +1,101 @@
+/* ============================================================================
+   Catalog admin — a working surface, not a showpiece.
+   Dense on purpose: the job is scanning and editing many rows quickly.
+   ========================================================================= */
+
+.admin-header { position: relative; background: #fff; border-bottom-color: rgba(23,23,23,.15); }
+.admin-badge { padding: 5px 9px; background: #0c4444; color: #fff; font: 9px "DM Mono", monospace; letter-spacing: .14em; }
+
+.admin-page { min-height: 100vh; padding: 0 0 100px; background: #f7f7f4; }
+
+.admin-intro { max-width: 1100px; margin: 0 auto; padding: clamp(70px,9vw,110px) 7vw 34px; }
+.admin-intro .eyebrow { color: #6f222a; }
+.admin-intro h1 { margin: 0 0 18px; font-size: clamp(46px,6vw,84px); line-height: .85; letter-spacing: -.06em; }
+.admin-intro h1 span { color: #6f222a; }
+.admin-intro > p { max-width: 520px; margin: 0 0 22px; color: #59635d; line-height: 1.65; }
+
+.admin-denied { max-width: 620px; margin: 0 auto; padding: 140px 7vw; text-align: center; }
+.admin-denied h1 { margin: 0 0 16px; font-size: clamp(42px,6vw,72px); letter-spacing: -.06em; }
+.admin-denied p { color: #59635d; line-height: 1.65; }
+
+#packages { max-width: 1100px; margin: 0 auto; padding: 0 7vw; }
+
+/* --- Disclosure blocks ---------------------------------------------------- */
+
+.admin-package,
+.admin-product,
+.admin-group { background: #fff; border: 1px solid rgba(23,23,23,.12); }
+
+.admin-package { margin-bottom: 16px; padding: 4px 0; }
+.admin-product { margin: 12px 0; background: #fcfcfa; }
+.admin-group { margin: 10px 0; background: #f4f6f3; }
+
+.admin-package > summary,
+.admin-product > summary,
+.admin-group > summary { padding: 16px 22px; cursor: pointer; font-size: 15px; list-style: none; }
+.admin-package > summary::-webkit-details-marker,
+.admin-product > summary::-webkit-details-marker,
+.admin-group > summary::-webkit-details-marker { display: none; }
+.admin-package > summary::before,
+.admin-product > summary::before,
+.admin-group > summary::before { content: "▸ "; color: #6f222a; }
+.admin-package[open] > summary::before,
+.admin-product[open] > summary::before,
+.admin-group[open] > summary::before { content: "▾ "; }
+.admin-package > summary:hover,
+.admin-product > summary:hover,
+.admin-group > summary:hover { background: rgba(12,68,68,.04); }
+
+.admin-package > *:not(summary),
+.admin-product > *:not(summary),
+.admin-group > *:not(summary) { margin-left: 22px; margin-right: 22px; }
+
+.admin-subtle { color: #8b8f88; font: 11px "DM Mono", monospace; letter-spacing: .04em; }
+.admin-section-title { margin: 26px 22px 10px; font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #6f222a; }
+
+/* --- Fields --------------------------------------------------------------- */
+
+.admin-inline { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px; }
+.admin-inline .admin-field { flex: 1 1 170px; }
+
+.admin-field { display: block; margin-bottom: 12px; }
+.admin-field > span { display: block; margin-bottom: 5px; color: #777; font: 9px "DM Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
+.admin-field input,
+.admin-field textarea,
+.admin-field select { width: 100%; padding: 9px 10px; border: 1px solid rgba(23,23,23,.2); background: #fff; color: #171717; font: 13px "DM Sans", sans-serif; outline: none; }
+.admin-field textarea { line-height: 1.5; resize: vertical; }
+.admin-field input:focus,
+.admin-field textarea:focus,
+.admin-field select:focus { border-color: #0c4444; outline: 1px solid #0c4444; }
+.admin-hint { display: block; margin-top: 4px; color: #8b8f88; font: 10px "DM Mono", monospace; }
+
+.admin-option { padding: 16px 18px; margin: 10px 0; background: #fff; border: 1px solid rgba(23,23,23,.1); border-left: 3px solid #0c4444; }
+.admin-option .admin-field { margin-bottom: 10px; }
+
+.admin-gallery { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(23,23,23,.15); }
+.admin-gallery .admin-subtle { margin: 0 0 8px; }
+
+/* --- Buttons -------------------------------------------------------------- */
+
+.admin-row-actions { display: flex; gap: 8px; margin: 10px 0 4px; }
+
+.admin-primary { padding: 13px 20px; border: 1px solid #6f222a; background: #6f222a; color: #fff; font: 12px "DM Sans", sans-serif; cursor: pointer; }
+.admin-primary-small { padding: 8px 14px; border: 1px solid #6f222a; background: #6f222a; color: #fff; font: 11px "DM Sans", sans-serif; cursor: pointer; }
+.admin-small { padding: 8px 14px; border: 1px solid #0c4444; background: transparent; color: #0c4444; font: 11px "DM Sans", sans-serif; cursor: pointer; }
+.admin-small:hover { background: #0c4444; color: #fff; }
+.admin-danger { padding: 8px 14px; border: 1px solid rgba(111,34,42,.4); background: transparent; color: #6f222a; font: 11px "DM Sans", sans-serif; cursor: pointer; }
+.admin-danger:hover { background: #6f222a; color: #fff; }
+button:disabled { opacity: .5; cursor: progress; }
+
+/* --- Messages ------------------------------------------------------------- */
+
+.admin-message { max-width: 1100px; margin: 0 auto 14px; padding: 0 7vw; min-height: 20px; font-size: 13px; }
+.admin-message.is-ok { color: #0c4444; }
+.admin-message.is-error { color: #6f222a; }
+
+@media (max-width: 760px) {
+  .admin-intro { padding: 80px 24px 30px; }
+  #packages, .admin-message { padding: 0 24px; }
+  .admin-inline { gap: 10px; }
+  .admin-inline .admin-field { flex: 1 1 100%; }
+}

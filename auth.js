@@ -84,7 +84,7 @@ window.SC = (function () {
   async function loadProfile(userId) {
     const { data, error } = await sb
       .from("profiles")
-      .select("id, full_name, email, phone, address")
+      .select("id, full_name, email, phone, address, is_admin")
       .eq("id", userId)
       .maybeSingle();
 
@@ -253,6 +253,9 @@ window.SC = (function () {
     },
     get userId() {
       return state.session?.user?.id ?? null;
+    },
+    get isAdmin() {
+      return state.profile?.is_admin === true;
     },
   };
 })();
