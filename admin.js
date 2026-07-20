@@ -70,7 +70,7 @@
     const { data, error } = await sb
       .from("packages")
       .select(
-        `id, key, name, description, base_price_paise, is_active, sort_order,
+        `id, key, name, description, base_price_paise, cover_image_path, is_active, sort_order,
          package_products (
            id, key, name, description, sort_order,
            product_option_groups (
@@ -79,7 +79,8 @@
                                swatch_hex, finish, material, is_active, sort_order )
            )
          ),
-         package_addons ( id, key, name, description, image_path, price_paise, is_active, sort_order )`
+         package_addons ( id, key, name, description, image_path, price_paise,
+                          is_default_selected, is_active, sort_order )`
       )
       .order("sort_order");
 
@@ -496,10 +497,18 @@
       rows: 2,
     });
     const image = field("Image", addon.image_path, { placeholder: "https://..." });
+    const preselected = select(
+      "Pre-selected",
+      String(addon.is_default_selected),
+      [
+        ["true", "Yes — ticked by default"],
+        ["false", "No — customer opts in"],
+      ]
+    );
 
     const head = document.createElement("div");
     head.className = "admin-inline";
-    head.append(name, price, sort);
+    head.append(name, price, sort, preselected);
     row.append(head, description, image);
 
     const saveBtn = button("Save", "admin-small", () => {});
@@ -513,6 +522,7 @@
             description: description.input.value.trim() || null,
             image_path: image.input.value.trim() || null,
             price_paise: toPaise(price.input.value),
+            is_default_selected: preselected.input.value === "true",
             sort_order: Number(sort.input.value) || 0,
           }),
         `Saved "${addon.name}"`
@@ -567,11 +577,15 @@
       ["true", "Yes"],
       ["false", "No — hidden"],
     ]);
+    const cover = field("Cover image", pkg.cover_image_path, {
+      placeholder: "https://...",
+      hint: "Shown on the Sensory Rooms cards",
+    });
 
     const head = document.createElement("div");
     head.className = "admin-inline";
     head.append(name, price, sort, active);
-    box.append(head, description);
+    box.append(head, description, cover);
 
     const saveBtn = button("Save package", "admin-primary-small", () => {});
     saveBtn.addEventListener(
@@ -583,6 +597,7 @@
             name: name.input.value.trim(),
             description: description.input.value.trim() || null,
             base_price_paise: toPaise(price.input.value),
+            cover_image_path: cover.input.value.trim() || null,
             is_active: active.input.value === "true",
             sort_order: Number(sort.input.value) || 0,
           }),

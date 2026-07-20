@@ -48,7 +48,8 @@
                              image_paths, swatch_hex, finish, material, sort_order )
          )
        ),
-       package_addons ( id, key, name, description, image_path, price_paise, sort_order )`
+       package_addons ( id, key, name, description, image_path, price_paise,
+                        is_default_selected, sort_order )`
     )
     .eq("key", packageKey)
     .maybeSingle();
@@ -121,6 +122,17 @@
       chosenOption.set(group.id, group.product_options[0].id);
     }
   });
+
+  // A NEW configuration starts with the default add-ons already selected --
+  // the customer removes what they do not want rather than hunting for what
+  // they do. Editing an existing cart item does NOT do this: their saved
+  // choices are the truth, and re-ticking a removed add-on would silently
+  // put back something they had deliberately taken out.
+  if (!isEditing) {
+    pkg.package_addons.forEach((addon) => {
+      if (addon.is_default_selected) chosenAddons.add(addon.id);
+    });
+  }
 
   // ------------------------------------------------------------------
   // Totals (display only)
@@ -522,19 +534,18 @@
   }
 
   async function reviewOrder() {
-    const save = await confirmDialog({
-      eyebrow: "REVIEW YOUR PACKAGE",
-      title: "Save your changes?",
-      body: "Would you like to save this package to your cart before continuing to the review page?",
-      cancelText: "Continue without saving",
-      confirmText: "Save to cart",
+    // Deliberately does NOT offer to save. Offering it here misled people who
+    // had already pressed Save into saving a second copy. This only checks
+    // they meant to move on.
+    const proceed = await confirmDialog({
+      eyebrow: "REVIEW YOUR ORDER",
+      title: "Saved this package?",
+      body: "Only saved packages appear in your order review. If you have not pressed Save to cart yet, go back and do that first.",
+      cancelText: "Go back",
+      confirmText: "Yes, continue",
     });
 
-    if (save) {
-      const saved = await savePackage();
-      if (!saved) return;
-    }
-    window.location.href = "checkout.html";
+    if (proceed) window.location.href = "checkout.html";
   }
 
   // ------------------------------------------------------------------
