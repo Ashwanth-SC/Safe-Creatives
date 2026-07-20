@@ -104,3 +104,6 @@
 }
 
 .catalog-empty { grid-column:1/-1; padding:60px 7vw; color:#59635d; font-size:14px; line-height:1.6; }
+
+/* Package prices are quoted exclusive of GST; say so where the number is. */
+.total-gst { font-style:normal; font-size:10px; opacity:.72; letter-spacing:.06em; }

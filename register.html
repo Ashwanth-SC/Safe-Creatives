@@ -52,13 +52,31 @@
             required
           />
 
-          <label for="address">Delivery Address <span class="label-hint">(optional — you can add this at checkout)</span></label>
+          <label for="address">Full Address <span class="label-hint">(optional — you can add this at checkout)</span></label>
           <textarea
             id="address"
             rows="3"
-            placeholder="Flat / house number, street, area, city, state, PIN code"
+            placeholder="Flat / house number, street, area"
             autocomplete="street-address"
           ></textarea>
+
+          <label for="city">City</label>
+          <input
+            id="city"
+            type="text"
+            placeholder="Chennai"
+            autocomplete="address-level2"
+          />
+
+          <label for="pin-code">PIN Code</label>
+          <input
+            id="pin-code"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="600001"
+            autocomplete="postal-code"
+          />
 
           <button
             class="primary-button"

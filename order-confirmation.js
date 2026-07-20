@@ -46,8 +46,9 @@
   const { data: order, error } = await sb
     .from("orders")
     .select(
-      `order_number, status, subtotal_paise, advance_amount_paise, balance_paise,
-       delivery_address, placed_at,
+      `order_number, status, subtotal_paise, gst_percent, gst_paise, total_paise,
+       advance_amount_paise, balance_paise,
+       delivery_address_line, delivery_city, delivery_pin_code, placed_at,
        order_items ( package_name, line_total_paise,
                      order_item_options ( product_name, group_name, option_name, price_delta_paise ),
                      order_item_addons ( addon_name, price_paise ) )`
@@ -65,10 +66,17 @@
   numberElement.textContent = order.order_number;
 
   addDetail("Status", STATUS_TEXT[order.status] || order.status);
-  addDetail("Order total", SC.money(order.subtotal_paise));
-  addDetail("Refundable advance", SC.money(order.advance_amount_paise));
-  addDetail("Balance on completion", SC.money(order.balance_paise));
-  addDetail("Delivery address", order.delivery_address);
+  addDetail("Package total", SC.money(order.subtotal_paise));
+  addDetail(`GST (${order.gst_percent}%)`, SC.money(order.gst_paise));
+  addDetail("Total payable", SC.money(order.total_paise));
+  addDetail("Refundable advance", `${SC.money(order.advance_amount_paise)} (incl. GST)`);
+  addDetail("Balance after verification", SC.money(order.balance_paise));
+  addDetail(
+    "Delivery address",
+    [order.delivery_address_line, order.delivery_city, order.delivery_pin_code]
+      .filter(Boolean)
+      .join(", ")
+  );
   addDetail("Placed", new Date(order.placed_at).toLocaleDateString("en-IN"));
 
   order.order_items.forEach((item) => {

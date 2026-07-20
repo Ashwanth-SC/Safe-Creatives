@@ -20,17 +20,31 @@
   const cartTotal = document.querySelector("#cart-total");
   const cartAdvance = document.querySelector("#cart-advance");
   const advanceAmount = document.querySelector("#advance-amount");
-  const advancePercent = document.querySelector("#advance-percent");
   const cartReserve = document.querySelector("#cart-reserve");
   const reserveButton = document.querySelector("#reserve-order");
   const checkoutMessage = document.querySelector("#checkout-message");
   const addressField = document.querySelector("#delivery-address");
+  const cityField = document.querySelector("#delivery-city");
+  const pinField = document.querySelector("#delivery-pin");
   const addressButton = document.querySelector("#save-address");
   const addressMessage = document.querySelector("#address-message");
+  const gstLine = document.querySelector("#cart-gst-line");
+  const gstPercentEl = document.querySelector("#gst-percent");
+  const gstEl = document.querySelector("#cart-gst");
+  const grandTotalEl = document.querySelector("#cart-grand-total");
+  const balanceRow = document.querySelector("#cart-balance");
+  const balanceEl = document.querySelector("#balance-amount");
+  const termsBox = document.querySelector("#cart-terms");
+  const termsBody = document.querySelector("#terms-body");
+  const acceptBox = document.querySelector("#accept-terms");
 
-  // Kept in sync with the ADVANCE_PERCENT constant in the create-order
-  // Edge Function. Displayed here, enforced there.
-  const ADVANCE_PERCENT = 20;
+  // Displayed here, enforced in create-order. These constants only decide what
+  // the customer SEES before paying; the figures actually charged are
+  // recomputed server-side and returned by the function.
+  const GST_PERCENT = 18;
+  const ADVANCE_PAISE = 899900; // flat ₹8,999, GST inclusive
+
+  let currentTermsId = null;
 
   function message(text, isError) {
     checkoutMessage.textContent = text;
@@ -62,49 +76,102 @@
   // create-order refuses to reserve without one, and until now there was no
   // way for a customer to provide it.
 
-  let savedAddress = profile?.address || "";
-  addressField.value = savedAddress;
+  // The saved values, as distinct from what is currently typed. create-order
+  // reads the profile row, so unsaved edits must not count as an address.
+  let saved = {
+    line: profile?.address_line || "",
+    city: profile?.city || "",
+    pin: profile?.pin_code || "",
+  };
+
+  addressField.value = saved.line;
+  cityField.value = saved.city;
+  pinField.value = saved.pin;
+
+  function addressMsg(text, isError) {
+    addressMessage.textContent = text;
+    addressMessage.style.color = isError ? "#6f222a" : "#0c4444";
+  }
 
   async function saveAddress() {
-    const value = addressField.value.trim();
-    if (!value) {
-      addressMessage.textContent = "Please enter a delivery address.";
-      addressMessage.style.color = "#6f222a";
-      return false;
-    }
+    const line = addressField.value.trim();
+    const city = cityField.value.trim();
+    const pin = pinField.value.trim();
+
+    if (!line) return addressMsg("Please enter your full address.", true), false;
+    if (!city) return addressMsg("Please enter your city.", true), false;
+    if (!/^\d{6}$/.test(pin))
+      return addressMsg("PIN code should be 6 digits.", true), false;
 
     addressButton.disabled = true;
     const { error } = await sb
       .from("profiles")
-      .update({ address: value })
+      .update({ address_line: line, city, pin_code: pin })
       .eq("id", SC.userId);
     addressButton.disabled = false;
 
     if (error) {
-      addressMessage.textContent = `Could not save address: ${error.message}`;
-      addressMessage.style.color = "#6f222a";
+      addressMsg(`Could not save address: ${error.message}`, true);
       return false;
     }
 
-    savedAddress = value;
-    addressMessage.textContent = "Address saved.";
-    addressMessage.style.color = "#0c4444";
+    saved = { line, city, pin };
+    addressMsg("Address saved.");
     updateReserveState();
     return true;
   }
 
+  function addressIsSaved() {
+    return (
+      Boolean(saved.line && saved.city && saved.pin) &&
+      addressField.value.trim() === saved.line &&
+      cityField.value.trim() === saved.city &&
+      pinField.value.trim() === saved.pin
+    );
+  }
+
   function updateReserveState() {
-    // Unsaved edits count as no address: the Edge Function reads the profile
-    // row, not this textarea.
-    const ready = Boolean(savedAddress) && addressField.value.trim() === savedAddress;
-    reserveButton.disabled = !ready;
-    reserveButton.title = ready
-      ? ""
-      : "Save your delivery address before reserving.";
+    const hasAddress = addressIsSaved();
+    const hasTerms = Boolean(currentTermsId) && acceptBox.checked;
+    reserveButton.disabled = !(hasAddress && hasTerms);
+    reserveButton.title = !hasAddress
+      ? "Save your delivery address before reserving."
+      : !hasTerms
+      ? "Please accept the terms and conditions."
+      : "";
   }
 
   addressButton.addEventListener("click", saveAddress);
-  addressField.addEventListener("input", updateReserveState);
+  [addressField, cityField, pinField].forEach((el) =>
+    el.addEventListener("input", updateReserveState)
+  );
+  acceptBox.addEventListener("change", updateReserveState);
+
+  // ------------------------------------------------------------------
+  // Terms
+  // ------------------------------------------------------------------
+  // The version shown is the one sent to create-order, which checks it is
+  // still current. If the terms change between page load and reserve, the
+  // function refuses rather than recording agreement to text never displayed.
+
+  async function loadTerms() {
+    const { data, error } = await sb
+      .from("terms_versions")
+      .select("id, version, body")
+      .eq("is_current", true)
+      .maybeSingle();
+
+    if (error || !data) {
+      termsBody.textContent =
+        "The terms and conditions could not be loaded. Please refresh before reserving.";
+      return;
+    }
+
+    currentTermsId = data.id;
+    termsBody.textContent = data.body;
+    termsBox.hidden = false;
+    updateReserveState();
+  }
 
   // ------------------------------------------------------------------
   // Cart
@@ -360,7 +427,9 @@
     message("Reserving your order...");
 
     try {
-      const { data, error } = await sb.functions.invoke("create-order");
+      const { data, error } = await sb.functions.invoke("create-order", {
+        body: { terms_version_id: currentTermsId },
+      });
       if (error) throw await describeFunctionError(error);
       if (data?.error) throw new Error(data.error);
 
@@ -401,28 +470,42 @@
       cartEmpty.hidden = false;
       cartReserve.hidden = true;
       cartAdvance.hidden = true;
+      balanceRow.hidden = true;
+      gstLine.hidden = true;
+      termsBox.hidden = true;
       cartTotal.textContent = SC.money(0);
+      grandTotalEl.textContent = SC.money(0);
       return;
     }
 
     cartEmpty.hidden = true;
     items.forEach((item) => cartPackages.appendChild(renderItem(item)));
 
+    // Package prices are quoted exclusive of GST; the customer sees the
+    // exclusive figure, the tax, and what they will actually pay.
     const subtotal = items.reduce(
       (sum, item) => sum + Number(item.line_total_paise || 0),
       0
     );
+    const gst = Math.round((subtotal * GST_PERCENT) / 100);
+    const grandTotal = subtotal + gst;
+    const advance = Math.min(ADVANCE_PAISE, grandTotal);
 
     cartTotal.textContent = SC.money(subtotal);
-    advancePercent.textContent = ADVANCE_PERCENT;
-    advanceAmount.textContent = SC.money(
-      Math.round((subtotal * ADVANCE_PERCENT) / 100)
-    );
+    gstPercentEl.textContent = GST_PERCENT;
+    gstEl.textContent = SC.money(gst);
+    grandTotalEl.textContent = SC.money(grandTotal);
+    advanceAmount.textContent = SC.money(advance);
+    balanceEl.textContent = SC.money(grandTotal - advance);
+
+    gstLine.hidden = false;
     cartAdvance.hidden = false;
+    balanceRow.hidden = false;
     cartReserve.hidden = false;
     updateReserveState();
   }
 
   reserveButton.addEventListener("click", reserve);
+  await loadTerms();
   await render();
 })();

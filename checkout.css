@@ -28,3 +28,26 @@
 .address-editor button { margin-top:10px; padding:10px 16px; border:1px solid #0c4444; background:transparent; color:#0c4444; font:11px "DM Sans",sans-serif; cursor:pointer; }
 .address-editor button:disabled { opacity:.5; cursor:progress; }
 .address-message { min-height:16px; margin:8px 0 0; font-size:12px; }
+
+/* Structured address */
+.address-split { display:grid; grid-template-columns:1.4fr 1fr; gap:12px; margin-top:10px; }
+.address-part { display:block; }
+.address-part > span { display:block; margin-bottom:5px; color:#777; font:9px "DM Mono",monospace; letter-spacing:.12em; }
+.address-part input { width:100%; margin:0; padding:11px 12px; border:1px solid rgba(23,23,23,.25); background:#fff; font:13px "DM Sans",sans-serif; }
+.address-part input:focus { outline:2px solid #0c4444; outline-offset:1px; border-color:#0c4444; }
+
+/* Price breakdown */
+.cart-line { display:flex; justify-content:space-between; margin-top:10px; color:#59635d; font-size:13px; }
+.cart-line:first-of-type { padding-top:20px; border-top:1px solid rgba(23,23,23,.12); }
+.cart-line strong { color:#171717; font-size:14px; }
+.cart-balance { display:flex; justify-content:space-between; margin-top:8px; color:#59635d; font-size:12px; }
+
+/* Terms */
+.cart-terms { margin-top:26px; padding-top:20px; border-top:1px solid rgba(23,23,23,.12); }
+.cart-terms .eyebrow { color:#6f222a; }
+.terms-body { max-height:170px; overflow-y:auto; margin:10px 0 14px; padding:14px 16px; border:1px solid rgba(23,23,23,.16); background:#fbfbf9; color:#59635d; font-size:12.5px; line-height:1.65; white-space:pre-wrap; }
+.terms-body:focus { outline:2px solid #0c4444; outline-offset:1px; }
+.terms-accept { display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.5; cursor:pointer; }
+.terms-accept input { width:auto; margin:2px 0 0; flex:none; }
+
+@media (max-width:520px) { .address-split { grid-template-columns:1fr; } }

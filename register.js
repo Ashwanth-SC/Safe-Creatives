@@ -21,6 +21,8 @@
   const nameField = document.querySelector("#full-name");
   const phoneField = document.querySelector("#phone");
   const addressField = document.querySelector("#address");
+  const cityField = document.querySelector("#city");
+  const pinField = document.querySelector("#pin-code");
   const button = document.querySelector("#save-profile");
   const message = document.querySelector("#register-message");
   const emailLabel = document.querySelector("#verified-email");
@@ -31,7 +33,9 @@
   // their existing details rather than a blank form.
   nameField.value = profile?.full_name || "";
   phoneField.value = profile?.phone || "";
-  addressField.value = profile?.address || "";
+  addressField.value = profile?.address_line || "";
+  cityField.value = profile?.city || "";
+  pinField.value = profile?.pin_code || "";
 
   function show(text, type = "") {
     message.textContent = text;
@@ -44,6 +48,8 @@
     const fullName = nameField.value.trim();
     const phone = phoneField.value.trim();
     const address = addressField.value.trim();
+    const city = cityField.value.trim();
+    const pin = pinField.value.trim();
 
     if (!fullName) {
       show("Please enter your full name.", "error");
@@ -60,10 +66,18 @@
     button.disabled = true;
     show("Saving...");
 
-    // Address is only written when provided, so returning here and leaving it
-    // blank does not wipe an address set at checkout.
+    if (pin && !/^\d{6}$/.test(pin)) {
+      show("PIN code should be 6 digits.", "error");
+      pinField.focus();
+      return;
+    }
+
+    // Address parts are only written when provided, so returning here and
+    // leaving them blank does not wipe an address set at checkout.
     const updates = { full_name: fullName, phone };
-    if (address) updates.address = address;
+    if (address) updates.address_line = address;
+    if (city) updates.city = city;
+    if (pin) updates.pin_code = pin;
 
     const { error } = await sb
       .from("profiles")

@@ -17,9 +17,14 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Refundable advance taken to reserve an order. Keep in sync with
-// ADVANCE_PERCENT in checkout.js, which only displays it.
-const ADVANCE_PERCENT = Number(Deno.env.get("ADVANCE_PERCENT") ?? "20");
+// Flat refundable reservation fee, GST inclusive. Not a percentage: the same
+// ₹8,999 secures a ₹1.6L order and a ₹6L one, because it covers the site
+// verification visit rather than a share of the job.
+const ADVANCE_PAISE = Number(Deno.env.get("ADVANCE_PAISE") ?? "899900");
+
+// GST on package prices, which are quoted exclusive. Stored on each order
+// alongside the amount it produced, so a rate change never rewrites history.
+const GST_PERCENT = Number(Deno.env.get("GST_PERCENT") ?? "18");
 
 // SITE_ORIGIN takes a COMMA-SEPARATED allowlist, so one deployment can serve
 // local development and production without swapping secrets:
@@ -165,7 +170,7 @@ Deno.serve(async (req) => {
 
   const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("full_name, email, phone, address")
+    .select("full_name, email, phone, address_line, city, pin_code")
     .eq("id", userId)
     .maybeSingle();
 
@@ -184,9 +189,12 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (!profile.address) {
+  if (!profile.address_line || !profile.city || !profile.pin_code) {
     return json(
-      { error: "Please add a delivery address to your profile before reserving." },
+      {
+        error:
+          "Please add your full delivery address, city and PIN code before reserving.",
+      },
       400
     );
   }
@@ -212,12 +220,55 @@ Deno.serve(async (req) => {
     return { item, pkg, lineTotal };
   });
 
-  const advanceAmountPaise = Math.round(
-    (subtotalPaise * ADVANCE_PERCENT) / 100
-  );
+  const gstPaise = Math.round((subtotalPaise * GST_PERCENT) / 100);
+  const totalPaise = subtotalPaise + gstPaise;
+
+  // Flat, and capped at the order total so a cheap order can never be asked
+  // for more up front than the whole thing costs.
+  const advanceAmountPaise = Math.min(ADVANCE_PAISE, totalPaise);
 
   // ----------------------------------------------------------------
-  // 5. Write the order, snapshotting every name and price
+  // 5. Terms acceptance
+  // ----------------------------------------------------------------
+  // The browser tells us WHICH version it displayed; we check that against
+  // the current one. Accepting stale terms means the customer read something
+  // other than what is in force, so it is refused rather than recorded.
+
+  let requestBody: Record<string, unknown> = {};
+  try {
+    requestBody = await req.json();
+  } catch {
+    // No body is fine for other callers; the check below still applies.
+  }
+
+  const acceptedTermsId = requestBody.terms_version_id as string | undefined;
+
+  const { data: currentTerms } = await admin
+    .from("terms_versions")
+    .select("id, version")
+    .eq("is_current", true)
+    .maybeSingle();
+
+  if (!currentTerms) {
+    return json(
+      { error: "No terms and conditions are published. Please contact us." },
+      500
+    );
+  }
+
+  if (!acceptedTermsId || acceptedTermsId !== currentTerms.id) {
+    return json(
+      {
+        error:
+          "Please read and accept the current terms and conditions before reserving.",
+        terms_version_id: currentTerms.id,
+      },
+      400
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // 6. Write the order, snapshotting every name and price
   // ----------------------------------------------------------------
 
   const { data: order, error: orderError } = await admin
@@ -225,17 +276,31 @@ Deno.serve(async (req) => {
     .insert({
       user_id: userId,
       subtotal_paise: subtotalPaise,
-      advance_percent: ADVANCE_PERCENT,
+      gst_percent: GST_PERCENT,
+      gst_paise: gstPaise,
+      total_paise: totalPaise,
       advance_amount_paise: advanceAmountPaise,
       contact_name: profile.full_name,
       contact_email: profile.email,
       contact_phone: profile.phone,
-      delivery_address: profile.address,
+      delivery_address_line: profile.address_line,
+      delivery_city: profile.city,
+      delivery_pin_code: profile.pin_code,
     })
-    .select("id, order_number, subtotal_paise, advance_amount_paise, status")
+    .select(
+      "id, order_number, subtotal_paise, gst_paise, total_paise, advance_amount_paise, status"
+    )
     .single();
 
   if (orderError) return json({ error: orderError.message }, 500);
+
+  // Recorded against the order so there is a permanent link between what was
+  // agreed and what was bought.
+  await admin.from("terms_acceptances").insert({
+    user_id: userId,
+    terms_version_id: currentTerms.id,
+    order_id: order.id,
+  });
 
   for (const { item, pkg, lineTotal } of lines) {
     const { data: orderItem, error: lineError } = await admin
@@ -277,7 +342,7 @@ Deno.serve(async (req) => {
   }
 
   // ----------------------------------------------------------------
-  // 6. Open a payment session with Razorpay
+  // 7. Open a payment session with Razorpay
   // ----------------------------------------------------------------
   // The amount sent here is the one computed above from catalog prices.
   // Nothing the browser submitted influences it.
@@ -346,7 +411,7 @@ Deno.serve(async (req) => {
   }
 
   // ----------------------------------------------------------------
-  // 7. Retire the cart
+  // 8. Retire the cart
   // ----------------------------------------------------------------
   // Only once the order and its payment session exist. Doing this earlier
   // would empty the cart on a failed reservation.
@@ -357,7 +422,7 @@ Deno.serve(async (req) => {
   await admin.from("carts").update({ status: "ordered" }).eq("id", cart.id);
 
   // ----------------------------------------------------------------
-  // 8. Hand the session back
+  // 9. Hand the session back
   // ----------------------------------------------------------------
   // razorpay_key_id is the PUBLIC key and is safe in the browser, exactly
   // like the Supabase anon key. The secret never leaves this function.
@@ -370,6 +435,8 @@ Deno.serve(async (req) => {
     order_number: order.order_number,
     status: order.status,
     subtotal_paise: order.subtotal_paise,
+    gst_paise: order.gst_paise,
+    total_paise: order.total_paise,
     advance_amount_paise: order.advance_amount_paise,
     currency: "INR",
     razorpay_key_id: razorpayOrderId ? razorpayKeyId : null,
