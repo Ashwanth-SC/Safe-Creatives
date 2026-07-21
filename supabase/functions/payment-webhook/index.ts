@@ -327,6 +327,251 @@ function buildInvoiceEmailHtml(inv: any, siteUrl: string | null): string {
 </body></html>`;
 }
 
+// ----------------------------------------------------------------------
+// Printable invoice document (order summary + tax invoice)
+// ----------------------------------------------------------------------
+// A server-side render of the exact two-page document from invoice.html /
+// invoice.js, with the data inlined. This is what gets turned into the PDF
+// attachment, so it must match what an admin sees in the dashboard. The CSS
+// is copied verbatim from invoice.html; @media print gives the page break.
+
+const INVOICE_CSS = `
+* { box-sizing: border-box; margin: 0; }
+body { background: #fff; font: 12px/1.5 "Segoe UI", Arial, sans-serif; color: #171717; }
+.sheet { width: 210mm; min-height: 280mm; margin: 0 auto; padding: 14mm 12mm; background: #fff; }
+.doc-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #171717; padding-bottom: 8px; }
+.doc-head h1 { font-size: 17px; letter-spacing: .18em; }
+.doc-head span { font-size: 10px; color: #555; letter-spacing: .08em; }
+.parties { display: grid; grid-template-columns: 1.2fr 1fr; gap: 0; border: 1px solid #999; border-top: 0; }
+.box { padding: 9px 11px; border-top: 1px solid #999; }
+.box + .box { border-left: 1px solid #999; }
+.box h2 { font-size: 9px; letter-spacing: .14em; color: #555; margin-bottom: 4px; text-transform: uppercase; }
+.box strong.name { font-size: 13px; display: block; margin-bottom: 2px; }
+.meta-grid { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #999; }
+.meta-grid .box { border-top: 0; }
+.meta-grid .box:nth-child(even) { border-left: 1px solid #999; }
+.meta-grid .box:nth-child(n+3) { border-top: 1px solid #999; }
+table.lines { width: 100%; border-collapse: collapse; margin-top: 12px; }
+table.lines th, table.lines td { border: 1px solid #999; padding: 6px 7px; text-align: right; vertical-align: top; }
+table.lines th { background: #f2f2ee; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+table.lines th:nth-child(2), table.lines td:nth-child(2) { text-align: left; }
+table.lines td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.line-detail { display: block; color: #555; font-size: 10.5px; margin-top: 2px; }
+table.lines tfoot td { font-weight: 600; background: #fafaf7; }
+.words { border: 1px solid #999; border-top: 0; padding: 8px 11px; font-size: 11.5px; }
+.words em { font-style: normal; font-weight: 600; }
+.foot { display: grid; grid-template-columns: 1.3fr 1fr; gap: 0; border: 1px solid #999; border-top: 0; min-height: 90px; }
+.foot .box { border-top: 0; }
+.signature { display: flex; flex-direction: column; justify-content: space-between; text-align: right; }
+.signature .for { font-weight: 600; }
+.signature .line { color: #555; font-size: 10px; }
+.doc-note { margin-top: 10px; color: #555; font-size: 10px; text-align: center; }
+.order-item { border: 1px solid #999; border-top: 0; padding: 10px 11px; }
+.oi-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.oi-head strong { font-size: 13px; }
+.oi-head span { font-variant-numeric: tabular-nums; }
+.oi-base { color: #555; font-size: 10.5px; margin-bottom: 7px; }
+.oi-product { margin: 0 0 7px; }
+.oi-product h3 { font-size: 9px; letter-spacing: .12em; color: #6f222a; text-transform: uppercase; margin-bottom: 2px; }
+.oi-product ul { margin: 0; padding-left: 14px; }
+.oi-product li { margin: 1px 0; }
+.oi-none { color: #777; font-style: italic; }
+.sum-totals { border: 1px solid #999; border-top: 0; }
+.sum-totals .row { display: flex; justify-content: space-between; padding: 5px 11px; border-top: 1px solid #e3e3de; font-variant-numeric: tabular-nums; }
+.sum-totals .row:first-child { border-top: 0; }
+.sum-totals .row.grand { font-weight: 600; background: #fafaf7; }
+.sum-totals .row.paid { color: #0c4444; }
+.sheet { break-after: page; }
+.sheet:last-of-type { break-after: auto; }
+@page { size: A4; margin: 12mm; }
+`;
+
+// Indian-system amount in words, matching invoice.js.
+function amountInWords(paise: number): string {
+  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven",
+    "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen",
+    "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty",
+    "Seventy", "Eighty", "Ninety"];
+  const two = (n: number): string =>
+    n < 20 ? ones[n] : (tens[Math.floor(n / 10)] + " " + ones[n % 10]).trim();
+  const three = (n: number): string => {
+    const h = Math.floor(n / 100);
+    return ((h ? ones[h] + " Hundred " : "") + two(n % 100)).trim();
+  };
+  const words = (n: number): string => {
+    if (n === 0) return "Zero";
+    const cr = Math.floor(n / 10000000);
+    const lk = Math.floor((n % 10000000) / 100000);
+    const th = Math.floor((n % 100000) / 1000);
+    const rest = n % 1000;
+    return [
+      cr ? two(cr) + " Crore" : "",
+      lk ? two(lk) + " Lakh" : "",
+      th ? two(th) + " Thousand" : "",
+      rest ? three(rest) : "",
+    ].filter(Boolean).join(" ");
+  };
+  const whole = Math.floor(Number(paise) / 100);
+  const frac = Number(paise) % 100;
+  return `Rupees ${words(whole)}${frac ? ` and ${two(frac)} Paise` : ""} Only`;
+}
+
+// deno-lint-ignore no-explicit-any
+function buildInvoiceDocumentHtml(inv: any, order: any): string {
+  const dateOf = (v: string) =>
+    new Date(v).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+  // ---- Page 1: order summary (omitted for a manual invoice with no order)
+  let summary = "";
+  if (order) {
+    const address = [order.delivery_address_line, order.delivery_city,
+      order.delivery_state_name, order.delivery_pin_code].filter(Boolean).map(escapeHtml).join(", ");
+
+    const items = (order.order_items ?? []).map((item: any, index: number) => {
+      const byProduct = new Map<string, any[]>();
+      (item.order_item_options ?? []).forEach((o: any) => {
+        if (!byProduct.has(o.product_name)) byProduct.set(o.product_name, []);
+        byProduct.get(o.product_name)!.push(o);
+      });
+      const products = [...byProduct.entries()].map(([name, opts]) => {
+        const rows = opts.map((o) => {
+          const delta = Number(o.price_delta_paise || 0);
+          const spec = [o.finish, o.material].filter(Boolean).map(escapeHtml).join(", ");
+          return `<li>${escapeHtml(o.group_name)}: <strong>${escapeHtml(o.option_name)}</strong>${
+            delta ? ` (+₹${rupees(delta)})` : ""}${spec ? ` — ${spec}` : ""}</li>`;
+        }).join("");
+        return `<div class="oi-product"><h3>${escapeHtml(name)}</h3><ul>${rows}</ul></div>`;
+      }).join("");
+
+      const addons = item.order_item_addons ?? [];
+      const addonRows = addons.length
+        ? addons.map((a: any) => `<li>${escapeHtml(a.addon_name)}${
+            a.hsn_code ? ` (HSN ${escapeHtml(a.hsn_code)})` : ""} — ₹${rupees(a.price_paise)}</li>`).join("")
+        : `<li class="oi-none">None selected</li>`;
+
+      return `<div class="order-item">
+        <div class="oi-head"><strong>${index + 1}. ${escapeHtml(item.package_name)}</strong><span>₹${rupees(item.line_total_paise)}</span></div>
+        <p class="oi-base">Base price ₹${rupees(item.base_price_paise)}${item.hsn_code ? ` · HSN ${escapeHtml(item.hsn_code)}` : ""}</p>
+        ${products}
+        <div class="oi-product"><h3>Add-ons</h3><ul>${addonRows}</ul></div>
+      </div>`;
+    }).join("");
+
+    summary = `<div class="sheet">
+      <div class="doc-head"><h1>ORDER SUMMARY</h1><span>ACCOMPANIES INVOICE ${escapeHtml(inv.invoice_number)}</span></div>
+      <div class="parties">
+        <div class="box"><h2>Customer</h2><strong class="name">${escapeHtml(order.contact_name)}</strong>${address}<br />${escapeHtml(order.contact_email || "")}${order.contact_phone ? ` · ${escapeHtml(order.contact_phone)}` : ""}</div>
+        <div class="box"><h2>Order</h2><strong class="name">${escapeHtml(order.order_number)}</strong>Placed: ${dateOf(order.placed_at)}<br />Packages: ${order.order_items.length}</div>
+      </div>
+      ${items}
+      <div class="sum-totals">
+        <div class="row"><span>Package total (ex GST)</span><span>₹${rupees(order.subtotal_paise)}</span></div>
+        <div class="row"><span>GST (${Number(order.gst_percent)}%)</span><span>₹${rupees(order.gst_paise)}</span></div>
+        <div class="row grand"><span>Total payable</span><span>₹${rupees(order.total_paise)}</span></div>
+        <div class="row paid"><span>Refundable advance — this invoice (incl. GST)</span><span>₹${rupees(order.advance_amount_paise)}</span></div>
+        <div class="row"><span>Balance after site verification</span><span>₹${rupees(order.balance_paise)}</span></div>
+      </div>
+      <p class="doc-note">This summary describes the order as configured. The tax invoice on the following page covers the reservation advance only; the balance is invoiced at later phases.</p>
+    </div>`;
+  }
+
+  // ---- Page 2: tax invoice
+  const inter = inv.is_interstate;
+  const lines = [...(inv.invoice_lines ?? [])].sort((a, b) => a.line_number - b.line_number);
+  const taxHead = inter ? `<th colspan="2">IGST</th>` : `<th colspan="2">CGST</th><th colspan="2">SGST</th>`;
+  const taxSubHead = inter ? `<th>Rate</th><th>Amount</th>` : `<th>Rate</th><th>Amount</th><th>Rate</th><th>Amount</th>`;
+
+  const lineRows = lines.map((line) => {
+    const half = (Number(line.gst_rate) / 2).toFixed(1).replace(/\.0$/, "");
+    const taxCells = inter
+      ? `<td class="num">${line.gst_rate}%</td><td class="num">${rupees(line.igst_paise)}</td>`
+      : `<td class="num">${half}%</td><td class="num">${rupees(line.cgst_paise)}</td><td class="num">${half}%</td><td class="num">${rupees(line.sgst_paise)}</td>`;
+    return `<tr>
+      <td class="num">${line.line_number}</td>
+      <td>${escapeHtml(line.description)}${line.detail ? `<span class="line-detail">${escapeHtml(line.detail)}</span>` : ""}</td>
+      <td class="num">${escapeHtml(line.hsn_code) || "—"}</td>
+      <td class="num">${Number(line.quantity)}</td>
+      <td class="num">${escapeHtml(line.unit)}</td>
+      <td class="num">${rupees(line.unit_price_paise)}</td>
+      <td class="num">${rupees(line.taxable_value_paise)}</td>
+      ${taxCells}
+      <td class="num">${rupees(line.line_total_paise)}</td>
+    </tr>`;
+  }).join("");
+
+  const taxFoot = inter
+    ? `<td></td><td class="num">${rupees(inv.igst_paise)}</td>`
+    : `<td></td><td class="num">${rupees(inv.cgst_paise)}</td><td></td><td class="num">${rupees(inv.sgst_paise)}</td>`;
+
+  const invoiceSheet = `<div class="sheet">
+    <div class="doc-head"><h1>TAX INVOICE</h1><span>ORIGINAL FOR RECIPIENT</span></div>
+    <div class="parties">
+      <div class="box"><h2>Supplier</h2><strong class="name">${escapeHtml(inv.seller_name)}</strong>${escapeHtml(inv.seller_address)}<br />${escapeHtml(inv.seller_state_name)} — ${escapeHtml(inv.seller_state_code)}<br />${inv.seller_gstin ? `GSTIN: ${escapeHtml(inv.seller_gstin)}` : "<em>GSTIN pending registration</em>"}</div>
+      <div class="box"><h2>Invoice</h2><strong class="name">${escapeHtml(inv.invoice_number)}</strong>Date: ${dateOf(inv.issue_date)}<br />Phase: ${escapeHtml(inv.phase_label || inv.phase_number)}<br />Reverse charge: ${inv.reverse_charge ? "Yes" : "No"}</div>
+    </div>
+    <div class="meta-grid">
+      <div class="box"><h2>Billed &amp; shipped to</h2><strong class="name">${escapeHtml(inv.buyer_name)}</strong>${escapeHtml(inv.buyer_address)}<br />${inv.buyer_gstin ? `GSTIN: ${escapeHtml(inv.buyer_gstin)}` : "Unregistered (B2C)"}</div>
+      <div class="box"><h2>Place of supply</h2>${escapeHtml(inv.place_of_supply_state)} — ${escapeHtml(inv.place_of_supply_code)}<br />Supply type: ${inter ? "Inter-state (IGST)" : "Intra-state (CGST + SGST)"}</div>
+    </div>
+    <table class="lines">
+      <thead>
+        <tr><th rowspan="2">#</th><th rowspan="2">Description</th><th rowspan="2">HSN/SAC</th><th rowspan="2">Qty</th><th rowspan="2">Unit</th><th rowspan="2">Rate (₹)</th><th rowspan="2">Taxable (₹)</th>${taxHead}<th rowspan="2">Total (₹)</th></tr>
+        <tr>${taxSubHead}</tr>
+      </thead>
+      <tbody>${lineRows}</tbody>
+      <tfoot><tr><td colspan="6">Total</td><td class="num">${rupees(inv.taxable_value_paise)}</td>${taxFoot}<td class="num">${rupees(inv.total_paise)}</td></tr></tfoot>
+    </table>
+    <div class="words">Amount in words: <em>${amountInWords(inv.total_paise)}</em></div>
+    <div class="foot">
+      <div class="box"><h2>Notes</h2>${escapeHtml(inv.notes) || "The reservation advance is refundable as per the accepted terms and conditions."}</div>
+      <div class="box signature"><span class="for">For ${escapeHtml(inv.seller_name)}</span><span class="line">Authorised signatory</span></div>
+    </div>
+    <p class="doc-note">This is a computer-generated invoice.</p>
+  </div>`;
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${INVOICE_CSS}</style></head><body>${summary}${invoiceSheet}</body></html>`;
+}
+
+// Chunked so String.fromCharCode is never handed a huge argument list.
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+// Renders the document HTML to a PDF via PDFShift and returns it base64-encoded
+// for the Resend attachment. Returns null if the service is not configured, so
+// the caller can still send the email without the attachment.
+async function renderInvoicePdf(html: string): Promise<string | null> {
+  const apiKey = Deno.env.get("PDFSHIFT_API_KEY");
+  if (!apiKey) {
+    console.warn("PDFSHIFT_API_KEY not set; sending invoice email without PDF.");
+    return null;
+  }
+
+  const res = await fetch("https://api.pdfshift.io/v3/convert/pdf", {
+    method: "POST",
+    headers: {
+      // PDFShift uses HTTP Basic with the literal username "api".
+      Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
+      "Content-Type": "application/json",
+    },
+    // use_print applies the @media print rules, which is what produces the
+    // two separate A4 pages.
+    body: JSON.stringify({ source: html, use_print: true, sandbox: false }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`PDFShift ${res.status}: ${await res.text()}`);
+  }
+
+  return bytesToBase64(new Uint8Array(await res.arrayBuffer()));
+}
+
 // deno-lint-ignore no-explicit-any
 async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
   const apiKey = Deno.env.get("RESEND_API_KEY");
@@ -336,15 +581,25 @@ async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
   }
 
   // The `is emailed_at null` filter is the idempotency guard: a retried
-  // webhook finds nothing to send.
+  // webhook finds nothing to send. Everything the document needs is loaded
+  // here so the PDF matches the dashboard.
   const { data: inv } = await admin
     .from("invoices")
     .select(
-      `id, invoice_number, issue_date, buyer_name, buyer_email,
-       seller_name, seller_gstin, seller_address, place_of_supply_state,
-       is_interstate, taxable_value_paise, cgst_paise, sgst_paise, igst_paise,
-       total_paise, emailed_at,
-       orders ( order_number, order_items ( package_name ) )`
+      `*, invoice_lines ( * ),
+       orders (
+         order_number, placed_at, subtotal_paise, gst_percent, gst_paise,
+         total_paise, advance_amount_paise, balance_paise,
+         contact_name, contact_email, contact_phone,
+         delivery_address_line, delivery_city, delivery_state_name,
+         delivery_pin_code,
+         order_items (
+           package_name, hsn_code, base_price_paise, line_total_paise,
+           order_item_options ( product_name, group_name, option_name,
+                                finish, material, price_delta_paise ),
+           order_item_addons ( addon_name, hsn_code, price_paise )
+         )
+       )`
     )
     .eq("id", invoiceId)
     .is("emailed_at", null)
@@ -360,18 +615,35 @@ async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
     "Safe Creatives <noreply@safecreatives.com>";
   const siteUrl = Deno.env.get("PUBLIC_SITE_URL")?.replace(/\/+$/, "") ?? null;
 
+  // The document (order summary + tax invoice) as a PDF attachment. Best
+  // effort: if the PDF service is unconfigured or errors, the email still
+  // goes out with the summary in the body.
+  let pdfBase64: string | null = null;
+  try {
+    pdfBase64 = await renderInvoicePdf(buildInvoiceDocumentHtml(inv, inv.orders));
+  } catch (pdfError) {
+    console.error("Invoice PDF generation failed; sending without attachment:", pdfError);
+  }
+
+  const payload: Record<string, unknown> = {
+    from,
+    to: [inv.buyer_email],
+    subject: `Your Safe Creatives tax invoice ${inv.invoice_number}`,
+    html: buildInvoiceEmailHtml(inv, siteUrl),
+  };
+  if (pdfBase64) {
+    payload.attachments = [
+      { filename: `Safe-Creatives-${inv.invoice_number}.pdf`, content: pdfBase64 },
+    ];
+  }
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      from,
-      to: [inv.buyer_email],
-      subject: `Your Safe Creatives tax invoice ${inv.invoice_number}`,
-      html: buildInvoiceEmailHtml(inv, siteUrl),
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
@@ -383,7 +655,10 @@ async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
     .update({ emailed_at: new Date().toISOString() })
     .eq("id", invoiceId);
 
-  console.log("Invoice", inv.invoice_number, "emailed to", inv.buyer_email);
+  console.log(
+    "Invoice", inv.invoice_number, "emailed to", inv.buyer_email,
+    pdfBase64 ? "with PDF" : "without PDF"
+  );
 }
 
 Deno.serve(async (req) => {
