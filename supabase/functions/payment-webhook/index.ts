@@ -226,6 +226,166 @@ async function createAdvanceInvoice(admin: any, orderId: string) {
   return invoice;
 }
 
+// ----------------------------------------------------------------------
+// Invoice email
+// ----------------------------------------------------------------------
+// Sent through Resend's HTTP API -- the same provider already handling auth
+// email -- so no SMTP handshake from inside the function. Best-effort by
+// design: the payment has captured and the invoice exists, so a mail failure
+// must never fail the webhook (which would make Razorpay retry a completed
+// payment). emailed_at makes it idempotent across retries.
+
+function rupees(paise: number): string {
+  return (Number(paise || 0) / 100).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "").replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!)
+  );
+}
+
+// deno-lint-ignore no-explicit-any
+function buildInvoiceEmailHtml(inv: any, siteUrl: string | null): string {
+  const packages = (inv.orders?.order_items ?? [])
+    .map((i: { package_name: string }) => escapeHtml(i.package_name))
+    .join(", ");
+
+  const taxRow = inv.is_interstate
+    ? `<tr><td style="padding:4px 0;color:#59635d">IGST</td><td align="right">₹${rupees(inv.igst_paise)}</td></tr>`
+    : `<tr><td style="padding:4px 0;color:#59635d">CGST</td><td align="right">₹${rupees(inv.cgst_paise)}</td></tr>
+       <tr><td style="padding:4px 0;color:#59635d">SGST</td><td align="right">₹${rupees(inv.sgst_paise)}</td></tr>`;
+
+  const viewLink = siteUrl
+    ? `<p style="margin:22px 0 0;font-size:13px;color:#59635d">
+         You can view or download your full tax invoice and order summary here:
+         <a href="${siteUrl}/invoice.html?number=${encodeURIComponent(inv.invoice_number)}"
+            style="color:#0c4444">View invoice ↗</a>
+         (you may be asked to sign in with this email).
+       </p>`
+    : "";
+
+  // Table-based, fully inline styles: email clients strip <style> blocks and
+  // external CSS, so nothing here relies on either.
+  return `<!doctype html>
+<html><body style="margin:0;background:#f5f5f3;font-family:Arial,Helvetica,sans-serif;color:#171717">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f3;padding:24px 12px">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border:1px solid #e3e3de">
+        <tr><td style="padding:26px 30px;border-bottom:2px solid #171717">
+          <span style="font-size:15px;letter-spacing:.18em;font-weight:bold">SAFE CREATIVES</span>
+          <span style="float:right;font-size:11px;color:#6f222a;letter-spacing:.08em">TAX INVOICE</span>
+        </td></tr>
+
+        <tr><td style="padding:26px 30px 6px">
+          <p style="margin:0 0 14px;font-size:15px">Dear ${escapeHtml(inv.buyer_name)},</p>
+          <p style="margin:0 0 6px;font-size:13.5px;line-height:1.6;color:#3a3a3a">
+            Thank you for reserving your order with Safe Creatives. Your refundable
+            advance has been received and your tax invoice is below.
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:12px 30px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px">
+            <tr><td style="padding:4px 0;color:#59635d">Invoice number</td><td align="right"><strong>${escapeHtml(inv.invoice_number)}</strong></td></tr>
+            <tr><td style="padding:4px 0;color:#59635d">Invoice date</td><td align="right">${new Date(inv.issue_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td></tr>
+            <tr><td style="padding:4px 0;color:#59635d">Order reference</td><td align="right">${escapeHtml(inv.orders?.order_number ?? "")}</td></tr>
+            ${packages ? `<tr><td style="padding:4px 0;color:#59635d">Packages reserved</td><td align="right">${packages}</td></tr>` : ""}
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:10px 30px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;border-top:1px solid #e3e3de">
+            <tr><td style="padding:10px 0 4px;color:#59635d">Refundable reservation advance (taxable)</td><td align="right" style="padding-top:10px">₹${rupees(inv.taxable_value_paise)}</td></tr>
+            ${taxRow}
+            <tr><td style="padding:8px 0;border-top:1px solid #171717;font-weight:bold">Total paid</td><td align="right" style="padding:8px 0;border-top:1px solid #171717;font-weight:bold">₹${rupees(inv.total_paise)}</td></tr>
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:6px 30px 8px">
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#59635d">
+            This advance is refundable as per the accepted terms. Our team will be in
+            touch to arrange a site visit and confirm the next steps; the balance is
+            invoiced at later project phases.
+          </p>
+          ${viewLink}
+        </td></tr>
+
+        <tr><td style="padding:18px 30px;border-top:1px solid #e3e3de;font-size:11px;color:#8b8f88;line-height:1.6">
+          ${escapeHtml(inv.seller_name)}${inv.seller_gstin ? ` · GSTIN ${escapeHtml(inv.seller_gstin)}` : ""}<br />
+          ${escapeHtml(inv.seller_address)}<br />
+          Place of supply: ${escapeHtml(inv.place_of_supply_state)} · ${inv.is_interstate ? "Inter-state (IGST)" : "Intra-state (CGST + SGST)"}<br />
+          This is a computer-generated invoice.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+// deno-lint-ignore no-explicit-any
+async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  if (!apiKey) {
+    console.warn("RESEND_API_KEY not set; skipping invoice email.");
+    return;
+  }
+
+  // The `is emailed_at null` filter is the idempotency guard: a retried
+  // webhook finds nothing to send.
+  const { data: inv } = await admin
+    .from("invoices")
+    .select(
+      `id, invoice_number, issue_date, buyer_name, buyer_email,
+       seller_name, seller_gstin, seller_address, place_of_supply_state,
+       is_interstate, taxable_value_paise, cgst_paise, sgst_paise, igst_paise,
+       total_paise, emailed_at,
+       orders ( order_number, order_items ( package_name ) )`
+    )
+    .eq("id", invoiceId)
+    .is("emailed_at", null)
+    .maybeSingle();
+
+  if (!inv) return; // already emailed, or not found
+  if (!inv.buyer_email) {
+    console.warn("Invoice", inv.invoice_number, "has no buyer email; not sending.");
+    return;
+  }
+
+  const from = Deno.env.get("INVOICE_FROM_EMAIL") ??
+    "Safe Creatives <noreply@safecreatives.com>";
+  const siteUrl = Deno.env.get("PUBLIC_SITE_URL")?.replace(/\/+$/, "") ?? null;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [inv.buyer_email],
+      subject: `Your Safe Creatives tax invoice ${inv.invoice_number}`,
+      html: buildInvoiceEmailHtml(inv, siteUrl),
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Resend ${res.status}: ${await res.text()}`);
+  }
+
+  await admin
+    .from("invoices")
+    .update({ emailed_at: new Date().toISOString() })
+    .eq("id", invoiceId);
+
+  console.log("Invoice", inv.invoice_number, "emailed to", inv.buyer_email);
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -362,12 +522,25 @@ Deno.serve(async (req) => {
         // here and nowhere else. A failure is recorded on the event rather
         // than failing the webhook: the payment DID capture, and telling
         // Razorpay otherwise would trigger retries of a captured payment.
+        let invoice;
         try {
-          await createAdvanceInvoice(admin, payment.order_id);
+          invoice = await createAdvanceInvoice(admin, payment.order_id);
         } catch (invoiceError) {
           console.error("Invoice generation failed:", invoiceError);
           await markProcessed(`Captured, but invoice failed: ${invoiceError}`);
           return json({ status: "captured, invoice failed" }, 200);
+        }
+
+        // Best-effort: a mail failure is logged but does not fail the webhook.
+        // The payment captured and the invoice exists either way; emailed_at
+        // keeps it from double-sending, and a null emailed_at leaves it
+        // eligible to re-send later.
+        try {
+          await emailInvoiceIfUnsent(admin, invoice.id);
+        } catch (emailError) {
+          console.error("Invoice email failed:", emailError);
+          await markProcessed(`Captured and invoiced, but email failed: ${emailError}`);
+          return json({ status: "captured, email failed" }, 200);
         }
 
         await markProcessed();
