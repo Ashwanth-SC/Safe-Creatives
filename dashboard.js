@@ -273,6 +273,37 @@
     });
     wrap.appendChild(totals);
 
+    // Printable documents for this order. The summary opens for any order;
+    // invoices appear once payment for a phase has been captured.
+    const docs = el("div", "order-docs");
+    docs.appendChild(el("span", "order-docs-label", "Documents"));
+
+    const summaryLink = el("a", "order-doc", "Order summary ↗");
+    summaryLink.href = `invoice.html?order=${encodeURIComponent(order.order_number)}`;
+    summaryLink.target = "_blank";
+    docs.appendChild(summaryLink);
+
+    const invoices = (order.invoices || []).sort(
+      (a, b) => a.phase_number - b.phase_number
+    );
+    if (invoices.length) {
+      invoices.forEach((inv) => {
+        const link = el(
+          "a",
+          "order-doc",
+          `${inv.phase_label || "Invoice"} — ${inv.invoice_number} ↗`
+        );
+        link.href = `invoice.html?number=${encodeURIComponent(inv.invoice_number)}`;
+        link.target = "_blank";
+        docs.appendChild(link);
+      });
+    } else {
+      docs.appendChild(
+        el("span", "order-doc-none", "No invoice yet — raised when payment is captured")
+      );
+    }
+
+    wrap.appendChild(docs);
     return wrap;
   }
 
@@ -289,7 +320,8 @@
            order_item_options ( product_name, group_name, option_name,
                                 finish, material, price_delta_paise ),
            order_item_addons ( addon_name, price_paise )
-         )`
+         ),
+         invoices ( invoice_number, phase_label, phase_number, total_paise )`
       )
       .order("placed_at", { ascending: false });
 

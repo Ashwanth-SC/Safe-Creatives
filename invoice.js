@@ -24,52 +24,74 @@
   const invoiceSheet = document.querySelector("#sheet");
   const errorEl = document.querySelector("#invoice-error");
 
-  const number = new URLSearchParams(window.location.search).get("number");
+  const params = new URLSearchParams(window.location.search);
+  const number = params.get("number");
+  const orderNumber = params.get("order");
 
   function fail(text) {
     errorEl.textContent = text;
     errorEl.hidden = false;
   }
 
-  if (!number) return fail("No invoice number was provided.");
+  // The order query is the same whether it is reached via an invoice or an
+  // order number, so it lives in one place.
+  const ORDER_SELECT = `order_number, status, placed_at,
+    subtotal_paise, gst_percent, gst_paise, total_paise,
+    advance_amount_paise, balance_paise,
+    contact_name, contact_email, contact_phone,
+    delivery_address_line, delivery_city, delivery_state_name,
+    delivery_pin_code,
+    order_items (
+      package_name, hsn_code, base_price_paise, line_total_paise,
+      order_item_options ( product_name, group_name, option_name,
+                           finish, material, price_delta_paise ),
+      order_item_addons ( addon_name, hsn_code, price_paise )
+    )`;
 
-  const { data: invoice, error } = await sb
-    .from("invoices")
-    .select("*, invoice_lines ( * )")
-    .eq("invoice_number", number)
-    .maybeSingle();
-
-  if (error || !invoice) {
-    return fail(
-      "This invoice could not be found on your account. Check the number, or contact us if you believe this is a mistake."
-    );
-  }
-
-  invoice.invoice_lines.sort((a, b) => a.line_number - b.line_number);
-
-  // The order behind the invoice, for the summary page. A manually raised
-  // invoice may have no order; the summary is simply skipped then.
+  let invoice = null;
   let order = null;
-  if (invoice.order_id) {
-    const { data } = await sb
-      .from("orders")
-      .select(
-        `order_number, status, placed_at,
-         subtotal_paise, gst_percent, gst_paise, total_paise,
-         advance_amount_paise, balance_paise,
-         contact_name, contact_email, contact_phone,
-         delivery_address_line, delivery_city, delivery_state_name,
-         delivery_pin_code,
-         order_items (
-           package_name, hsn_code, base_price_paise, line_total_paise,
-           order_item_options ( product_name, group_name, option_name,
-                                finish, material, price_delta_paise ),
-           order_item_addons ( addon_name, hsn_code, price_paise )
-         )`
-      )
-      .eq("id", invoice.order_id)
+
+  if (number) {
+    // Full document: order summary page + tax invoice page.
+    const { data, error } = await sb
+      .from("invoices")
+      .select("*, invoice_lines ( * )")
+      .eq("invoice_number", number)
       .maybeSingle();
+
+    if (error || !data) {
+      return fail(
+        "This invoice could not be found on your account. Check the number, or contact us if you believe this is a mistake."
+      );
+    }
+    invoice = data;
+    invoice.invoice_lines.sort((a, b) => a.line_number - b.line_number);
+
+    if (invoice.order_id) {
+      const { data: ord } = await sb
+        .from("orders")
+        .select(ORDER_SELECT)
+        .eq("id", invoice.order_id)
+        .maybeSingle();
+      order = ord;
+    }
+  } else if (orderNumber) {
+    // Summary only: an order that has no invoice yet (advance unpaid) still
+    // has a project summary worth printing.
+    const { data, error } = await sb
+      .from("orders")
+      .select(ORDER_SELECT)
+      .eq("order_number", orderNumber)
+      .maybeSingle();
+
+    if (error || !data) {
+      return fail(
+        "This order could not be found on your account. Check the reference, or contact us if you believe this is a mistake."
+      );
+    }
     order = data;
+  } else {
+    return fail("No invoice or order reference was provided.");
   }
 
   // ------------------------------------------------------------------
@@ -202,7 +224,11 @@
     summarySheet.innerHTML = `
       <div class="doc-head">
         <h1>ORDER SUMMARY</h1>
-        <span>ACCOMPANIES INVOICE ${esc(invoice.invoice_number)}</span>
+        <span>${
+          invoice
+            ? `ACCOMPANIES INVOICE ${esc(invoice.invoice_number)}`
+            : `ORDER ${esc(order.order_number)}`
+        }</span>
       </div>
 
       <div class="parties">
@@ -230,7 +256,11 @@
         <div class="row"><span>Balance after site verification</span><span>₹${rupees(order.balance_paise)}</span></div>
       </div>
 
-      <p class="doc-note">This summary describes the order as configured. The tax invoice on the following page covers the reservation advance only; the balance is invoiced at later phases.</p>
+      <p class="doc-note">${
+        invoice
+          ? "This summary describes the order as configured. The tax invoice on the following page covers the reservation advance only; the balance is invoiced at later phases."
+          : "This summary describes the order as configured. It is not a tax invoice; a tax invoice is issued once the reservation advance is paid."
+      }</p>
     `;
     summarySheet.hidden = false;
   }
@@ -356,6 +386,8 @@
   }
 
   if (order) renderSummary();
-  renderInvoice();
-  document.title = `${invoice.invoice_number} | Safe Creatives`;
+  if (invoice) renderInvoice();
+  document.title = `${
+    invoice ? invoice.invoice_number : order.order_number
+  } | Safe Creatives`;
 })();

@@ -46,7 +46,11 @@
   // the customer SEES before paying; the figures actually charged are
   // recomputed server-side and returned by the function.
   const GST_PERCENT = 18;
-  const ADVANCE_PAISE = 899900; // flat ₹8,999, GST inclusive
+  // ⚠️ TEMPORARY TEST VALUE — ₹5 (500 paise) for a live payment-gateway test.
+  // Revert to 899900 (₹8,999) after testing. This is DISPLAY ONLY; the amount
+  // actually charged comes from the create-order function's ADVANCE_PAISE env
+  // var, which must be set to 500 to match (supabase secrets set ADVANCE_PAISE=500).
+  const ADVANCE_PAISE = 500; // TEST: was 899900 (flat ₹8,999, GST inclusive)
 
   let currentTermsId = null;
 
@@ -490,10 +494,12 @@
       );
       openRazorpay(data);
     } catch (reserveError) {
-      message(
-        `Could not reserve your order: ${reserveError.message}. Nothing has been charged.`,
-        true
-      );
+      // Server-side errors often already end with their own reassurance;
+      // appending ours unconditionally read as "...charged.. Nothing has
+      // been charged." Only add it when the server didn't.
+      const text = String(reserveError.message || reserveError).replace(/\.+$/, "");
+      const suffix = /charged/i.test(text) ? "" : " Nothing has been charged.";
+      message(`Could not reserve your order: ${text}.${suffix}`, true);
       reserveButton.disabled = false;
     }
   }

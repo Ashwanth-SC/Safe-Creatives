@@ -167,3 +167,10 @@ button:disabled { opacity: .5; cursor: progress; }
 .stat-value.is-text { font-size:15px; font-family:"DM Mono",monospace; letter-spacing:.02em; padding:7px 0 8px; display:block; }
 .invoice-open { color:#0c4444; font-size:12px; text-decoration:none; white-space:nowrap; }
 .invoice-open:hover { text-decoration:underline; }
+
+/* Printable-document links inside an order's detail panel */
+.order-docs { grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:12px 16px; margin-top:2px; background:#fff; border:1px solid rgba(23,23,23,.12); }
+.order-docs-label { color:#6f222a; font:9px "DM Mono",monospace; letter-spacing:.12em; text-transform:uppercase; }
+.order-doc { color:#0c4444; font-size:12px; text-decoration:none; white-space:nowrap; }
+.order-doc:hover { text-decoration:underline; }
+.order-doc-none { color:#8b8f88; font-size:11.5px; font-style:italic; }
