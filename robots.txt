@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Private and transactional pages — no value to searchers, keep them out.
+Disallow: /login.html
+Disallow: /register.html
+Disallow: /checkout.html
+Disallow: /order-confirmation.html
+Disallow: /admin.html
+Disallow: /dashboard.html
+Disallow: /invoice.html
+
+Sitemap: https://www.safecreatives.com/sitemap.xml

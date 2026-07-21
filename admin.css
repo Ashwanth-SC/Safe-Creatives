@@ -3,12 +3,12 @@
    Dense on purpose: the job is scanning and editing many rows quickly.
    ========================================================================= */
 
-.admin-header { position: relative; background: #fff; border-bottom-color: rgba(23,23,23,.15); }
+.admin-header { background: #fff; border-bottom-color: rgba(23,23,23,.15); }
 .admin-badge { padding: 5px 9px; background: #0c4444; color: #fff; font: 9px "DM Mono", monospace; letter-spacing: .14em; }
 
-.admin-page { min-height: 100vh; padding: 0 0 100px; background: #f7f7f4; }
+.admin-page { min-height: 100vh; padding: var(--header-h) 0 100px; background: #f7f7f4; }
 
-.admin-intro { max-width: 1100px; margin: 0 auto; padding: clamp(70px,9vw,110px) 7vw 34px; }
+.admin-intro { max-width: 1100px; margin: 0 auto; padding: clamp(28px,4vw,52px) 7vw 34px; }
 .admin-intro .eyebrow { color: #6f222a; }
 .admin-intro h1 { margin: 0 0 18px; font-size: clamp(46px,6vw,84px); line-height: .85; letter-spacing: -.06em; }
 .admin-intro h1 span { color: #6f222a; }
