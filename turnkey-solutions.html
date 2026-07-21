@@ -41,9 +41,15 @@
       <section class="enquiry-section" aria-labelledby="enquiry-title">
         <div class="enquiry-heading"><p class="eyebrow">LET’S MAKE A START</p><h2 id="enquiry-title">Get in touch<span>.</span></h2><p>Tell us a little about your project. We’ll take it from there.</p></div>
         <form id="enquiry-form" class="enquiry-card" action="https://api.web3forms.com/submit" method="POST">
+          <!-- Replace the value with your Web3Forms access key (see setup notes).
+               It is a public client-side identifier tied to a destination email,
+               not a secret, so it is fine in page source. -->
           <input type="hidden" name="access_key" value="YOUR_WEB3FORMS_ACCESS_KEY" />
           <input type="hidden" name="subject" value="New Safe Creatives project enquiry" />
           <input type="hidden" name="from_name" value="Safe Creatives website" />
+          <!-- Web3Forms honeypot: a real person leaves this empty; a bot that
+               fills every field trips it and the submission is silently dropped. -->
+          <input type="checkbox" name="botcheck" style="display:none" tabindex="-1" autocomplete="off" aria-hidden="true" />
           <div class="form-step active"><span class="form-count">01 / 05</span><label for="full-name">What’s your full name?</label><input id="full-name" name="full_name" type="text" autocomplete="name" required placeholder="Your name" /><button type="button" class="form-next">Next ↗</button></div>
           <div class="form-step"><span class="form-count">02 / 05</span><label for="phone">What’s your 10 digit phone number?</label><input id="phone" name="phone" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" required placeholder="9876543210" /><div class="form-actions"><button type="button" class="form-prev">← Previous</button><button type="button" class="form-next">Next ↗</button></div></div>
           <div class="form-step"><span class="form-count">03 / 05</span><label for="pincode">What’s your 6 digit pin code?</label><input id="pincode" name="pin_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="600001" /><div class="form-actions"><button type="button" class="form-prev">← Previous</button><button type="button" class="form-next">Next ↗</button></div></div>
