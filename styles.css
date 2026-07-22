@@ -108,11 +108,24 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .sensory-feature span { display:block; color:#59635d; font-size:11px; line-height:1.4; letter-spacing:.02em; }
 /* In the narrow index copy column, two across reads better than four. */
 .sensory-copy .sensory-features { grid-template-columns:repeat(2,1fr); gap:12px; }
-/* Standalone block on the sensory-rooms page: match .catalog-intro's gutter. */
-.catalog-features { max-width:1180px; margin:0 0 8px; padding:0 7vw; }
-@media (max-width:820px) { .catalog-features { grid-template-columns:repeat(2,1fr); } }
-@media (max-width:720px) { .catalog-features { padding:0 24px; } }
-@media (max-width:400px) { .sensory-features { gap:10px; } .sensory-feature { padding:14px 13px; } }
+/* Standalone feature section on the sensory-rooms page — larger, icon-led
+   cards with more presence than the compact index version (scoped to
+   .catalog-features so the homepage block is untouched), a heading for
+   context, and breathing room before the package cards below. */
+.catalog-features-section { padding:6px 7vw clamp(56px,7vw,88px); }
+.features-eyebrow { max-width:1180px; margin:0 auto 24px; color:#6f222a; }
+.catalog-features { max-width:1180px; margin:0 auto; padding:0; gap:20px; }
+.catalog-features .sensory-feature { display:flex; flex-direction:column; padding:30px 26px 28px; border:1px solid rgba(23,23,23,.16); background:#fff; transition:transform .25s ease, box-shadow .25s ease; }
+.catalog-features .sensory-feature:hover { transform:translateY(-4px); box-shadow:0 16px 34px rgba(23,23,23,.09); }
+.catalog-features .feature-icon { display:flex; align-items:center; justify-content:center; width:46px; height:46px; margin-bottom:18px; border-radius:50%; background:rgba(111,34,42,.08); color:#6f222a; }
+.catalog-features .feature-icon svg { width:24px; height:24px; }
+.catalog-features .sensory-feature strong { margin-bottom:3px; font-size:clamp(27px,2.7vw,36px); color:#6f222a; }
+.catalog-features .feature-label { display:block; margin-bottom:9px; color:#171717; font-size:13px; font-weight:600; letter-spacing:.01em; }
+.catalog-features .feature-desc { display:block; color:#59635d; font-size:12.5px; line-height:1.5; }
+@media (max-width:900px) { .catalog-features { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:720px) { .catalog-features-section { padding:6px 24px clamp(48px,8vw,62px); } }
+@media (max-width:520px) { .catalog-features { grid-template-columns:1fr; gap:14px; } .catalog-features .sensory-feature { padding:24px 22px; } }
+@media (max-width:400px) { .sensory-copy .sensory-features { gap:10px; } .sensory-copy .sensory-feature { padding:14px 13px; } }
 /* Pricing / reservation note — sets expectations before anyone reserves. */
 .pricing-note strong { color:#6f222a; font-weight:600; }
 /* Cross-link from the sensory catalog to bespoke turnkey work. */
