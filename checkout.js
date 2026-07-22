@@ -46,11 +46,9 @@
   // the customer SEES before paying; the figures actually charged are
   // recomputed server-side and returned by the function.
   const GST_PERCENT = 18;
-  // ⚠️ TEMPORARY TEST VALUE — ₹5 (500 paise) for a live payment-gateway test.
-  // Revert to 899900 (₹8,999) after testing. This is DISPLAY ONLY; the amount
-  // actually charged comes from the create-order function's ADVANCE_PAISE env
-  // var, which must be set to 500 to match (supabase secrets set ADVANCE_PAISE=500).
-  const ADVANCE_PAISE = 500; // TEST: was 899900 (flat ₹8,999, GST inclusive)
+  // Flat ₹8,999, GST inclusive. Display only — the amount actually charged is
+  // recomputed by the create-order function (its ADVANCE_PAISE env var).
+  const ADVANCE_PAISE = 899900;
 
   let currentTermsId = null;
 
