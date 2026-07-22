@@ -33,6 +33,11 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .brand { color:var(--ink); font-size:15px; font-weight:600; letter-spacing:.19em; text-decoration:none; justify-self:start; }
 .brand { display:flex; align-items:center; gap:10px; }
 .brand-logo { display:block; width:auto; max-width:32px; height:28px; object-fit:contain; }
+/* Auth pages (login / register): no site nav — the header carries only the
+   brand and a plain link home, so the grid drops to two columns. */
+.site-header.auth-header { grid-template-columns:1fr auto; }
+.header-home-link { justify-self:end; color:var(--ink); font-size:13px; text-decoration:none; transition:color .2s; }
+.header-home-link:hover { color:#6f222a; }
 .primary-nav { display:flex; gap:37px; align-items:center; }
 .primary-nav a { color:var(--ink); font-size:13px; letter-spacing:.01em; text-decoration:none; position:relative; padding:8px 0; }
 .primary-nav a::after { content:""; position:absolute; height:1px; left:0; right:0; bottom:3px; background:currentColor; transform:scaleX(0); transform-origin:right; transition:transform .25s ease; }

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="./ASSET/SC_Logo_Logomark_Secondary.png" />
     <title>Complete Your Profile | Safe Creatives</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -11,15 +12,12 @@
        incomplete profile, so the usual "incomplete profile -> register"
        redirect must not apply here or it would loop. -->
   <body data-requires-auth="true" data-allow-incomplete="true">
-    <header class="site-header" aria-label="Primary navigation">
+    <header class="site-header auth-header" aria-label="Primary navigation">
       <a class="brand" href="index.html" aria-label="Safe Creatives home">
         <img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" />
         <span>SAFE CREATIVES</span>
       </a>
-      <nav class="primary-nav" aria-label="Main links">
-        <a href="index.html#sensory-rooms">Sensory rooms</a>
-        <a href="index.html#turnkey-solutions">Turnkey Solutions</a>
-      </nav>
+      <a class="header-home-link" href="index.html">← Back to home</a>
     </header>
     <main class="auth-page">
       <section class="auth-card" aria-labelledby="register-title">
