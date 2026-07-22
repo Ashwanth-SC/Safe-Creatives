@@ -45,7 +45,8 @@
          product_option_groups (
            id, key, name, display_as, sort_order,
            product_options ( id, key, name, description, price_delta_paise,
-                             image_paths, swatch_hex, finish, material, sort_order )
+                             image_paths, swatch_hex, finish, material,
+                             parent_option_id, is_active, sort_order )
          )
        ),
        package_addons ( id, key, name, description, image_path, price_paise,
@@ -116,11 +117,47 @@
 
   const isEditing = await loadExistingSelection();
 
-  // Anything not restored falls back to the first option in its group.
-  allGroups.forEach((group) => {
-    if (!chosenOption.has(group.id) && group.product_options.length) {
-      chosenOption.set(group.id, group.product_options[0].id);
+  // Defaults, size-then-colour aware: colours are children of a size, so the
+  // colour default (and any restored colour) must belong to the chosen size.
+  function firstColourFor(colourGroup, sizeId) {
+    return colourGroup.product_options.find(
+      (o) => o.parent_option_id === sizeId && o.is_active !== false
+    );
+  }
+
+  pkg.package_products.forEach((product) => {
+    const sizeGroup = product.product_option_groups.find((g) => g.key === "size");
+    const colourGroup = product.product_option_groups.find((g) => g.key === "colour");
+
+    if (sizeGroup && !chosenOption.has(sizeGroup.id) && sizeGroup.product_options.length) {
+      chosenOption.set(sizeGroup.id, sizeGroup.product_options[0].id);
     }
+
+    if (colourGroup) {
+      const sizeId = sizeGroup ? chosenOption.get(sizeGroup.id) : null;
+      const current = colourGroup.product_options.find(
+        (o) => o.id === chosenOption.get(colourGroup.id)
+      );
+      const validForSize =
+        current && current.parent_option_id === sizeId && current.is_active !== false;
+      if (!validForSize) {
+        const first = firstColourFor(colourGroup, sizeId);
+        if (first) chosenOption.set(colourGroup.id, first.id);
+        else chosenOption.delete(colourGroup.id);
+      }
+    }
+
+    // Any other groups (defensive) fall back to their first option.
+    product.product_option_groups.forEach((g) => {
+      if (
+        g.key !== "size" &&
+        g.key !== "colour" &&
+        !chosenOption.has(g.id) &&
+        g.product_options.length
+      ) {
+        chosenOption.set(g.id, g.product_options[0].id);
+      }
+    });
   });
 
   // A NEW configuration starts with the default add-ons already selected --
@@ -153,19 +190,31 @@
     totalElement.textContent = SC.money(totalPaise());
   }
 
-  // Images belong to whichever selected option carries them -- normally the
-  // colour. Size deliberately has none: a King bed in Sand looks like the Sand
-  // photos, so size changes price and nothing else.
-  function imageOptionFor(product) {
-    for (const group of product.product_option_groups) {
-      const selected = optionById(group.id, chosenOption.get(group.id));
-      if (selected?.image_paths?.length) return selected;
-    }
-    return null;
+  // Colours are children of a size (parent_option_id), each with its own
+  // gallery. The photo shown comes from the chosen colour; the visible colours
+  // are only those belonging to the chosen size.
+  function groupByKey(product, key) {
+    return product.product_option_groups.find((g) => g.key === key);
+  }
+  function chosenSizeId(product) {
+    const g = groupByKey(product, "size");
+    return g ? chosenOption.get(g.id) : null;
+  }
+  function coloursForSize(product) {
+    const cg = groupByKey(product, "colour");
+    if (!cg) return [];
+    const sizeId = chosenSizeId(product);
+    return cg.product_options.filter(
+      (o) => o.parent_option_id === sizeId && o.is_active !== false
+    );
+  }
+  function chosenColour(product) {
+    const cg = groupByKey(product, "colour");
+    return cg ? optionById(cg.id, chosenOption.get(cg.id)) : null;
   }
 
-  // Which photo in the current option's gallery is showing, per product.
-  // Resets to the first whenever the option changes.
+  // Which photo in the current gallery is showing, per product. Resets to the
+  // first whenever the size or colour changes.
   const galleryIndex = new Map();
 
   // ------------------------------------------------------------------
@@ -206,17 +255,52 @@
           </div>
         </div>`;
 
-      const groupsWrap = article.querySelector(".option-groups");
-      product.product_option_groups.forEach((group) =>
-        groupsWrap.appendChild(renderGroup(article, product, group))
-      );
-
+      renderOptionGroups(article, product);
       productsWrap.appendChild(article);
       refreshProduct(article, product);
     });
   }
 
-  function renderGroup(article, product, group) {
+  // Size chips, then the colours for the chosen size. Rebuilt whole on a size
+  // change so the colour set always matches the size.
+  function renderOptionGroups(article, product) {
+    const wrap = article.querySelector(".option-groups");
+    wrap.textContent = "";
+
+    const sizeGroup = groupByKey(product, "size");
+    const colourGroup = groupByKey(product, "colour");
+
+    if (sizeGroup) {
+      wrap.appendChild(
+        buildOptionGroup(sizeGroup, sizeGroup.product_options, product, false, (option) => {
+          chosenOption.set(sizeGroup.id, option.id);
+          // Colours are per-size — jump to the new size's first colour.
+          const colours = coloursForSize(product);
+          if (colourGroup) {
+            if (colours.length) chosenOption.set(colourGroup.id, colours[0].id);
+            else chosenOption.delete(colourGroup.id);
+          }
+          galleryIndex.set(product.id, 0);
+          renderOptionGroups(article, product);
+          refreshProduct(article, product);
+          updateTotal();
+        })
+      );
+    }
+
+    if (colourGroup) {
+      wrap.appendChild(
+        buildOptionGroup(colourGroup, coloursForSize(product), product, true, (option) => {
+          chosenOption.set(colourGroup.id, option.id);
+          galleryIndex.set(product.id, 0);
+          refreshProduct(article, product);
+          updateTotal();
+        })
+      );
+    }
+  }
+
+  function buildOptionGroup(group, options, product, isSwatch, onSelect) {
     const wrap = document.createElement("div");
     wrap.className = "option-group";
     wrap.dataset.groupId = group.id;
@@ -226,40 +310,15 @@
     label.textContent = group.name;
     wrap.appendChild(label);
 
-    const isSwatch = group.display_as === "swatch";
-
-    if (group.display_as === "dropdown") {
-      const select = document.createElement("select");
-      select.className = "option-select";
-      select.setAttribute("aria-label", `${product.name} — ${group.name}`);
-      group.product_options.forEach((option) => {
-        const el = document.createElement("option");
-        el.value = option.id;
-        el.textContent = labelFor(option);
-        if (option.id === chosenOption.get(group.id)) el.selected = true;
-        select.appendChild(el);
-      });
-      select.addEventListener("change", () => {
-        chosenOption.set(group.id, select.value);
-        refreshProduct(article, product);
-        updateTotal();
-      });
-      wrap.appendChild(select);
-      return wrap;
-    }
-
     const list = document.createElement("div");
     list.className = isSwatch ? "color-options" : "chip-options";
 
-    group.product_options.forEach((option) => {
+    options.forEach((option) => {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.optionId = option.id;
 
       if (isSwatch) {
-        // data-color keeps the existing packages.css rules working; the inline
-        // background is what guarantees a swatch renders, including for
-        // colours the stylesheet has never heard of.
         button.className = "color-option";
         button.dataset.color = option.name;
         button.style.background = option.swatch_hex || "#cccccc";
@@ -270,14 +329,7 @@
       }
 
       if (option.id === chosenOption.get(group.id)) button.classList.add("active");
-
-      button.addEventListener("click", () => {
-        chosenOption.set(group.id, option.id);
-        galleryIndex.set(product.id, 0);
-        refreshProduct(article, product);
-        updateTotal();
-      });
-
+      button.addEventListener("click", () => onSelect(option));
       list.appendChild(button);
     });
 
@@ -297,7 +349,7 @@
   function refreshProduct(article, product) {
     const image = article.querySelector(".product-gallery img");
     const thumbs = article.querySelector(".gallery-thumbs");
-    const shown = imageOptionFor(product);
+    const shown = chosenColour(product);
     const gallery = shown?.image_paths ?? [];
 
     const index = Math.min(galleryIndex.get(product.id) ?? 0, Math.max(gallery.length - 1, 0));

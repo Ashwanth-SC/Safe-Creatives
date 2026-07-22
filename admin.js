@@ -77,7 +77,8 @@
            product_option_groups (
              id, key, name, display_as, sort_order,
              product_options ( id, key, name, price_delta_paise, image_paths,
-                               swatch_hex, finish, material, is_active, sort_order )
+                               swatch_hex, finish, material, parent_option_id,
+                               is_active, sort_order )
            )
          ),
          package_addons ( id, key, name, description, image_path, price_paise,
@@ -311,88 +312,102 @@
   }
 
   // ------------------------------------------------------------------
-  // Option groups
+  // Sizes (each with its own colours)
   // ------------------------------------------------------------------
+  // Colours are children of a size via parent_option_id, each with its own
+  // gallery. So a size expands to reveal that size's colours; add/remove
+  // colours per size, and add more sizes.
 
-  function renderGroup(product, group) {
+  function coloursOfSize(colourGroup, sizeOption) {
+    return colourGroup
+      ? colourGroup.product_options.filter(
+          (o) => o.parent_option_id === sizeOption.id && o.is_active !== false
+        )
+      : [];
+  }
+
+  function renderSize(product, sizeGroup, colourGroup, sizeOption) {
     const box = document.createElement("details");
     box.className = "admin-group";
-    // Keys let render() restore which sections were open after a save.
-    box.dataset.key = `grp:${group.id}`;
+    box.dataset.key = `size:${sizeOption.id}`;
+
+    const colours = coloursOfSize(colourGroup, sizeOption);
 
     const summary = document.createElement("summary");
-    summary.innerHTML = `<strong>${group.name}</strong> <span class="admin-subtle">${group.display_as} · ${group.product_options.length} option(s)</span>`;
+    summary.innerHTML = `<strong>Size: ${sizeOption.name}</strong> <span class="admin-subtle">${colours.length} colour(s)</span>`;
     box.appendChild(summary);
 
-    const name = field("Group name", group.name);
-    const display = select("Shown as", group.display_as, [
-      ["swatch", "Colour swatches"],
-      ["chip", "Chips (best for sizes)"],
-      ["dropdown", "Dropdown (long lists)"],
-    ]);
-    const sort = field("Order", group.sort_order, { type: "number" });
+    const name = field("Size name", sizeOption.name);
+    const price = moneyField("Price change (₹)", sizeOption.price_delta_paise);
+    const sort = field("Order", sizeOption.sort_order, { type: "number" });
 
     const head = document.createElement("div");
     head.className = "admin-inline";
-    head.append(name, display, sort);
+    head.append(name, price, sort);
+    box.appendChild(head);
 
-    const saveBtn = button("Save group", "admin-small", () => {});
+    const saveBtn = button("Save size", "admin-small", () => {});
     saveBtn.addEventListener(
       "click",
       action(
         saveBtn,
         () =>
-          save("product_option_groups", group.id, {
+          save("product_options", sizeOption.id, {
             name: name.input.value.trim(),
-            display_as: display.input.value,
+            price_delta_paise: toPaise(price.input.value),
             sort_order: Number(sort.input.value) || 0,
           }),
-        "Group saved"
+        "Size saved"
       )
     );
 
-    const delBtn = button("Delete group", "admin-danger", () => {});
+    const delBtn = button("Delete size", "admin-danger", () => {});
     delBtn.addEventListener("click", async () => {
       if (
         !(await confirmDelete(
-          `the "${group.name}" group`,
-          `All ${group.product_options.length} option(s) inside it go too.`
+          `the size "${sizeOption.name}"`,
+          `Its ${colours.length} colour(s) go too. Sizes in a cart or order cannot be deleted — the database will refuse.`
         ))
       )
         return;
-      action(delBtn, () => remove("product_option_groups", group.id), "Group deleted")();
+      action(delBtn, () => remove("product_options", sizeOption.id), "Size deleted")();
     });
 
-    const headActions = document.createElement("div");
-    headActions.className = "admin-row-actions";
-    headActions.append(saveBtn, delBtn);
+    const actions = document.createElement("div");
+    actions.className = "admin-row-actions";
+    actions.append(saveBtn, delBtn);
+    box.appendChild(actions);
 
-    box.append(head, headActions);
+    const coloursTitle = document.createElement("p");
+    coloursTitle.className = "admin-section-title";
+    coloursTitle.textContent = "Colours for this size";
+    box.appendChild(coloursTitle);
 
-    group.product_options.forEach((option) =>
-      box.appendChild(renderOption(group, option))
-    );
+    // Reuse the option editor (swatch + gallery) for each colour.
+    colours.forEach((colour) => box.appendChild(renderOption(colourGroup, colour)));
 
-    const addBtn = button("+ Add option", "admin-small", () => {});
-    addBtn.addEventListener(
+    const addColour = button("+ Add colour", "admin-small", () => {});
+    addColour.addEventListener(
       "click",
       action(
-        addBtn,
+        addColour,
         async () => {
-          const label = window.prompt("Option name (e.g. King, or Charcoal)");
+          if (!colourGroup) throw new Error("This product has no colour group.");
+          const label = window.prompt("Colour name (e.g. Charcoal)");
           if (!label) return;
           await create("product_options", {
-            group_id: group.id,
+            group_id: colourGroup.id,
+            parent_option_id: sizeOption.id,
             key: slugify(label),
             name: label,
             price_delta_paise: 0,
-            sort_order: group.product_options.length + 1,
+            sort_order: colours.length + 1,
           });
         },
-        "Option added"
+        "Colour added — set its swatch and images"
       )
     );
-    box.appendChild(addBtn);
+    box.appendChild(addColour);
 
     return box;
   }
@@ -406,8 +421,12 @@
     box.className = "admin-product";
     box.dataset.key = `prod:${product.id}`;
 
+    const sizeGroup = product.product_option_groups.find((g) => g.key === "size");
+    const colourGroup = product.product_option_groups.find((g) => g.key === "colour");
+    const sizeCount = sizeGroup ? sizeGroup.product_options.length : 0;
+
     const summary = document.createElement("summary");
-    summary.innerHTML = `<strong>${product.name}</strong> <span class="admin-subtle">${product.product_option_groups.length} option group(s)</span>`;
+    summary.innerHTML = `<strong>${product.name}</strong> <span class="admin-subtle">${sizeCount} size(s)</span>`;
     box.appendChild(summary);
 
     const name = field("Product name", product.name);
@@ -459,30 +478,44 @@
     actions.append(saveBtn, delBtn);
     box.appendChild(actions);
 
-    product.product_option_groups.forEach((group) =>
-      box.appendChild(renderGroup(product, group))
-    );
+    const sizesTitle = document.createElement("p");
+    sizesTitle.className = "admin-section-title";
+    sizesTitle.textContent = "Sizes & colours";
+    box.appendChild(sizesTitle);
 
-    const addGroup = button("+ Add option group", "admin-small", () => {});
-    addGroup.addEventListener(
-      "click",
-      action(
-        addGroup,
-        async () => {
-          const label = window.prompt("Group name (e.g. Size, Colour, Fabric)");
-          if (!label) return;
-          await create("product_option_groups", {
-            product_id: product.id,
-            key: slugify(label),
-            name: label,
-            display_as: "chip",
-            sort_order: product.product_option_groups.length + 1,
-          });
-        },
-        "Group added"
-      )
-    );
-    box.appendChild(addGroup);
+    if (sizeGroup) {
+      sizeGroup.product_options.forEach((sizeOption) =>
+        box.appendChild(renderSize(product, sizeGroup, colourGroup, sizeOption))
+      );
+
+      const addSize = button("+ Add size", "admin-small", () => {});
+      addSize.addEventListener(
+        "click",
+        action(
+          addSize,
+          async () => {
+            const label = window.prompt("Size name (e.g. King, or 200 × 300 cm)");
+            if (!label) return;
+            await create("product_options", {
+              group_id: sizeGroup.id,
+              key: slugify(label),
+              name: label,
+              price_delta_paise: 0,
+              sort_order: sizeGroup.product_options.length + 1,
+            });
+          },
+          "Size added — now add its colours"
+        )
+      );
+      box.appendChild(addSize);
+    } else {
+      const note = document.createElement("p");
+      note.className = "admin-subtle";
+      note.style.margin = "8px 22px";
+      note.textContent =
+        "This product has no Size group. Products created here get one automatically; older ones may need it added in SQL.";
+      box.appendChild(note);
+    }
 
     return box;
   }
