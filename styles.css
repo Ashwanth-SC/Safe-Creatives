@@ -97,7 +97,11 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .sensory-cta { display:inline-flex; align-items:center; gap:20px; padding:14px 18px; border:1px solid var(--ink); color:var(--ink); font-size:12px; text-decoration:none; transition:background .2s,color .2s; }
 .sensory-cta:hover { color:#fff; background:var(--ink); }
 .workflow { position:relative; display:grid; grid-template-columns:repeat(4,1fr); gap:16px; padding-top:25px; }
-.workflow-line { position:absolute; top:69px; left:8%; right:8%; height:1px; background:#9dad9f; overflow:visible; }
+/* The dots are left-aligned in each 1fr column at (dot radius) from the
+   column's left edge, so the line must start at the first dot's centre (11px)
+   and end at the last dot's centre — one column minus a radius in from the
+   right: col = (100% - 3*16px gap)/4 = 25% - 12px, minus 11px radius. */
+.workflow-line { position:absolute; top:70px; left:11px; right:calc(25% - 23px); height:1px; background:#9dad9f; overflow:visible; }
 .workflow-line::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,#293a32,transparent); background-size:25% 100%; background-repeat:no-repeat; animation:workflowLineGlow 4.8s infinite ease-in-out; }
 .workflow-step { position:relative; z-index:1; }
 .step-number { display:block; margin-bottom:21px; color:#708176; font:10px "DM Mono",monospace; letter-spacing:.14em; }
