@@ -283,8 +283,11 @@ button:hover { background:transparent; color:var(--ink); }
 .label-hint { color:#8b8f88; font-weight:400; text-transform:none; letter-spacing:0; }
 
 /* Catalog admin entry point, shown only to staff accounts */
-.account-admin-link { display:block; margin-bottom:8px; padding:9px 10px; border:1px solid #0c4444; color:#0c4444; font:11px "DM Sans",sans-serif; text-align:center; text-decoration:none; }
-.account-admin-link:hover { color:#fff; background:#0c4444; }
+/* Scoped to .account-dropdown so these win over context rules like
+   `.package-topbar a { color:#fff }`, which is more specific than a lone
+   class and otherwise renders these links white-on-white until hover. */
+.account-dropdown .account-admin-link { display:block; margin-bottom:8px; padding:9px 10px; border:1px solid #0c4444; color:#0c4444; font:11px "DM Sans",sans-serif; text-align:center; text-decoration:none; }
+.account-dropdown .account-admin-link:hover { color:#fff; background:#0c4444; }
 
 /* State dropdown on the registration card, matching the underlined inputs */
 .auth-card select { width:100%; margin-bottom:12px; padding:13px 0; border:0; border-bottom:1px solid #9ea39a; background:transparent; color:var(--ink); font:14px inherit; outline:none; cursor:pointer; }
