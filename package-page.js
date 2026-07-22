@@ -117,6 +117,55 @@
 
   const isEditing = await loadExistingSelection();
 
+  // Browsing is open to everyone, but saving to a cart needs an account. When a
+  // logged-out visitor configures a package and hits save, the selection is
+  // stashed in localStorage and they are sent to log in; on return to this page
+  // it is restored so nothing is retyped. Keyed by package so the two do not mix.
+  const stashKey = `sc-config-${packageKey}`;
+
+  function stashSelection() {
+    try {
+      localStorage.setItem(
+        stashKey,
+        JSON.stringify({
+          options: [...chosenOption.entries()],
+          addons: [...chosenAddons],
+        })
+      );
+    } catch (_ignored) {
+      // Private mode or quota: not worth blocking the login redirect over.
+    }
+  }
+
+  function restoreStashedSelection() {
+    if (editItemId) return false; // editing a saved item takes precedence
+    let raw = null;
+    try {
+      raw = localStorage.getItem(stashKey);
+    } catch (_ignored) {
+      return false;
+    }
+    if (!raw) return false;
+    try {
+      localStorage.removeItem(stashKey);
+    } catch (_ignored) {
+      /* ignore */
+    }
+    try {
+      const saved = JSON.parse(raw);
+      (saved.options || []).forEach(([groupId, optionId]) => {
+        // Skip anything the catalog has since dropped; defaults fill the gap.
+        if (optionById(groupId, optionId)) chosenOption.set(groupId, optionId);
+      });
+      (saved.addons || []).forEach((id) => chosenAddons.add(id));
+      return true;
+    } catch (_ignored) {
+      return false;
+    }
+  }
+
+  const isRestored = restoreStashedSelection();
+
   // Defaults, size-then-colour aware: colours are children of a size, so the
   // colour default (and any restored colour) must belong to the chosen size.
   function firstColourFor(colourGroup, sizeId) {
@@ -165,7 +214,7 @@
   // they do. Editing an existing cart item does NOT do this: their saved
   // choices are the truth, and re-ticking a removed add-on would silently
   // put back something they had deliberately taken out.
-  if (!isEditing) {
+  if (!isEditing && !isRestored) {
     pkg.package_addons.forEach((addon) => {
       if (addon.is_default_selected) chosenAddons.add(addon.id);
     });
@@ -552,7 +601,19 @@
   // Actions
   // ------------------------------------------------------------------
 
+  // Gate the cart actions. Returns true if the visitor may proceed; otherwise it
+  // stashes the current selection and sends them to log in — the `next` param
+  // carries back to this page through the whole login + registration flow.
+  function requireLogin() {
+    if (SC.session) return true;
+    stashSelection();
+    SC.toLogin();
+    return false;
+  }
+
   async function savePackage() {
+    if (!requireLogin()) return false;
+
     const button = document.querySelector("#save-package");
     button.disabled = true;
 
@@ -586,6 +647,8 @@
   }
 
   async function reviewOrder() {
+    if (!requireLogin()) return;
+
     // Deliberately does NOT offer to save. Offering it here misled people who
     // had already pressed Save into saving a second copy. This only checks
     // they meant to move on.

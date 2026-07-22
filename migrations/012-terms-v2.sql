@@ -28,7 +28,7 @@ values (
   $body$Terms & Conditions
 
 1. Nature of Order
-By placing an order on this website, you are initiating a reservation for the selected room package (living room / dining room). This is not an immediate confirmed sale. Upon reservation, our representative will contact you within 48 hours to conduct a site verification, including space dimensions, access points (staircase/lift/doorway clearances), and placement feasibility. Your order will be confirmed only after successful verification. Products move into manufacturing and the delivery pipeline only post this confirmation.
+By placing an order on this website, you are initiating a reservation for the selected package. This is not an immediate confirmed sale. Upon reservation, our representative will contact you within 48 hours to conduct a site verification, including space dimensions, access points (staircase/lift/doorway clearances), and placement feasibility. Your order will be confirmed only after successful verification. Products move into manufacturing and the delivery pipeline only post this confirmation.
 
 2. Cancellation & Refund
 Customers may request cancellation of their reservation within 72 hours from the time our representative first reaches out to them for site verification. Refund requests raised within this 72-hour window will be processed as applicable. No refund will be entertained for cancellation requests raised after this 72-hour period, including cases where the customer changes their mind or reassesses their requirement after this window has lapsed.
