@@ -312,6 +312,10 @@ function buildInvoiceEmailHtml(inv: any, siteUrl: string | null): string {
             touch to arrange a site visit and confirm the next steps; the balance is
             invoiced at later project phases.
           </p>
+          <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:#59635d">
+            Attached to this email you'll find your tax invoice with the full order
+            summary, and our warranty &amp; workflow document, both as PDFs.
+          </p>
           ${viewLink}
         </td></tr>
 
@@ -572,6 +576,34 @@ async function renderInvoicePdf(html: string): Promise<string | null> {
   return bytesToBase64(new Uint8Array(await res.arrayBuffer()));
 }
 
+// ----------------------------------------------------------------------
+// Warranty + workflow document
+// ----------------------------------------------------------------------
+// A fixed PDF (warranty terms + the project workflow) sent alongside every
+// invoice. It lives at WARRANTY_PDF_URL -- a public Supabase Storage object --
+// so it can be revised without redeploying the function. Best-effort: if the
+// URL is unset or the fetch fails, the invoice email still goes out without it.
+async function fetchWarrantyAttachment(): Promise<
+  { filename: string; content: string } | null
+> {
+  const url = Deno.env.get("WARRANTY_PDF_URL");
+  if (!url) {
+    console.warn("WARRANTY_PDF_URL not set; invoice email will omit the warranty document.");
+    return null;
+  }
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return {
+      filename: "Safe-Creatives-Warranty-and-Workflow.pdf",
+      content: bytesToBase64(new Uint8Array(await res.arrayBuffer())),
+    };
+  } catch (warrantyError) {
+    console.error("Could not fetch warranty document; sending without it:", warrantyError);
+    return null;
+  }
+}
+
 // deno-lint-ignore no-explicit-any
 async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
   const apiKey = Deno.env.get("RESEND_API_KEY");
@@ -625,17 +657,22 @@ async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
     console.error("Invoice PDF generation failed; sending without attachment:", pdfError);
   }
 
+  // Two attachments: the invoice + order-summary PDF (per order), and the
+  // fixed warranty + workflow document. Each is independent and best-effort.
+  const attachments: Array<{ filename: string; content: string }> = [];
+  if (pdfBase64) {
+    attachments.push({ filename: `Safe-Creatives-${inv.invoice_number}.pdf`, content: pdfBase64 });
+  }
+  const warranty = await fetchWarrantyAttachment();
+  if (warranty) attachments.push(warranty);
+
   const payload: Record<string, unknown> = {
     from,
     to: [inv.buyer_email],
     subject: `Your Safe Creatives tax invoice ${inv.invoice_number}`,
     html: buildInvoiceEmailHtml(inv, siteUrl),
   };
-  if (pdfBase64) {
-    payload.attachments = [
-      { filename: `Safe-Creatives-${inv.invoice_number}.pdf`, content: pdfBase64 },
-    ];
-  }
+  if (attachments.length) payload.attachments = attachments;
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -657,7 +694,9 @@ async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
 
   console.log(
     "Invoice", inv.invoice_number, "emailed to", inv.buyer_email,
-    pdfBase64 ? "with PDF" : "without PDF"
+    `with ${attachments.length} attachment(s)`,
+    pdfBase64 ? "[invoice PDF]" : "[no invoice PDF]",
+    warranty ? "[warranty PDF]" : "[no warranty PDF]"
   );
 }
 
