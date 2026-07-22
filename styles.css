@@ -115,6 +115,11 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 @media (max-width:400px) { .sensory-features { gap:10px; } .sensory-feature { padding:14px 13px; } }
 /* Pricing / reservation note — sets expectations before anyone reserves. */
 .pricing-note strong { color:#6f222a; font-weight:600; }
+/* Cross-link from the sensory catalog to bespoke turnkey work. */
+.catalog-bespoke { padding:44px 7vw 72px; text-align:center; }
+.catalog-bespoke p { max-width:620px; margin:0 auto; color:#59635d; font-size:14.5px; line-height:1.6; }
+.catalog-bespoke a { color:#6f222a; text-decoration:underline; text-underline-offset:4px; }
+.catalog-bespoke a:hover { color:#0c4444; }
 /* Floating WhatsApp enquiry button (injected by auth.js on public pages). */
 .whatsapp-float { position:fixed; right:22px; bottom:22px; z-index:45; display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:50%; color:#fff; background:#25d366; box-shadow:0 8px 22px rgba(18,140,80,.32); transition:transform .18s ease, box-shadow .18s ease; }
 .whatsapp-float:hover { color:#fff; transform:translateY(-2px); box-shadow:0 12px 28px rgba(18,140,80,.4); }
