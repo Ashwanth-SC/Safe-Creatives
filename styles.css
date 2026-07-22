@@ -40,6 +40,11 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .account-link { justify-self:end; display:grid; width:38px; height:38px; border:1px solid var(--ink); border-radius:50%; place-items:center; color:var(--ink); transition:background .2s,color .2s; }
 .account-link:hover { color:var(--paper); background:var(--ink); }
 .account-link svg { width:18px; fill:none; stroke:currentColor; stroke-width:1.35; stroke-linecap:round; }
+/* Header back/utility link. Lives here (not only in packages.css) because
+   checkout, order-confirmation, admin and dashboard use it but do not load
+   packages.css — without this it fell back to the browser's default blue. */
+.catalog-back { justify-self:end; color:#171717; font-size:13px; text-decoration:none; transition:color .2s; }
+.catalog-back:hover { color:#6f222a; }
 .auth-generated { position:absolute; right:4.1vw; top:24px; z-index:30; background:#fff; }
 .package-topbar .auth-generated { top:8px; right:7vw; color:#fff; border-color:rgba(255,255,255,.6); background:transparent; }
 .account-dropdown { position:absolute; z-index:40; top:76px; right:4.1vw; width:185px; padding:14px; border:1px solid rgba(23,23,23,.14); background:#fff; box-shadow:0 14px 32px rgba(23,23,23,.14); }
@@ -51,9 +56,9 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .hero-slides, .hero-shade { position:absolute; inset:0; }
 .hero-slides { display:flex; width:300%; animation:swipe 24s infinite ease-in-out; }
 .hero-slide { width:33.333%; flex:0 0 33.333%; background-position:center; background-size:cover; }
-.slide-one { background-image:url("https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=2400&q=85"); }
-.slide-two { background-image:url("https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=2400&q=85"); }
-.slide-three { background-image:url("https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=2400&q=85"); }
+.slide-one { background-image:url("https://zcdcalwgyvlcawcflojl.supabase.co/storage/v1/object/public/Catalogue/COVER%20IMAGE/Cover%20image%201.png"); }
+.slide-two { background-image:url("https://zcdcalwgyvlcawcflojl.supabase.co/storage/v1/object/public/Catalogue/COVER%20IMAGE/Cover%20image%202.png"); }
+.slide-three { background-image:url("https://zcdcalwgyvlcawcflojl.supabase.co/storage/v1/object/public/Catalogue/COVER%20IMAGE/Cover%20image%203.png"); }
 .hero-shade { background:linear-gradient(90deg,rgba(111,34,42,.56),rgba(12,68,68,.12) 60%,rgba(12,68,68,.26)); }
 .hero-content { position:relative; z-index:1; width:min(100% - 40px,1000px); padding:100px 0 40px; text-align:center; }
 .hero-content .eyebrow { margin-bottom:25px; color:rgba(255,255,255,.85); }
