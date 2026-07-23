@@ -397,6 +397,7 @@
       }
       Object.assign(order, patch);
       message(`Order ${order.order_number} tracking updated.`);
+      window.alert("Tracking saved.");
     });
     wrap.appendChild(saveBtn);
 
