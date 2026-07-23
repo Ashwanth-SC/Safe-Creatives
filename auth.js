@@ -249,7 +249,11 @@ window.SC = (function () {
         '<a class="account-admin-link" href="admin.html">Catalog admin</a>'
       : "";
 
-    dropdown.innerHTML = `<span class="account-status"></span>${adminLink}<button type="button" class="logout-button">Log out</button>`;
+    // Every signed-in customer can follow their orders' progress and payments.
+    const trackLink =
+      '<a class="account-admin-link" href="track-order.html">Track my orders</a>';
+
+    dropdown.innerHTML = `<span class="account-status"></span>${adminLink}${trackLink}<button type="button" class="logout-button">Log out</button>`;
     container.appendChild(dropdown);
 
     dropdown.querySelector(".account-status").textContent =

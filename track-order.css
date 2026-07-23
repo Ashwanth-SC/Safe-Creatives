@@ -1,0 +1,74 @@
+/* ============================================================================
+   Customer order tracking
+   ========================================================================== */
+.track-page { min-height:100vh; padding:calc(var(--header-h) + clamp(30px,5vw,56px)) 7vw 100px; background:#f7f7f4; }
+.track-intro { max-width:1000px; margin:0 auto 40px; }
+.track-intro .eyebrow { color:#6f222a; }
+.track-intro h1 { margin:0 0 18px; font-size:clamp(48px,7vw,96px); line-height:.85; letter-spacing:-.05em; }
+.track-intro h1 em { color:#6f222a; }
+.track-intro > p:last-child { max-width:460px; color:#59635d; line-height:1.65; }
+
+.track-list { display:flex; flex-direction:column; gap:26px; max-width:1000px; margin:0 auto; }
+.track-empty { max-width:1000px; margin:0 auto; padding:40px 0; color:#59635d; font-size:15px; }
+.track-empty a { color:#6f222a; text-underline-offset:4px; }
+
+/* Card ---------------------------------------------------------------------- */
+.track-card { padding:clamp(24px,4vw,38px); background:#fff; box-shadow:0 14px 38px rgba(23,23,23,.07); }
+.track-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; margin-bottom:30px; }
+.track-eyebrow { margin:0 0 8px; color:#777; font:9px "DM Mono",monospace; letter-spacing:.12em; }
+.track-card-head h2 { margin:0; font-size:clamp(24px,3vw,34px); font-weight:500; letter-spacing:-.04em; }
+.track-status { flex:none; padding:6px 12px; font:9px "DM Mono",monospace; letter-spacing:.1em; text-transform:uppercase; white-space:nowrap; }
+.track-status.is-live { color:#0c4444; background:rgba(12,68,68,.1); }
+.track-status.is-cancelled { color:#6f222a; background:rgba(111,34,42,.1); }
+.track-cancelled-note { margin:0 0 28px; padding:16px 18px; border-left:3px solid #6f222a; background:#fbf6f6; color:#59635d; font-size:13.5px; line-height:1.6; }
+
+/* Progress stepper ---------------------------------------------------------- */
+.track-steps { display:flex; list-style:none; margin:0 0 32px; padding:0; }
+.track-step { position:relative; flex:1; text-align:center; min-width:0; }
+.track-step::before { content:""; position:absolute; top:9px; left:-50%; width:100%; height:2px; background:#dcdcd5; z-index:0; }
+.track-step:first-child::before { display:none; }
+.track-step.is-done::before { background:#0c4444; }
+.track-dot { position:relative; z-index:1; display:block; width:20px; height:20px; margin:0 auto 10px; border-radius:50%; background:#fff; border:2px solid #cfcfc8; transition:background .2s, border-color .2s; }
+.track-step.is-done .track-dot { background:#0c4444; border-color:#0c4444; }
+.track-step.is-current .track-dot { background:#6f222a; border-color:#6f222a; box-shadow:0 0 0 4px rgba(111,34,42,.16); }
+.track-step-label { font-size:11.5px; line-height:1.3; color:#8b8f88; letter-spacing:.01em; }
+.track-step.is-done .track-step-label { color:#171717; }
+.track-step.is-current .track-step-label { color:#6f222a; font-weight:600; }
+
+/* Payments + installation --------------------------------------------------- */
+.track-subhead { margin:0 0 14px; color:#6f222a; font:9px "DM Mono",monospace; letter-spacing:.14em; text-transform:uppercase; }
+.track-payments { padding-top:24px; border-top:1px solid rgba(23,23,23,.1); }
+.track-pay { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:16px; padding:11px 0; border-bottom:1px dashed rgba(23,23,23,.12); }
+.track-pay:last-child { border-bottom:0; }
+.track-pay-label { color:#59635d; font-size:13.5px; }
+.track-pay-amount { font-variant-numeric:tabular-nums; font-size:14px; }
+.track-badge { padding:4px 10px; font:9px "DM Mono",monospace; letter-spacing:.08em; text-transform:uppercase; }
+.track-badge.is-paid { color:#0c4444; background:rgba(12,68,68,.1); }
+.track-badge.is-pending { color:#8a6d1a; background:rgba(208,178,142,.28); }
+
+.track-install { margin-top:26px; padding-top:24px; border-top:1px solid rgba(23,23,23,.1); }
+.install-options { display:flex; flex-wrap:wrap; gap:10px; }
+.install-option { padding:11px 16px; border:1px solid rgba(23,23,23,.3); background:transparent; color:#171717; font:12px "DM Sans",sans-serif; cursor:pointer; transition:background .2s, color .2s, border-color .2s; }
+.install-option:hover { border-color:#6f222a; }
+.install-option.is-selected { color:#fff; background:#6f222a; border-color:#6f222a; }
+.install-note { margin:12px 0 0; color:#59635d; font-size:12.5px; line-height:1.6; }
+
+/* Documents ----------------------------------------------------------------- */
+.track-docs { display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-top:26px; padding-top:20px; border-top:1px solid rgba(23,23,23,.1); }
+.track-docs-label { color:#777; font:9px "DM Mono",monospace; letter-spacing:.12em; text-transform:uppercase; }
+.track-doc { color:#6f222a; font-size:12.5px; text-decoration:underline; text-underline-offset:4px; }
+.track-doc:hover { color:#0c4444; }
+
+/* Mobile: the stepper reads better stacked vertically -----------------------*/
+@media (max-width:640px) {
+  .track-page { padding-left:24px; padding-right:24px; }
+  .track-steps { flex-direction:column; margin-bottom:26px; }
+  .track-step { flex:none; display:grid; grid-template-columns:20px 1fr; align-items:center; column-gap:14px; min-height:46px; text-align:left; }
+  .track-step::before { top:0; left:9px; width:2px; height:100%; }
+  .track-dot { margin:0; }
+  .track-step-label { font-size:13px; }
+  .track-pay { grid-template-columns:1fr auto; row-gap:2px; }
+  .track-pay-amount { grid-column:2; grid-row:1; }
+  .track-badge { grid-column:2; grid-row:2; justify-self:end; }
+  .track-pay-label { grid-column:1; grid-row:1 / span 2; }
+}

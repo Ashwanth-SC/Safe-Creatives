@@ -9,5 +9,6 @@ Disallow: /order-confirmation.html
 Disallow: /admin.html
 Disallow: /dashboard.html
 Disallow: /invoice.html
+Disallow: /track-order.html
 
 Sitemap: https://safecreatives.com/sitemap.xml

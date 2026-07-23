@@ -9,9 +9,12 @@
 //   Registrations    — who signed up, with contact details
 //   Payments         — gateway records and refunds
 //
-// Read-only on purpose. Editing an order's totals from a screen would break
-// the guarantee that what is stored is what the server computed, and the RLS
-// policies backing this page are SELECT only regardless of what the UI does.
+// Read-only over the financial record on purpose: editing an order's totals
+// from a screen would break the guarantee that what is stored is what the
+// server computed. The ONE exception is the order tracking (milestones and the
+// later installment statuses) — migration 014 grants admins UPDATE on just
+// those four columns so they can be advanced here and shown to the customer on
+// their "Track order" page. Everything else stays SELECT only.
 //
 // Everything here depends on the admin read policies in migration 005.
 // Without them an admin sees only their own rows and the page looks empty
@@ -304,6 +307,99 @@
     }
 
     wrap.appendChild(docs);
+    wrap.appendChild(trackingEditor(order));
+    return wrap;
+  }
+
+  // Editable order tracking — the milestones and installment statuses the
+  // customer sees on their "Track order" page. Only these operational fields
+  // are writable (migration 014 grants UPDATE on exactly these columns to
+  // admins); the financial totals above stay read-only and server-computed.
+  const STAGE_OPTIONS = [
+    ["reserved", "Reserved"],
+    ["confirmed", "Confirmed"],
+    ["cancelled", "Cancelled"],
+    ["production", "Production"],
+    ["dispatch", "Dispatch"],
+    ["delivered", "Delivered"],
+    ["installed", "Installed"],
+  ];
+  const INSTALL_OPTIONS = [
+    ["undecided", "Undecided"],
+    ["in_house", "Install with us"],
+    ["self", "Own carpenter"],
+  ];
+
+  function labelledSelect(labelText, options, selected) {
+    const field = el("label", "track-edit-field");
+    field.appendChild(el("span", null, labelText));
+    const sel = document.createElement("select");
+    options.forEach(([value, text]) => {
+      const opt = el("option", null, text);
+      opt.value = value;
+      if (value === selected) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    field.appendChild(sel);
+    return { field, input: sel };
+  }
+
+  function labelledCheck(labelText, checked) {
+    const field = el("label", "track-edit-check");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = checked;
+    field.append(input, el("span", null, labelText));
+    return { field, input };
+  }
+
+  function trackingEditor(order) {
+    const wrap = el("div", "order-track");
+    wrap.appendChild(el("span", "order-docs-label", "Tracking — the customer sees this"));
+
+    const stage = labelledSelect("Milestone", STAGE_OPTIONS, order.fulfillment_stage);
+    const install = labelledSelect("Installation", INSTALL_OPTIONS, order.installation_choice);
+    const confirmation = labelledCheck(
+      "Confirmation (80%) received",
+      Boolean(order.confirmation_paid_at)
+    );
+    const dispatch = labelledCheck(
+      "Balance on dispatch (20%) received",
+      Boolean(order.dispatch_paid_at)
+    );
+
+    const grid = el("div", "track-edit-grid");
+    grid.append(stage.field, install.field, confirmation.field, dispatch.field);
+    wrap.appendChild(grid);
+
+    const saveBtn = el("button", "admin-small", "Save tracking");
+    saveBtn.type = "button";
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      const nowIso = new Date().toISOString();
+      const patch = {
+        fulfillment_stage: stage.input.value,
+        installation_choice: install.input.value,
+        // Keep the original timestamp if it was already set; stamp now when the
+        // admin first ticks it; clear it when unticked.
+        confirmation_paid_at: confirmation.input.checked
+          ? order.confirmation_paid_at || nowIso
+          : null,
+        dispatch_paid_at: dispatch.input.checked
+          ? order.dispatch_paid_at || nowIso
+          : null,
+      };
+      const { error } = await sb.from("orders").update(patch).eq("id", order.id);
+      saveBtn.disabled = false;
+      if (error) {
+        message(`Could not save tracking: ${error.message}`, true);
+        return;
+      }
+      Object.assign(order, patch);
+      message(`Order ${order.order_number} tracking updated.`);
+    });
+    wrap.appendChild(saveBtn);
+
     return wrap;
   }
 
@@ -311,7 +407,9 @@
     const { data, error } = await sb
       .from("orders")
       .select(
-        `id, order_number, status, subtotal_paise, gst_percent, gst_paise,
+        `id, order_number, status, fulfillment_stage, installation_choice,
+         confirmation_paid_at, dispatch_paid_at,
+         subtotal_paise, gst_percent, gst_paise,
          total_paise, advance_amount_paise, balance_paise, placed_at,
          contact_name, contact_email, contact_phone,
          delivery_address_line, delivery_city, delivery_pin_code,
