@@ -67,6 +67,9 @@
 .track-edit-field select { padding: 8px 10px; border: 1px solid rgba(23,23,23,.25); background: #fff; color: #171717; font: 13px "DM Sans", sans-serif; cursor: pointer; }
 .track-edit-check { display: flex; align-items: center; gap: 8px; align-self: flex-end; font: 13px "DM Sans", sans-serif; color: #171717; cursor: pointer; }
 .track-edit-check input { width: 16px; height: 16px; }
+.track-edit-field input { padding: 8px 10px; border: 1px solid rgba(23,23,23,.25); background: #fff; color: #171717; font: 13px "DM Sans", sans-serif; }
+.revise-product { margin: 12px 0; }
+.revise-product-name { display: block; margin-bottom: 6px; font: 500 12px "DM Sans", sans-serif; color: #171717; }
 
 /* --- Fields --------------------------------------------------------------- */
 

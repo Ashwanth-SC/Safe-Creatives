@@ -168,7 +168,7 @@
   // grouped by product, its add-ons, and the line total. Everything here is
   // the snapshot taken at order time -- catalog renames and price changes
   // since then do not alter it, which is the point.
-  function orderDetail(order) {
+  function orderDetail(order, catalog) {
     const wrap = el("div", "order-detail");
 
     // Identical configurations are separate lines rather than a quantity, so
@@ -262,13 +262,15 @@
     });
 
     const totals = el("div", "order-totals");
-    [
-      ["Package total", order.subtotal_paise],
+    const totalLines = [["Package total", order.subtotal_paise]];
+    if (order.delivery_charge_paise) totalLines.push(["Delivery", order.delivery_charge_paise]);
+    totalLines.push(
       [`GST (${order.gst_percent}%)`, order.gst_paise],
       ["Total payable", order.total_paise],
       ["Advance", order.advance_amount_paise],
-      ["Balance", order.balance_paise],
-    ].forEach(([label, value]) => {
+      ["Balance", order.balance_paise]
+    );
+    totalLines.forEach(([label, value]) => {
       const line = el("div", "order-total-line");
       line.appendChild(el("span", null, label));
       line.appendChild(el("strong", null, SC.money(value)));
@@ -307,7 +309,140 @@
     }
 
     wrap.appendChild(docs);
+    if (catalog) wrap.appendChild(revisionEditor(order, catalog));
     wrap.appendChild(trackingEditor(order));
+    return wrap;
+  }
+
+  // Order revision — swap a product's size/colour (same package) and set a
+  // delivery charge, after a site visit. All money is recomputed server-side by
+  // the revise-order function; this only gathers the choices.
+  function revisionEditor(order, catalog) {
+    const wrap = el("div", "order-track");
+    wrap.appendChild(el("span", "order-docs-label", "Revise order (after site visit)"));
+
+    // Per product, a size + colour dropdown built from the same package's
+    // catalog, defaulting to what was ordered. Colours follow the chosen size.
+    const controls = []; // { rowId, select } to turn into option_changes on save
+
+    (order.order_items || []).forEach((item) => {
+      const cat = catalog.get(item.package_key);
+      if (!cat) return;
+
+      // Group this item's snapshot option rows by product, then by group name.
+      const byProduct = new Map();
+      (item.order_item_options || []).forEach((opt) => {
+        if (!byProduct.has(opt.product_name)) byProduct.set(opt.product_name, {});
+        byProduct.get(opt.product_name)[opt.group_name] = opt;
+      });
+
+      byProduct.forEach((rows, productName) => {
+        const prod = cat.products.get(productName);
+        if (!prod) return;
+
+        const block = el("div", "revise-product");
+        block.appendChild(el("span", "revise-product-name", `${item.package_name} — ${productName}`));
+
+        const grid = el("div", "track-edit-grid");
+
+        // Size ----------------------------------------------------------
+        const sizeRow = rows["Size"];
+        const colourRow = rows["Colour"];
+        const colourSel = document.createElement("select");
+
+        function fillColours(sizeId) {
+          colourSel.textContent = "";
+          prod.colours
+            .filter((c) => c.parent_option_id === sizeId)
+            .forEach((c) => {
+              const o = el("option", null, c.name);
+              o.value = c.id;
+              if (colourRow && c.name === colourRow.option_name) o.selected = true;
+              colourSel.appendChild(o);
+            });
+        }
+
+        if (sizeRow && prod.sizes.length) {
+          const sizeField = el("label", "track-edit-field");
+          sizeField.appendChild(el("span", null, "Size"));
+          const sizeSel = document.createElement("select");
+          let selectedSizeId = prod.sizes[0]?.id;
+          prod.sizes.forEach((s) => {
+            const o = el("option", null, s.name);
+            o.value = s.id;
+            if (s.name === sizeRow.option_name) {
+              o.selected = true;
+              selectedSizeId = s.id;
+            }
+            sizeSel.appendChild(o);
+          });
+          sizeSel.addEventListener("change", () => fillColours(sizeSel.value));
+          sizeField.appendChild(sizeSel);
+          grid.appendChild(sizeField);
+          controls.push({ rowId: sizeRow.id, select: sizeSel });
+          fillColours(selectedSizeId);
+        }
+
+        // Colour --------------------------------------------------------
+        if (colourRow && prod.colours.length) {
+          if (!sizeRow) fillColours(prod.sizes[0]?.id);
+          const colourField = el("label", "track-edit-field");
+          colourField.appendChild(el("span", null, "Colour"));
+          colourField.appendChild(colourSel);
+          grid.appendChild(colourField);
+          controls.push({ rowId: colourRow.id, select: colourSel });
+        }
+
+        block.appendChild(grid);
+        wrap.appendChild(block);
+      });
+    });
+
+    // Delivery charge (rupees) ---------------------------------------------
+    const deliveryField = el("label", "track-edit-field");
+    deliveryField.appendChild(el("span", null, "Delivery charge (₹, +18% GST)"));
+    const deliveryInput = document.createElement("input");
+    deliveryInput.type = "number";
+    deliveryInput.min = "0";
+    deliveryInput.value = String(Number(order.delivery_charge_paise || 0) / 100);
+    deliveryField.appendChild(deliveryInput);
+    const deliveryWrap = el("div", "track-edit-grid");
+    deliveryWrap.appendChild(deliveryField);
+    wrap.appendChild(deliveryWrap);
+
+    const saveBtn = el("button", "admin-small", "Apply changes & recompute");
+    saveBtn.type = "button";
+    saveBtn.addEventListener("click", async () => {
+      if (
+        !window.confirm(
+          "Recompute this order's totals with the selected sizes/colours and delivery charge?\n\nThe 80% / 20% installment amounts will change to match."
+        )
+      )
+        return;
+      saveBtn.disabled = true;
+      const option_changes = controls.map((c) => ({ id: c.rowId, new_option_id: c.select.value }));
+      const { data, error } = await sb.functions.invoke("revise-order", {
+        body: {
+          order_id: order.id,
+          option_changes,
+          delivery_charge_paise: Math.round(Number(deliveryInput.value || 0) * 100),
+        },
+      });
+      saveBtn.disabled = false;
+      if (error) {
+        message(`Could not revise: ${error.message}`, true);
+        window.alert(`Could not revise the order: ${error.message}`);
+        return;
+      }
+      window.alert(
+        `Order updated.\n\nNew total: ${SC.money(data.total_paise)}\nNew balance: ${SC.money(
+          data.balance_paise
+        )}`
+      );
+      show("orders");
+    });
+    wrap.appendChild(saveBtn);
+
     return wrap;
   }
 
@@ -404,19 +539,57 @@
     return wrap;
   }
 
+  // The live catalog, indexed by package key -> product name -> its size and
+  // colour options, so the revision editor can offer valid swaps within the
+  // same package. Best-effort: if it fails to load, the revision UI is simply
+  // omitted and the rest of the order detail still renders.
+  async function loadRevisionCatalog() {
+    const { data, error } = await sb
+      .from("packages")
+      .select(
+        `key, package_products ( name,
+           product_option_groups ( name,
+             product_options ( id, name, parent_option_id, is_active ) ) )`
+      );
+    if (error) return null;
+
+    const index = new Map();
+    (data || []).forEach((pkg) => {
+      const products = new Map();
+      (pkg.package_products || []).forEach((prod) => {
+        let sizes = [];
+        let colours = [];
+        (prod.product_option_groups || []).forEach((g) => {
+          const opts = (g.product_options || []).filter((o) => o.is_active !== false);
+          if (g.name === "Size") sizes = opts.map((o) => ({ id: o.id, name: o.name }));
+          if (g.name === "Colour") {
+            colours = opts.map((o) => ({
+              id: o.id,
+              name: o.name,
+              parent_option_id: o.parent_option_id,
+            }));
+          }
+        });
+        products.set(prod.name, { sizes, colours });
+      });
+      index.set(pkg.key, { products });
+    });
+    return index;
+  }
+
   async function ordersPanel() {
     const { data, error } = await sb
       .from("orders")
       .select(
         `id, order_number, status, fulfillment_stage, installation_choice,
          confirmation_paid_at, dispatch_paid_at,
-         subtotal_paise, gst_percent, gst_paise,
+         subtotal_paise, gst_percent, gst_paise, delivery_charge_paise,
          total_paise, advance_amount_paise, balance_paise, placed_at,
          contact_name, contact_email, contact_phone,
          delivery_address_line, delivery_city, delivery_pin_code,
          order_items (
-           package_name, base_price_paise, line_total_paise,
-           order_item_options ( product_name, group_name, option_name,
+           id, package_key, package_name, base_price_paise, line_total_paise,
+           order_item_options ( id, product_name, group_name, option_name,
                                 finish, material, price_delta_paise ),
            order_item_addons ( addon_name, price_paise )
          ),
@@ -425,6 +598,8 @@
       .order("placed_at", { ascending: false });
 
     if (error) throw error;
+
+    const catalog = await loadRevisionCatalog();
 
     const frag = document.createDocumentFragment();
 
@@ -492,7 +667,7 @@
       detailRow.hidden = true;
       const detailCell = el("td");
       detailCell.colSpan = 8;
-      detailCell.appendChild(orderDetail(order));
+      detailCell.appendChild(orderDetail(order, catalog));
       detailRow.appendChild(detailCell);
 
       summary.addEventListener("click", () => {
