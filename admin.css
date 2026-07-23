@@ -52,6 +52,14 @@
 
 .admin-subtle { color: #8b8f88; font: 11px "DM Mono", monospace; letter-spacing: .04em; }
 .admin-section-title { margin: 26px 22px 10px; font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #6f222a; }
+/* Package picker — shows one package's editor at a time. */
+.admin-picker { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; padding: 15px 18px; background: #fff; border: 1px solid rgba(23,23,23,.12); }
+.admin-picker label { display: flex; align-items: center; gap: 12px; margin: 0; font: 500 11px "DM Sans", sans-serif; letter-spacing: .14em; text-transform: uppercase; color: #6f222a; }
+.admin-picker select { padding: 9px 12px; border: 1px solid rgba(23,23,23,.25); background: #fff; color: #171717; font: 14px "DM Sans", sans-serif; cursor: pointer; }
+.admin-picker select:focus { border-color: #0c4444; outline: 1px solid #0c4444; }
+/* Spec sub-heading rows (add/remove product spec labels + text). */
+.admin-specs { display: flex; flex-direction: column; gap: 10px; margin: 4px 22px 6px; }
+.admin-spec-row { align-items: flex-end; margin-top: 0; }
 
 /* --- Fields --------------------------------------------------------------- */
 

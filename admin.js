@@ -73,7 +73,7 @@
         `id, key, name, description, base_price_paise, cover_image_path,
          hsn_code, is_active, sort_order,
          package_products (
-           id, key, name, description, hsn_code, sort_order,
+           id, key, name, description, specs, hsn_code, sort_order,
            product_option_groups (
              id, key, name, display_as, sort_order,
              product_options ( id, key, name, price_delta_paise, image_paths,
@@ -203,6 +203,21 @@
     );
   }
 
+  // Merchandising minimums, enforced in the UI so the catalog can never be left
+  // unusable (a package with no products, a size with no colours, and so on).
+  // A delete that would drop below the minimum is refused with a popup instead.
+  // The database enforces integrity separately; this is the friendly guard.
+  let packageCount = 0;
+  let selectedPackageId = null;
+  function guardMinimum(count, min, whatPlural) {
+    if (count > min) return false;
+    window.alert(
+      `You must keep at least ${min} ${whatPlural}.\n\n` +
+        "Add another before deleting this one."
+    );
+    return true;
+  }
+
   // Wraps a save/delete handler so every failure surfaces the same way and the
   // button cannot be double-clicked mid-request.
   function action(btn, work, okText) {
@@ -296,14 +311,18 @@
 
     const delBtn = button("Delete", "admin-danger", () => {});
     delBtn.addEventListener("click", async () => {
+      const siblingColours = group.product_options.filter(
+        (o) => o.parent_option_id === option.parent_option_id && o.is_active !== false
+      ).length;
+      if (guardMinimum(siblingColours, 1, "colour per size")) return;
       if (
         !(await confirmDelete(
-          `the option "${option.name}"`,
-          "Carts and orders that already reference it will block the delete."
+          `the colour "${option.name}"`,
+          "Any cart still holding this colour simply drops it; past orders keep their record."
         ))
       )
         return;
-      action(delBtn, () => remove("product_options", option.id), "Option deleted")();
+      action(delBtn, () => remove("product_options", option.id), "Colour deleted")();
     });
 
     actions.append(saveBtn, delBtn);
@@ -363,10 +382,14 @@
 
     const delBtn = button("Delete size", "admin-danger", () => {});
     delBtn.addEventListener("click", async () => {
+      const sizeCount = sizeGroup.product_options.filter(
+        (o) => !o.parent_option_id && o.is_active !== false
+      ).length;
+      if (guardMinimum(sizeCount, 1, "size per product")) return;
       if (
         !(await confirmDelete(
           `the size "${sizeOption.name}"`,
-          `Its ${colours.length} colour(s) go too. Sizes in a cart or order cannot be deleted — the database will refuse.`
+          `Its ${colours.length} colour(s) go too, and it's removed from any cart that held it.`
         ))
       )
         return;
@@ -445,6 +468,38 @@
     head.append(name, sort, hsn);
     box.append(head, description);
 
+    // Spec sub-headings — the fixed rows shown on the product page (COMFORT,
+    // CONTROL, TEMPERATURE, …). FINISH and MATERIAL are deliberately NOT here:
+    // those come from each colour. These are the rows that don't vary by colour.
+    const specsTitle = document.createElement("p");
+    specsTitle.className = "admin-section-title";
+    specsTitle.textContent = "Spec sub-headings";
+    const specsWrap = document.createElement("div");
+    specsWrap.className = "admin-specs";
+    const specEntries = [];
+
+    function addSpecRow(label = "", value = "") {
+      const rowEl = document.createElement("div");
+      rowEl.className = "admin-inline admin-spec-row";
+      const labelField = field("Sub-heading", label, { placeholder: "COMFORT" });
+      const valueField = field("Text below", value, { placeholder: "Medium-soft" });
+      const entry = { labelField, valueField };
+      const removeBtn = button("Remove", "admin-danger admin-small", () => {
+        const i = specEntries.indexOf(entry);
+        if (i >= 0) specEntries.splice(i, 1);
+        rowEl.remove();
+      });
+      rowEl.append(labelField, valueField, removeBtn);
+      specEntries.push(entry);
+      specsWrap.appendChild(rowEl);
+    }
+
+    (Array.isArray(product.specs) ? product.specs : []).forEach((s) =>
+      addSpecRow(s.label || "", s.value || "")
+    );
+    const addSpec = button("+ Add sub-heading", "admin-small", () => addSpecRow());
+    box.append(specsTitle, specsWrap, addSpec);
+
     const saveBtn = button("Save product", "admin-small", () => {});
     saveBtn.addEventListener(
       "click",
@@ -456,6 +511,12 @@
             description: description.input.value.trim() || null,
             hsn_code: hsn.input.value.trim() || null,
             sort_order: Number(sort.input.value) || 0,
+            specs: specEntries
+              .map((e) => ({
+                label: e.labelField.input.value.trim(),
+                value: e.valueField.input.value.trim(),
+              }))
+              .filter((s) => s.label || s.value),
           }),
         "Product saved"
       )
@@ -463,10 +524,11 @@
 
     const delBtn = button("Delete product", "admin-danger", () => {});
     delBtn.addEventListener("click", async () => {
+      if (guardMinimum(pkg.package_products.length, 1, "main product per package")) return;
       if (
         !(await confirmDelete(
           `the product "${product.name}"`,
-          "Its option groups and all their options go too."
+          "Its option groups and all their options go too, and it's removed from any cart."
         ))
       )
         return;
@@ -572,10 +634,11 @@
 
     const delBtn = button("Delete", "admin-danger", () => {});
     delBtn.addEventListener("click", async () => {
+      if (guardMinimum(pkg.package_addons.length, 1, "add-on per package")) return;
       if (
         !(await confirmDelete(
           `the add-on "${addon.name}"`,
-          "Carts and orders that already reference it will block the delete."
+          "It's removed from any cart that had it selected; past orders keep their record."
         ))
       )
         return;
@@ -653,10 +716,11 @@
 
     const delBtn = button("Delete package", "admin-danger", () => {});
     delBtn.addEventListener("click", async () => {
+      if (guardMinimum(packageCount, 2, "packages")) return;
       if (
         !(await confirmDelete(
           `the package "${pkg.name}"`,
-          "Every product, option group, option and add-on inside it goes too. If it appears in any cart or order, the database will refuse — hide it instead."
+          "Every product, option and add-on inside it goes too, along with any cart holding it. Past orders keep their record."
         ))
       )
         return;
@@ -769,11 +833,55 @@
       return;
     }
 
+    packageCount = catalog.length;
+
+    // Keep the previously chosen package selected if it still exists.
+    if (!catalog.some((p) => p.id === selectedPackageId)) {
+      selectedPackageId = catalog[0]?.id ?? null;
+    }
+
+    const packageEls = [];
     catalog.forEach((pkg) => {
       const el = renderPackage(pkg);
       el.dataset.key = `pkg:${pkg.id}`;
+      el.dataset.pkgId = pkg.id;
       packagesWrap.appendChild(el);
+      packageEls.push(el);
     });
+
+    // Show one package's editor at a time, chosen from a dropdown, so the page
+    // stays focused instead of listing every package expanded at once.
+    function showSelected() {
+      const solo = catalog.length > 1;
+      packageEls.forEach((el) => {
+        el.hidden = solo && el.dataset.pkgId !== selectedPackageId;
+        if (!el.hidden) el.open = true;
+      });
+    }
+
+    if (catalog.length > 1) {
+      const picker = document.createElement("div");
+      picker.className = "admin-picker";
+      const pickerLabel = document.createElement("label");
+      pickerLabel.textContent = "Editing package";
+      const pickerSelect = document.createElement("select");
+      catalog.forEach((pkg) => {
+        const opt = document.createElement("option");
+        opt.value = pkg.id;
+        opt.textContent = pkg.name + (pkg.is_active ? "" : " (hidden)");
+        if (pkg.id === selectedPackageId) opt.selected = true;
+        pickerSelect.appendChild(opt);
+      });
+      pickerSelect.addEventListener("change", () => {
+        selectedPackageId = pickerSelect.value;
+        showSelected();
+      });
+      pickerLabel.appendChild(pickerSelect);
+      picker.appendChild(pickerLabel);
+      packagesWrap.insertBefore(picker, packagesWrap.firstChild);
+    }
+
+    showSelected();
 
     packagesWrap.querySelectorAll("details").forEach((el) => {
       if (el.dataset.key && wasOpen.has(el.dataset.key)) el.open = true;
