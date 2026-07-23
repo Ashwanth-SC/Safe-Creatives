@@ -70,6 +70,10 @@
 .track-edit-field input { padding: 8px 10px; border: 1px solid rgba(23,23,23,.25); background: #fff; color: #171717; font: 13px "DM Sans", sans-serif; }
 .revise-product { margin: 12px 0; }
 .revise-product-name { display: block; margin-bottom: 6px; font: 500 12px "DM Sans", sans-serif; color: #171717; }
+.installment-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px dashed rgba(23,23,23,.12); }
+.installment-row:last-child { border-bottom: 0; }
+.installment-label { font: 13px "DM Sans", sans-serif; color: #171717; }
+.installment-link { color: #6f222a; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 
 /* --- Fields --------------------------------------------------------------- */
 

@@ -700,6 +700,139 @@ async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
   );
 }
 
+// ----------------------------------------------------------------------
+// Installment receipt
+// ----------------------------------------------------------------------
+// The 80% and 20% installments are advances toward the goods, so on payment we
+// send a payment RECEIPT (not a tax invoice) — the GST tax invoice for the
+// order is raised once at delivery. Best-effort, like the invoice email.
+
+// deno-lint-ignore no-explicit-any
+function buildReceiptEmailHtml(order: any, link: any, phaseLabel: string, receiptRef: string, paidOn: Date): string {
+  const dateStr = paidOn.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return `<!doctype html>
+<html><body style="margin:0;background:#f5f5f3;font-family:Arial,Helvetica,sans-serif;color:#171717">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f3;padding:24px 12px"><tr><td align="center">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border:1px solid #e3e3de">
+      <tr><td style="padding:26px 30px;border-bottom:2px solid #171717">
+        <span style="font-size:15px;letter-spacing:.18em;font-weight:bold">SAFE CREATIVES</span>
+        <span style="float:right;font-size:11px;color:#6f222a;letter-spacing:.08em">PAYMENT RECEIPT</span>
+      </td></tr>
+      <tr><td style="padding:26px 30px 6px">
+        <p style="margin:0 0 14px;font-size:15px">Dear ${escapeHtml(order.contact_name)},</p>
+        <p style="margin:0 0 6px;font-size:13.5px;line-height:1.6;color:#3a3a3a">
+          We've received your ${escapeHtml(phaseLabel.toLowerCase())} for order
+          <strong>${escapeHtml(order.order_number)}</strong>. Thank you.
+        </p>
+      </td></tr>
+      <tr><td style="padding:12px 30px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px">
+          <tr><td style="padding:4px 0;color:#59635d">Receipt</td><td align="right"><strong>${escapeHtml(receiptRef)}</strong></td></tr>
+          <tr><td style="padding:4px 0;color:#59635d">Date</td><td align="right">${dateStr}</td></tr>
+          <tr><td style="padding:8px 0;border-top:1px solid #171717;font-weight:bold">Amount received</td><td align="right" style="padding:8px 0;border-top:1px solid #171717;font-weight:bold">₹${rupees(link.amount_paise)}</td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:6px 30px 24px">
+        <p style="margin:0;font-size:12.5px;line-height:1.6;color:#59635d">
+          This is a payment receipt. A GST tax invoice for your order will be issued at delivery. A PDF copy is attached.
+        </p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+}
+
+// deno-lint-ignore no-explicit-any
+function buildReceiptDocumentHtml(order: any, seller: any, link: any, phaseLabel: string, receiptRef: string, paidOn: Date): string {
+  const dateStr = paidOn.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const sellerName = seller?.legal_name ?? "Safe Creatives";
+  const sellerAddr = [seller?.address_line, seller?.city, seller?.pin_code].filter(Boolean).join(", ");
+  const buyerAddr = [order.delivery_address_line, order.delivery_city, order.delivery_state_name, order.delivery_pin_code].filter(Boolean).join(", ");
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${INVOICE_CSS}</style></head><body>
+    <div class="sheet">
+      <div class="doc-head"><h1>PAYMENT RECEIPT</h1><span>${escapeHtml(receiptRef)}</span></div>
+      <div class="parties">
+        <div class="box"><h2>Received by</h2><strong class="name">${escapeHtml(sellerName)}</strong>${escapeHtml(sellerAddr)}${seller?.gstin ? `<br />GSTIN: ${escapeHtml(seller.gstin)}` : ""}</div>
+        <div class="box"><h2>From</h2><strong class="name">${escapeHtml(order.contact_name)}</strong>${escapeHtml(buyerAddr)}</div>
+      </div>
+      <div class="meta-grid">
+        <div class="box"><h2>Order</h2>${escapeHtml(order.order_number)}</div>
+        <div class="box"><h2>Date</h2>${dateStr}</div>
+      </div>
+      <table class="lines">
+        <thead><tr><th>Description</th><th>Amount (₹)</th></tr></thead>
+        <tbody><tr><td>${escapeHtml(phaseLabel)} — order ${escapeHtml(order.order_number)}</td><td class="num">${rupees(link.amount_paise)}</td></tr></tbody>
+        <tfoot><tr><td>Amount received</td><td class="num">${rupees(link.amount_paise)}</td></tr></tfoot>
+      </table>
+      <div class="words">Amount received: <em>${amountInWords(link.amount_paise)}</em></div>
+      <p class="doc-note">This is a payment receipt, not a tax invoice. A GST tax invoice for your order will be issued at delivery. Computer-generated; no signature required.</p>
+    </div></body></html>`;
+}
+
+// deno-lint-ignore no-explicit-any
+async function emailInstallmentReceipt(admin: any, link: any) {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  if (!apiKey) {
+    console.warn("RESEND_API_KEY not set; skipping receipt email.");
+    return;
+  }
+
+  const { data: order } = await admin
+    .from("orders")
+    .select(
+      `order_number, contact_name, contact_email,
+       delivery_address_line, delivery_city, delivery_state_name, delivery_pin_code`
+    )
+    .eq("id", link.order_id)
+    .maybeSingle();
+  if (!order?.contact_email) {
+    console.warn("Order for link", link.id, "has no email; not sending receipt.");
+    return;
+  }
+
+  const { data: seller } = await admin
+    .from("seller_settings")
+    .select("*")
+    .eq("id", true)
+    .maybeSingle();
+
+  const phaseLabel =
+    link.phase === "confirmation" ? "Confirmation payment (80%)" : "Balance on dispatch (20%)";
+  const receiptRef = `${order.order_number}-${link.phase === "confirmation" ? "CONF" : "DISP"}`;
+  const paidOn = new Date();
+
+  const from = Deno.env.get("INVOICE_FROM_EMAIL") ??
+    "Safe Creatives <noreply@safecreatives.com>";
+
+  const payload: Record<string, unknown> = {
+    from,
+    to: [order.contact_email],
+    subject: `Payment received — ${receiptRef}`,
+    html: buildReceiptEmailHtml(order, link, phaseLabel, receiptRef, paidOn),
+  };
+
+  try {
+    const pdf = await renderInvoicePdf(
+      buildReceiptDocumentHtml(order, seller, link, phaseLabel, receiptRef, paidOn)
+    );
+    if (pdf) {
+      payload.attachments = [
+        { filename: `Safe-Creatives-Receipt-${receiptRef}.pdf`, content: pdf },
+      ];
+    }
+  } catch (pdfError) {
+    console.error("Receipt PDF failed; sending without attachment:", pdfError);
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
+  console.log("Receipt", receiptRef, "emailed to", order.contact_email);
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -771,6 +904,66 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ----------------------------------------------------------------
+    // Installment payment link paid
+    // ----------------------------------------------------------------
+    // A paid link also carries a payment entity, so this must be handled BEFORE
+    // the payment block below — otherwise the payment-order lookup there would
+    // find nothing and wrongly ignore it.
+
+    if (eventType === "payment_link.paid") {
+      const linkEntity = event.payload?.payment_link?.entity ?? null;
+      const linkPayment = event.payload?.payment?.entity ?? null;
+      if (!linkEntity?.id) {
+        await markProcessed("payment_link.paid without a link id");
+        return json({ status: "ignored, no link id" }, 200);
+      }
+
+      const { data: link } = await admin
+        .from("installment_links")
+        .select("id, order_id, phase, amount_paise, status")
+        .eq("provider_link_id", linkEntity.id)
+        .maybeSingle();
+
+      if (!link) {
+        await markProcessed(`No installment link for ${linkEntity.id}`);
+        return json({ status: "ignored, unknown link" }, 200);
+      }
+      if (link.status === "paid") {
+        await markProcessed();
+        return json({ status: "already paid" }, 200);
+      }
+
+      await admin
+        .from("installment_links")
+        .update({
+          status: "paid",
+          paid_at: new Date().toISOString(),
+          provider_payment_id: linkPayment?.id ?? null,
+        })
+        .eq("id", link.id);
+
+      // Reflect on the order so it shows paid to the admin and the customer.
+      const paidColumn =
+        link.phase === "confirmation" ? "confirmation_paid_at" : "dispatch_paid_at";
+      await admin
+        .from("orders")
+        .update({ [paidColumn]: new Date().toISOString() })
+        .eq("id", link.order_id);
+
+      // Best-effort receipt: the installment is paid and recorded either way.
+      try {
+        await emailInstallmentReceipt(admin, link);
+      } catch (receiptError) {
+        console.error("Receipt email failed:", receiptError);
+        await markProcessed(`Installment paid, receipt email failed: ${receiptError}`);
+        return json({ status: "paid, receipt failed" }, 200);
+      }
+
+      await markProcessed();
+      return json({ status: "installment paid" }, 200);
+    }
+
     // ----------------------------------------------------------------
     // Payment events
     // ----------------------------------------------------------------

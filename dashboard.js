@@ -168,7 +168,7 @@
   // grouped by product, its add-ons, and the line total. Everything here is
   // the snapshot taken at order time -- catalog renames and price changes
   // since then do not alter it, which is the point.
-  function orderDetail(order, catalog) {
+  function orderDetail(order, catalog, links) {
     const wrap = el("div", "order-detail");
 
     // Identical configurations are separate lines rather than a quantity, so
@@ -310,7 +310,80 @@
 
     wrap.appendChild(docs);
     if (catalog) wrap.appendChild(revisionEditor(order, catalog));
+    wrap.appendChild(installmentEditor(order, links || new Map()));
     wrap.appendChild(trackingEditor(order));
+    return wrap;
+  }
+
+  // Installment payment links — the admin creates and emails a Razorpay link
+  // for the 80% then the 20%, staying in control of when the customer is asked
+  // to pay. Amounts come from the current balance; the server recomputes them.
+  function installmentEditor(order, links) {
+    const wrap = el("div", "order-track");
+    wrap.appendChild(el("span", "order-docs-label", "Installment payment links"));
+
+    const balance = Number(order.balance_paise || 0);
+    const confirmation = Math.round(balance * 0.8);
+    const advancePaid = order.status !== "pending_advance";
+
+    const phases = [
+      ["confirmation", "Confirmation (80%)", confirmation, order.confirmation_paid_at],
+      ["dispatch", "Balance on dispatch (20%)", balance - confirmation, order.dispatch_paid_at],
+    ];
+
+    phases.forEach(([phase, label, amount, paidAt]) => {
+      const row = el("div", "installment-row");
+      row.appendChild(el("span", "installment-label", `${label} — ${SC.money(amount)}`));
+
+      if (paidAt) {
+        row.appendChild(pill(`Paid ${when(paidAt)}`, "ok"));
+        wrap.appendChild(row);
+        return;
+      }
+
+      const existing = (links.get(order.id) || [])
+        .filter((l) => l.phase === phase)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+
+      if (existing && existing.status === "created") {
+        row.appendChild(pill("Link sent", "warn"));
+        const open = el("a", "installment-link", "Open ↗");
+        open.href = existing.short_url;
+        open.target = "_blank";
+        row.appendChild(open);
+      }
+
+      const btn = el("button", "admin-small", existing ? "Resend / new link" : "Send payment link");
+      btn.type = "button";
+      btn.disabled = !advancePaid;
+      if (!advancePaid) btn.title = "The advance must be paid first";
+      btn.addEventListener("click", async () => {
+        if (
+          !window.confirm(
+            `Create and email a Razorpay payment link for the ${label} (${SC.money(amount)})?`
+          )
+        )
+          return;
+        btn.disabled = true;
+        const { data, error } = await sb.functions.invoke("create-installment-link", {
+          body: { order_id: order.id, phase },
+        });
+        btn.disabled = false;
+        if (error) {
+          message(`Could not create link: ${error.message}`, true);
+          window.alert(`Could not create the payment link: ${error.message}`);
+          return;
+        }
+        window.alert(
+          `Payment link created and emailed to ${data.emailed_to}.\n\n` +
+            `Amount: ${SC.money(data.amount_paise)}\nLink: ${data.short_url}`
+        );
+        show("orders");
+      });
+      row.appendChild(btn);
+      wrap.appendChild(row);
+    });
+
     return wrap;
   }
 
@@ -601,6 +674,18 @@
 
     const catalog = await loadRevisionCatalog();
 
+    // Installment payment links, indexed by order, so each order shows the
+    // status of any link already sent.
+    const linksByOrder = new Map();
+    const { data: linkRows } = await sb
+      .from("installment_links")
+      .select("order_id, phase, status, short_url, amount_paise, created_at")
+      .order("created_at", { ascending: false });
+    (linkRows || []).forEach((l) => {
+      if (!linksByOrder.has(l.order_id)) linksByOrder.set(l.order_id, []);
+      linksByOrder.get(l.order_id).push(l);
+    });
+
     const frag = document.createDocumentFragment();
 
     const waiting = data.filter((o) => o.status === "pending_advance");
@@ -667,7 +752,7 @@
       detailRow.hidden = true;
       const detailCell = el("td");
       detailCell.colSpan = 8;
-      detailCell.appendChild(orderDetail(order, catalog));
+      detailCell.appendChild(orderDetail(order, catalog, linksByOrder));
       detailRow.appendChild(detailCell);
 
       summary.addEventListener("click", () => {
