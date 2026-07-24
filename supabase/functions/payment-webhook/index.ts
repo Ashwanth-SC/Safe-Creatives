@@ -227,6 +227,152 @@ async function createAdvanceInvoice(admin: any, orderId: string) {
 }
 
 // ----------------------------------------------------------------------
+// Final invoice
+// ----------------------------------------------------------------------
+// Raised after the final (dispatch) installment is paid. It is the tax invoice
+// for the ORDER VALUE NET OF THE ADVANCE (total - advance = balance): the
+// advance is a separate supply with its own HSN/SAC and its own invoice, so the
+// two invoices together add up to exactly what the customer paid, with no
+// double counting. The goods carry the package HSN (order_items.hsn_code).
+//
+// deno-lint-ignore no-explicit-any
+async function createFinalInvoice(admin: any, orderId: string) {
+  // One final invoice per order, ever.
+  const { data: existing } = await admin
+    .from("invoices")
+    .select("id, invoice_number")
+    .eq("order_id", orderId)
+    .eq("phase_label", "Final")
+    .maybeSingle();
+  if (existing) return existing;
+
+  const { data: order, error: orderError } = await admin
+    .from("orders")
+    .select(
+      `id, order_number, user_id, gst_percent, balance_paise,
+       contact_name, contact_email, contact_phone,
+       delivery_address_line, delivery_city, delivery_state_name,
+       delivery_state_code, delivery_pin_code,
+       order_items ( package_name, hsn_code )`
+    )
+    .eq("id", orderId)
+    .single();
+  if (orderError) throw new Error(`Final invoice: order lookup failed: ${orderError.message}`);
+
+  const totalPaise = Number(order.balance_paise);
+  if (totalPaise <= 0) throw new Error("Final invoice: nothing to invoice (balance is zero).");
+
+  const { data: buyer } = await admin
+    .from("profiles")
+    .select("gstin, customer_number")
+    .eq("id", order.user_id)
+    .maybeSingle();
+
+  const { data: seller, error: sellerError } = await admin
+    .from("seller_settings")
+    .select("*")
+    .eq("id", true)
+    .single();
+  if (sellerError) throw new Error(`Final invoice: seller settings missing: ${sellerError.message}`);
+
+  const buyerStateCode =
+    order.delivery_state_code ?? buyer?.gstin?.slice(0, 2) ?? seller.state_code;
+  const isInterstate = buyerStateCode !== seller.state_code;
+
+  const gstRate = Number(order.gst_percent ?? 18);
+  const taxablePaise = Math.round((totalPaise * 100) / (100 + gstRate));
+  const taxPaise = totalPaise - taxablePaise;
+  const cgstPaise = isInterstate ? 0 : Math.floor(taxPaise / 2);
+  const sgstPaise = isInterstate ? 0 : taxPaise - cgstPaise;
+  const igstPaise = isInterstate ? taxPaise : 0;
+
+  const { data: numbering, error: numberError } = await admin
+    .rpc("next_invoice_number", { p_user_id: order.user_id })
+    .single();
+  if (numberError) throw new Error(`Final invoice numbering failed: ${numberError.message}`);
+
+  const buyerAddress = [
+    order.delivery_address_line,
+    order.delivery_city,
+    order.delivery_pin_code,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const packageNames = (order.order_items ?? [])
+    .map((i: { package_name: string }) => i.package_name)
+    .join(", ");
+  // The goods HSN — separate from the advance's SAC. First package's code.
+  const goodsHsn =
+    (order.order_items ?? []).find((i: { hsn_code: string | null }) => i.hsn_code)?.hsn_code ??
+    null;
+
+  const { data: invoice, error: invoiceError } = await admin
+    .from("invoices")
+    .insert({
+      invoice_number: numbering.invoice_number,
+      order_id: order.id,
+      user_id: order.user_id,
+      financial_year: numbering.financial_year,
+      fy_short: numbering.fy_short,
+      customer_number: numbering.customer_number,
+      phase_number: numbering.phase_number,
+      sequence_number: numbering.sequence_number,
+      phase_label: "Final",
+
+      seller_name: seller.legal_name,
+      seller_gstin: seller.gstin,
+      seller_address: [seller.address_line, seller.city, seller.pin_code]
+        .filter(Boolean)
+        .join(", "),
+      seller_state_name: seller.state_name,
+      seller_state_code: seller.state_code,
+
+      buyer_name: order.contact_name,
+      buyer_gstin: buyer?.gstin ?? null,
+      buyer_address: buyerAddress,
+      buyer_state_name: order.delivery_state_name,
+      buyer_state_code: buyerStateCode,
+      buyer_email: order.contact_email,
+      buyer_phone: order.contact_phone,
+
+      place_of_supply_state: order.delivery_state_name ?? seller.state_name,
+      place_of_supply_code: buyerStateCode,
+      is_interstate: isInterstate,
+
+      taxable_value_paise: taxablePaise,
+      cgst_paise: cgstPaise,
+      sgst_paise: sgstPaise,
+      igst_paise: igstPaise,
+      total_paise: totalPaise,
+      notes: "Order value net of the reservation advance, which is invoiced separately.",
+    })
+    .select("id, invoice_number")
+    .single();
+  if (invoiceError) throw new Error(`Final invoice insert failed: ${invoiceError.message}`);
+
+  await admin.from("invoice_lines").insert({
+    invoice_id: invoice.id,
+    line_number: 1,
+    description: `Sensory room order ${order.order_number} — order value net of advance`,
+    detail: packageNames || null,
+    hsn_code: goodsHsn,
+    quantity: 1,
+    unit: "NOS",
+    unit_price_paise: taxablePaise,
+    taxable_value_paise: taxablePaise,
+    gst_rate: gstRate,
+    cgst_paise: cgstPaise,
+    sgst_paise: sgstPaise,
+    igst_paise: igstPaise,
+    line_total_paise: totalPaise,
+  });
+
+  console.log("Final invoice", invoice.invoice_number, "raised for order", order.order_number);
+  return invoice;
+}
+
+// ----------------------------------------------------------------------
 // Invoice email
 // ----------------------------------------------------------------------
 // Sent through Resend's HTTP API -- the same provider already handling auth
@@ -251,6 +397,7 @@ function escapeHtml(value: unknown): string {
 
 // deno-lint-ignore no-explicit-any
 function buildInvoiceEmailHtml(inv: any, siteUrl: string | null): string {
+  const isAdvance = inv.phase_label === "Advance";
   const packages = (inv.orders?.order_items ?? [])
     .map((i: { package_name: string }) => escapeHtml(i.package_name))
     .join(", ");
@@ -284,8 +431,9 @@ function buildInvoiceEmailHtml(inv: any, siteUrl: string | null): string {
         <tr><td style="padding:26px 30px 6px">
           <p style="margin:0 0 14px;font-size:15px">Dear ${escapeHtml(inv.buyer_name)},</p>
           <p style="margin:0 0 6px;font-size:13.5px;line-height:1.6;color:#3a3a3a">
-            Thank you for reserving your order with Safe Creatives. Your refundable
-            advance has been received and your tax invoice is below.
+            ${isAdvance
+              ? "Thank you for reserving your order with Safe Creatives. Your refundable advance has been received and your tax invoice is below."
+              : "Thank you for your order with Safe Creatives. Your order is now fully paid, and your final tax invoice is below."}
           </p>
         </td></tr>
 
@@ -300,7 +448,7 @@ function buildInvoiceEmailHtml(inv: any, siteUrl: string | null): string {
 
         <tr><td style="padding:10px 30px">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;border-top:1px solid #e3e3de">
-            <tr><td style="padding:10px 0 4px;color:#59635d">Refundable reservation advance (taxable)</td><td align="right" style="padding-top:10px">₹${rupees(inv.taxable_value_paise)}</td></tr>
+            <tr><td style="padding:10px 0 4px;color:#59635d">${isAdvance ? "Refundable reservation advance (taxable)" : "Order value, net of advance (taxable)"}</td><td align="right" style="padding-top:10px">₹${rupees(inv.taxable_value_paise)}</td></tr>
             ${taxRow}
             <tr><td style="padding:8px 0;border-top:1px solid #171717;font-weight:bold">Total paid</td><td align="right" style="padding:8px 0;border-top:1px solid #171717;font-weight:bold">₹${rupees(inv.total_paise)}</td></tr>
           </table>
@@ -308,9 +456,9 @@ function buildInvoiceEmailHtml(inv: any, siteUrl: string | null): string {
 
         <tr><td style="padding:6px 30px 8px">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#59635d">
-            This advance is refundable as per the accepted terms. Our team will be in
-            touch to arrange a site visit and confirm the next steps; the balance is
-            invoiced at later project phases.
+            ${isAdvance
+              ? "This advance is refundable as per the accepted terms. Our team will be in touch to arrange a site visit and confirm the next steps; the balance is invoiced after the final payment."
+              : "This invoice covers the balance of your order value; the reservation advance was invoiced separately. Thank you for choosing Safe Creatives."}
           </p>
           <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:#59635d">
             Attached to this email you'll find your tax invoice with the full order
@@ -473,10 +621,14 @@ function buildInvoiceDocumentHtml(inv: any, order: any): string {
         <div class="row"><span>Package total (ex GST)</span><span>₹${rupees(order.subtotal_paise)}</span></div>
         <div class="row"><span>GST (${Number(order.gst_percent)}%)</span><span>₹${rupees(order.gst_paise)}</span></div>
         <div class="row grand"><span>Total payable</span><span>₹${rupees(order.total_paise)}</span></div>
-        <div class="row paid"><span>Refundable advance — this invoice (incl. GST)</span><span>₹${rupees(order.advance_amount_paise)}</span></div>
-        <div class="row"><span>Balance after site verification</span><span>₹${rupees(order.balance_paise)}</span></div>
+        <div class="row paid"><span>Reservation advance (incl. GST)</span><span>₹${rupees(order.advance_amount_paise)}</span></div>
+        <div class="row"><span>Balance (order value net of advance)</span><span>₹${rupees(order.balance_paise)}</span></div>
       </div>
-      <p class="doc-note">This summary describes the order as configured. The tax invoice on the following page covers the reservation advance only; the balance is invoiced at later phases.</p>
+      <p class="doc-note">This summary describes the order as configured. ${
+        inv.phase_label === "Advance"
+          ? "The tax invoice on the following page covers the reservation advance only; the balance is invoiced after the final payment."
+          : "The tax invoice on the following page covers the order value net of the reservation advance, which is invoiced separately."
+      }</p>
     </div>`;
   }
 
@@ -734,7 +886,7 @@ function buildReceiptEmailHtml(order: any, link: any, phaseLabel: string, receip
       </td></tr>
       <tr><td style="padding:6px 30px 24px">
         <p style="margin:0;font-size:12.5px;line-height:1.6;color:#59635d">
-          This is a payment receipt. A GST tax invoice for your order will be issued at delivery. A PDF copy is attached.
+          This is a payment receipt. Your GST tax invoice will be issued once your order is fully paid. A PDF copy is attached.
         </p>
       </td></tr>
     </table>
@@ -765,7 +917,7 @@ function buildReceiptDocumentHtml(order: any, seller: any, link: any, phaseLabel
         <tfoot><tr><td>Amount received</td><td class="num">${rupees(link.amount_paise)}</td></tr></tfoot>
       </table>
       <div class="words">Amount received: <em>${amountInWords(link.amount_paise)}</em></div>
-      <p class="doc-note">This is a payment receipt, not a tax invoice. A GST tax invoice for your order will be issued at delivery. Computer-generated; no signature required.</p>
+      <p class="doc-note">This is a payment receipt, not a tax invoice. Your GST tax invoice will be issued once your order is fully paid. Computer-generated; no signature required.</p>
     </div></body></html>`;
 }
 
@@ -958,6 +1110,19 @@ Deno.serve(async (req) => {
         console.error("Receipt email failed:", receiptError);
         await markProcessed(`Installment paid, receipt email failed: ${receiptError}`);
         return json({ status: "paid, receipt failed" }, 200);
+      }
+
+      // The final (dispatch) payment triggers the real tax invoice for the
+      // order value net of the advance. Best-effort, like the receipt.
+      if (link.phase === "dispatch") {
+        try {
+          const finalInvoice = await createFinalInvoice(admin, link.order_id);
+          await emailInvoiceIfUnsent(admin, finalInvoice.id);
+        } catch (finalError) {
+          console.error("Final invoice failed:", finalError);
+          await markProcessed(`Dispatch paid, final invoice failed: ${finalError}`);
+          return json({ status: "paid, final invoice failed" }, 200);
+        }
       }
 
       await markProcessed();
