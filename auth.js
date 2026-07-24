@@ -66,6 +66,18 @@ window.SC = (function () {
     return `₹${Math.round(Number(paise || 0) / 100).toLocaleString("en-IN")}`;
   }
 
+  // GST and the installment splits are floored to whole rupees so the figure
+  // SHOWN always equals the figure CHARGED. Razorpay bills the exact paise, so a
+  // fractional-rupee GST would be charged in full while the rounded rupee display
+  // hid the paise — we drop the fraction at the source instead. The same formula
+  // is mirrored server-side (create-order / revise-order / create-installment-link).
+  function floorRupees(paise) {
+    return Math.floor(Number(paise || 0) / 100) * 100;
+  }
+  function gstPaise(subtotalPaise, percent) {
+    return floorRupees((Number(subtotalPaise || 0) * Number(percent)) / 100);
+  }
+
   // --------------------------------------------------------------------
   // Flash prevention
   // --------------------------------------------------------------------
@@ -327,6 +339,8 @@ window.SC = (function () {
   return {
     ready,
     money,
+    floorRupees,
+    gstPaise,
     logout,
     toLogin,
     STATES,

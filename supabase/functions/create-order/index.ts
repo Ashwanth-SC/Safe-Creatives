@@ -229,7 +229,9 @@ Deno.serve(async (req) => {
     return { item, pkg, lineTotal };
   });
 
-  const gstPaise = Math.round((subtotalPaise * GST_PERCENT) / 100);
+  // Floored to whole rupees so what is charged matches what is shown — Razorpay
+  // bills exact paise, so a fractional-rupee GST must not slip through.
+  const gstPaise = Math.floor((subtotalPaise * GST_PERCENT) / 100 / 100) * 100;
   const totalPaise = subtotalPaise + gstPaise;
 
   // Flat, and capped at the order total so a cheap order can never be asked

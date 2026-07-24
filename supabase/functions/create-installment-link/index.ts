@@ -112,9 +112,11 @@ Deno.serve(async (req) => {
     return json({ error: "This order has no email to send the link to." }, 400);
   }
 
-  // Confirmation = 80% of the balance; dispatch = the remaining 20%.
+  // Confirmation = 80% of the balance; dispatch = the remaining 20%. The 80%
+  // slice is floored to whole rupees so the link charges a clean figure; the
+  // dispatch slice takes the exact remainder, so the two still sum to the balance.
   const balance = Number(order.balance_paise || 0);
-  const confirmation = Math.round(balance * 0.8);
+  const confirmation = Math.floor((balance * 0.8) / 100) * 100;
   const amountPaise = phase === "confirmation" ? confirmation : balance - confirmation;
   if (amountPaise <= 0) return json({ error: "Nothing left to collect for this phase." }, 400);
 

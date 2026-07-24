@@ -190,7 +190,8 @@ Deno.serve(async (req) => {
 
   const gstPercent = Number(order.gst_percent ?? 18);
   const taxablePaise = subtotalPaise + deliveryChargePaise;
-  const gstPaise = Math.round((taxablePaise * gstPercent) / 100);
+  // Floored to whole rupees so the figure shown equals the figure charged.
+  const gstPaise = Math.floor((taxablePaise * gstPercent) / 100 / 100) * 100;
   const totalPaise = taxablePaise + gstPaise;
 
   const { data: updated, error: updateError } = await admin

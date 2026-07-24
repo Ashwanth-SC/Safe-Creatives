@@ -323,7 +323,7 @@
     wrap.appendChild(el("span", "order-docs-label", "Installment payment links"));
 
     const balance = Number(order.balance_paise || 0);
-    const confirmation = Math.round(balance * 0.8);
+    const confirmation = SC.floorRupees(balance * 0.8);
     const advancePaid = order.status !== "pending_advance";
 
     const phases = [

@@ -531,7 +531,7 @@
       (sum, item) => sum + Number(item.line_total_paise || 0),
       0
     );
-    const gst = Math.round((subtotal * GST_PERCENT) / 100);
+    const gst = SC.gstPaise(subtotal, GST_PERCENT);
     const grandTotal = subtotal + gst;
     const advance = Math.min(ADVANCE_PAISE, grandTotal);
 

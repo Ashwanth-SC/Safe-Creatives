@@ -148,7 +148,7 @@
   function renderPayments(order) {
     const advance = Number(order.advance_amount_paise || 0);
     const balance = Number(order.balance_paise || 0);
-    const confirmation = Math.round(balance * 0.8);
+    const confirmation = SC.floorRupees(balance * 0.8);
     const dispatch = balance - confirmation;
 
     const advancePaid = order.status !== "pending_advance";
