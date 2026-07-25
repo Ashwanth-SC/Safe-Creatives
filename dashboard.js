@@ -283,7 +283,7 @@
     const docs = el("div", "order-docs");
     docs.appendChild(el("span", "order-docs-label", "Documents"));
 
-    const summaryLink = el("a", "order-doc", "Order summary ↗");
+    const summaryLink = el("a", "order-doc", "Order summary ↗︎");
     summaryLink.href = `invoice.html?order=${encodeURIComponent(order.order_number)}`;
     summaryLink.target = "_blank";
     docs.appendChild(summaryLink);
@@ -296,7 +296,7 @@
         const link = el(
           "a",
           "order-doc",
-          `${inv.phase_label || "Invoice"} — ${inv.invoice_number} ↗`
+          `${inv.phase_label || "Invoice"} — ${inv.invoice_number} ↗︎`
         );
         link.href = `invoice.html?number=${encodeURIComponent(inv.invoice_number)}`;
         link.target = "_blank";
@@ -347,7 +347,7 @@
 
       if (existing && existing.status === "created") {
         row.appendChild(pill("Link sent", "warn"));
-        const open = el("a", "installment-link", "Open ↗");
+        const open = el("a", "installment-link", "Open ↗︎");
         open.href = existing.short_url;
         open.target = "_blank";
         row.appendChild(open);
@@ -889,7 +889,7 @@
     if (error) throw error;
 
     const rows = data.map((invoice) => {
-      const open = el("a", "invoice-open", "Open ↗");
+      const open = el("a", "invoice-open", "Open ↗︎");
       open.href = `invoice.html?number=${encodeURIComponent(invoice.invoice_number)}`;
       open.target = "_blank";
 

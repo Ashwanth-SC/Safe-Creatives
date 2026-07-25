@@ -58,7 +58,7 @@
     description.textContent = pkg.description || "";
 
     const cta = document.createElement("strong");
-    cta.textContent = "Explore package ↗";
+    cta.textContent = "Explore package ↗︎";
 
     copy.append(eyebrow, title, description, cta);
     card.append(number, copy);

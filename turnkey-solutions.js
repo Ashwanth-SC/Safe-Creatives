@@ -25,7 +25,7 @@ form.addEventListener('submit', async (event) => {
     message.textContent = 'Add your Web3Forms access key in turnkey-solutions.html to enable submissions.';
     message.className = 'form-message error';
     submit.disabled = false;
-    submit.textContent = 'Submit enquiry ↗';
+    submit.textContent = 'Submit enquiry ↗︎';
     return;
   }
   try {
@@ -38,5 +38,5 @@ form.addEventListener('submit', async (event) => {
   } catch (error) {
     message.textContent = 'Something went wrong while sending your enquiry. Please try again.';
     message.className = 'form-message error';
-  } finally { submit.disabled = false; submit.textContent = 'Submit enquiry ↗'; }
+  } finally { submit.disabled = false; submit.textContent = 'Submit enquiry ↗︎'; }
 });

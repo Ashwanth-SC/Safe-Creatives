@@ -342,6 +342,9 @@ button:hover { background:transparent; color:var(--ink); }
 @media (max-width:700px) { .site-footer { padding:58px 24px 24px; } .footer-top { display:block; margin-bottom:52px; } .footer-top p { margin-top:20px; text-align:left; } .footer-grid { grid-template-columns:1fr; gap:42px; padding-bottom:48px; } .footer-group + .footer-group { padding:42px 0 0; border-top:1px solid rgba(240,241,235,.22); border-left:0; } .footer-label { margin-bottom:22px; } .footer-bottom { display:block; line-height:2; } .footer-bottom span { display:block; } }
 .site-footer { background:#0c4444 !important; color:#fff !important; }
 .site-footer .footer-brand, .site-footer .footer-link, .site-footer .footer-top p, .site-footer .footer-contact, .site-footer .footer-bottom { color:#fff !important; }
+/* On phones the browser auto-links the footer number/email into a default-blue
+   <a>. Keep them the footer's own text colour instead. */
+.footer-contact a { color: inherit !important; text-decoration: none; }
 .site-footer .footer-brand span, .site-footer .footer-link span, .site-footer .footer-label { color:#d0b28e !important; }
 .site-footer .footer-grid, .site-footer .footer-group + .footer-group, .site-footer .footer-bottom { border-color:rgba(255,255,255,.3); }
 .site-footer .social-links a { border-color:rgba(255,255,255,.55); color:#fff; }

@@ -59,7 +59,7 @@
 
   if (!orders.length) {
     list.innerHTML =
-      '<p class="track-empty">You have no orders yet. <a href="sensory-rooms.html">Explore sensory rooms ↗</a></p>';
+      '<p class="track-empty">You have no orders yet. <a href="sensory-rooms.html">Explore sensory rooms ↗︎</a></p>';
     return;
   }
 
@@ -245,7 +245,7 @@
     summary.href = `invoice.html?order=${encodeURIComponent(order.order_number)}`;
     summary.target = "_blank";
     summary.rel = "noopener";
-    summary.textContent = "Order summary ↗";
+    summary.textContent = "Order summary ↗︎";
     wrap.appendChild(summary);
 
     (order.invoices || [])
@@ -256,7 +256,7 @@
         link.href = `invoice.html?number=${encodeURIComponent(inv.invoice_number)}`;
         link.target = "_blank";
         link.rel = "noopener";
-        link.textContent = `${inv.phase_label || "Invoice"} ${inv.invoice_number} ↗`;
+        link.textContent = `${inv.phase_label || "Invoice"} ${inv.invoice_number} ↗︎`;
         wrap.appendChild(link);
       });
 
