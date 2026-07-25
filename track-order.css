@@ -64,7 +64,10 @@
   .track-page { padding-left:24px; padding-right:24px; }
   .track-steps { flex-direction:column; margin-bottom:26px; }
   .track-step { flex:none; display:grid; grid-template-columns:20px 1fr; align-items:center; column-gap:14px; min-height:46px; text-align:left; }
-  .track-step::before { top:0; left:9px; width:2px; height:100%; }
+  /* Connect dot centre to dot centre: the dot sits at the step's vertical
+     middle, so the line starts half a step up (at the previous dot) and runs a
+     full step down to this dot — otherwise it sits a row too low. */
+  .track-step::before { top:-50%; left:9px; width:2px; height:100%; }
   .track-dot { margin:0; }
   .track-step-label { font-size:13px; }
   .track-pay { grid-template-columns:1fr auto; row-gap:2px; }
