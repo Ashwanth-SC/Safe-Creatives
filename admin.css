@@ -74,6 +74,18 @@
 .installment-row:last-child { border-bottom: 0; }
 .installment-label { font: 13px "DM Sans", sans-serif; color: #171717; }
 .installment-link { color: #6f222a; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+/* Bulk-fill products from CSV */
+.admin-csv { margin: 8px 22px 4px; }
+.admin-csv-template { display: inline-block; margin-left: 14px; font-size: 12px; color: #0c4444; text-decoration: underline; text-underline-offset: 2px; }
+.admin-csv-review { margin-top: 12px; }
+.admin-csv-review .admin-section-title { margin: 0 0 8px; }
+.admin-csv-tree { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.admin-csv-tree > li { margin-bottom: 6px; }
+.admin-csv-tree ul { margin: 2px 0 0; padding-left: 18px; color: #59635d; }
+.admin-csv-warnings { margin: 12px 0; padding: 10px 12px; background: #fff7ec; border: 1px solid rgba(208,178,142,.55); font-size: 12px; color: #8a6d1a; }
+.admin-csv-warnings p { margin: 0 0 4px; font-weight: 600; }
+.admin-csv-warnings ul { margin: 0; padding-left: 18px; }
+.admin-csv-error { margin: 8px 0; color: #6f222a; font-size: 13px; }
 
 /* --- Fields --------------------------------------------------------------- */
 

@@ -657,6 +657,247 @@
   // Packages
   // ------------------------------------------------------------------
 
+  // ------------------------------------------------------------------
+  // Bulk-fill products from a CSV
+  // ------------------------------------------------------------------
+  // The file is parsed in the browser into a preview — NOTHING is written until
+  // the admin reviews it and presses save, which then uses the same create()
+  // calls as adding a product by hand. One row per colour, with the product and
+  // size columns repeated down the rows.
+
+  const CSV_HEADERS = [
+    "product_name", "product_description", "product_hsn",
+    "size_name", "size_price_delta_inr",
+    "colour_name", "colour_price_delta_inr",
+    "swatch_hex", "finish", "material",
+    "image_1", "image_2", "image_3", "image_4",
+  ];
+
+  // A small CSV reader that understands quoted fields, so a value may contain a
+  // comma. Returns an array of arrays.
+  function parseCsv(text) {
+    const rows = [];
+    let row = [], field = "", quoted = false;
+    text = text.replace(/\r\n?/g, "\n");
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (quoted) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else quoted = false;
+        } else field += c;
+      } else if (c === '"') quoted = true;
+      else if (c === ",") { row.push(field); field = ""; }
+      else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else field += c;
+    }
+    if (field !== "" || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function csvToObjects(text) {
+    const grid = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
+    if (grid.length < 2) return [];
+    const headers = grid[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+    return grid.slice(1).map((cells) => {
+      const obj = {};
+      headers.forEach((h, i) => (obj[h] = cells[i] != null ? cells[i] : ""));
+      return obj;
+    });
+  }
+
+  function csvTemplateDataUri() {
+    const example = [
+      "Calm Corner Sofa", "A low, softly structured sofa", "9401",
+      "Standard - 280 x 160 cm", "0",
+      "Sand", "0", "#d0b28e", "Warm sand", "Textured linen",
+      "https://your-storage-url/sand-1.jpg", "", "", "",
+    ];
+    const cell = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const csv = CSV_HEADERS.join(",") + "\n" + example.map(cell).join(",") + "\n";
+    return "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+  }
+
+  // Group the flat rows into products -> sizes -> colours, collecting notes.
+  function buildProductsFromCsv(rows) {
+    const products = [];
+    const byProduct = new Map();
+    const warnings = [];
+
+    rows.forEach((r, i) => {
+      const line = i + 2; // +1 for the header row, +1 for 1-based counting
+      const pName = (r.product_name || "").trim();
+      const sName = (r.size_name || "").trim();
+      const cName = (r.colour_name || r.color_name || "").trim();
+      if (!pName && !sName && !cName) return;
+      if (!pName || !sName || !cName) {
+        warnings.push(`Row ${line}: needs a product, size and colour name — skipped.`);
+        return;
+      }
+
+      let product = byProduct.get(pName);
+      if (!product) {
+        product = {
+          name: pName,
+          description: (r.product_description || "").trim(),
+          hsn: (r.product_hsn || "").trim(),
+          sizes: [],
+          _sizes: new Map(),
+        };
+        byProduct.set(pName, product);
+        products.push(product);
+      }
+
+      let size = product._sizes.get(sName);
+      if (!size) {
+        size = {
+          name: sName,
+          priceDelta: toPaise(r.size_price_delta_inr || 0),
+          colours: [],
+          _colours: new Set(),
+        };
+        product._sizes.set(sName, size);
+        product.sizes.push(size);
+      }
+
+      if (size._colours.has(cName.toLowerCase())) {
+        warnings.push(`Row ${line}: "${cName}" repeats under ${pName} / ${sName} — skipped.`);
+        return;
+      }
+      size._colours.add(cName.toLowerCase());
+
+      const hex = (r.swatch_hex || "").trim();
+      if (hex && !/^#[0-9a-fA-F]{6}$/.test(hex)) {
+        warnings.push(`Row ${line}: "${hex}" is not a #RRGGBB colour — saved as-is, fix later.`);
+      }
+
+      size.colours.push({
+        name: cName,
+        hex,
+        finish: (r.finish || "").trim(),
+        material: (r.material || "").trim(),
+        priceDelta: toPaise(r.colour_price_delta_inr || 0),
+        images: [r.image_1, r.image_2, r.image_3, r.image_4]
+          .map((x) => (x || "").trim())
+          .filter(Boolean),
+      });
+    });
+
+    return { products, warnings };
+  }
+
+  async function saveProductsToPackage(pkg, products) {
+    let productSort = pkg.package_products ? pkg.package_products.length : 0;
+    for (const product of products) {
+      productSort++;
+      const productId = await create("package_products", {
+        package_id: pkg.id,
+        key: slugify(product.name),
+        name: product.name,
+        description: product.description || null,
+        hsn_code: product.hsn || null,
+        sort_order: productSort,
+      });
+      const sizeGroupId = await create("product_option_groups", {
+        product_id: productId, key: "size", name: "Size", display_as: "chip", sort_order: 1,
+      });
+      const colourGroupId = await create("product_option_groups", {
+        product_id: productId, key: "colour", name: "Colour", display_as: "swatch", sort_order: 2,
+      });
+
+      let sizeSort = 0;
+      for (const size of product.sizes) {
+        sizeSort++;
+        const sizeId = await create("product_options", {
+          group_id: sizeGroupId,
+          key: slugify(size.name),
+          name: size.name,
+          price_delta_paise: size.priceDelta,
+          sort_order: sizeSort,
+        });
+        let colourSort = 0;
+        for (const colour of size.colours) {
+          colourSort++;
+          await create("product_options", {
+            group_id: colourGroupId,
+            parent_option_id: sizeId,
+            key: slugify(colour.name),
+            name: colour.name,
+            price_delta_paise: colour.priceDelta,
+            swatch_hex: colour.hex || null,
+            finish: colour.finish || null,
+            material: colour.material || null,
+            image_paths: colour.images,
+            sort_order: colourSort,
+          });
+        }
+      }
+    }
+  }
+
+  function renderCsvReview(pkg, text, container) {
+    container.textContent = "";
+    let rows;
+    try {
+      rows = csvToObjects(text);
+    } catch (error) {
+      container.appendChild(el("p", "admin-csv-error", `Could not read the CSV: ${error.message}`));
+      return;
+    }
+
+    const { products, warnings } = buildProductsFromCsv(rows);
+    if (!products.length) {
+      container.appendChild(
+        el("p", "admin-csv-error", "No products found. Check the column headings match the template.")
+      );
+      return;
+    }
+
+    const colourCount = products.reduce(
+      (n, p) => n + p.sizes.reduce((m, s) => m + s.colours.length, 0), 0
+    );
+    container.appendChild(
+      el("p", "admin-section-title",
+        `Review — ${products.length} product(s), ${colourCount} colour(s) into "${pkg.name}"`)
+    );
+
+    const tree = el("ul", "admin-csv-tree");
+    products.forEach((p) => {
+      const li = el("li");
+      li.appendChild(el("strong", null, p.name + (p.hsn ? ` · HSN ${p.hsn}` : "")));
+      const sizeUl = el("ul");
+      p.sizes.forEach((s) => {
+        sizeUl.appendChild(
+          el("li", null,
+            `${s.name}${s.priceDelta ? ` (+${SC.money(s.priceDelta)})` : ""} — ${s.colours.map((c) => c.name).join(", ")}`)
+        );
+      });
+      li.appendChild(sizeUl);
+      tree.appendChild(li);
+    });
+    container.appendChild(tree);
+
+    if (warnings.length) {
+      const w = el("div", "admin-csv-warnings");
+      w.appendChild(el("p", null, "Notes:"));
+      const ul = el("ul");
+      warnings.forEach((x) => ul.appendChild(el("li", null, x)));
+      w.appendChild(ul);
+      container.appendChild(w);
+    }
+
+    const saveBtn = button(`Save ${products.length} product(s)`, "admin-primary-small", () => {});
+    saveBtn.addEventListener(
+      "click",
+      action(saveBtn, () => saveProductsToPackage(pkg, products),
+        `Added ${products.length} product(s) from the CSV`)
+    );
+    const cancelBtn = button("Cancel", "admin-small", () => { container.textContent = ""; });
+    const actions = el("div", "admin-row-actions");
+    actions.append(saveBtn, cancelBtn);
+    container.appendChild(actions);
+  }
+
   function renderPackage(pkg) {
     const box = document.createElement("details");
     box.className = "admin-package";
@@ -776,6 +1017,27 @@
       )
     );
     box.appendChild(addProduct);
+
+    // Bulk-fill the products above from a CSV (reviewed before anything saves).
+    const csvInput = document.createElement("input");
+    csvInput.type = "file";
+    csvInput.accept = ".csv,text/csv";
+    csvInput.style.display = "none";
+    const csvReview = el("div", "admin-csv-review");
+    csvInput.addEventListener("change", async () => {
+      const file = csvInput.files[0];
+      if (!file) return;
+      const text = await file.text();
+      csvInput.value = ""; // let the same file be picked again after a cancel
+      renderCsvReview(pkg, text, csvReview);
+    });
+    const csvBtn = button("Fill products from CSV", "admin-small", () => csvInput.click());
+    const csvTmpl = el("a", "admin-csv-template", "Download template");
+    csvTmpl.href = csvTemplateDataUri();
+    csvTmpl.download = "products-template.csv";
+    const csvWrap = el("div", "admin-csv");
+    csvWrap.append(csvBtn, csvTmpl, csvInput, csvReview);
+    box.appendChild(csvWrap);
 
     const addonsTitle = document.createElement("h3");
     addonsTitle.className = "admin-section-title";
