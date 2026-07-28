@@ -197,6 +197,15 @@
     return el;
   }
 
+  // Generic element builder used by the CSV bulk-fill UI. (The local `const el`
+  // above is a different, function-scoped variable — it does not clash.)
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
+
   async function confirmDelete(what, extra) {
     return window.confirm(
       `Delete ${what}?\n\n${extra}\n\nThis cannot be undone.`
