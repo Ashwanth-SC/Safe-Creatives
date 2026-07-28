@@ -74,6 +74,9 @@
    ------------------------------------------------------------------------ */
 .product-block { align-items:start; }
 .product-info { min-width:0; }              /* stops long text forcing overflow */
+.product-subheading { max-width:46ch; margin:2px 0 10px; color:#6f6357;
+  font-family:"Playfair Display",Georgia,serif; font-size:16px; font-style:italic;
+  line-height:1.35; }
 .product-description { max-width:46ch; }
 .addon-card { display:flex; flex-direction:column; }
 .addon-copy { display:flex; flex-direction:column; flex:1; }

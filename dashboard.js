@@ -208,9 +208,13 @@
       );
       card.appendChild(head);
 
-      card.appendChild(
-        el("p", "order-line-base", `Base ${SC.money(item.base_price_paise)}`)
-      );
+      // Only older orders carry a package base price; new orders price per
+      // colour, so show the base line only when it is non-zero.
+      if (Number(item.base_price_paise) > 0) {
+        card.appendChild(
+          el("p", "order-line-base", `Base ${SC.money(item.base_price_paise)}`)
+        );
+      }
 
       // Options grouped by product, so a three-product package reads as three
       // blocks rather than one flat list of nine lines.
@@ -227,13 +231,13 @@
         block.appendChild(el("span", "order-product-name", productName));
         const list = el("ul");
         options.forEach((option) => {
-          const delta = Number(option.price_delta_paise || 0);
+          const price = Number(option.price_delta_paise || 0);
           list.appendChild(
             el(
               "li",
               null,
               `${option.group_name}: ${option.option_name}` +
-                (delta ? ` (+${SC.money(delta)})` : "") +
+                (price ? ` — ${SC.money(price)}` : "") +
                 (option.finish ? ` — ${option.finish}` : "")
             )
           );

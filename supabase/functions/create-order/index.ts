@@ -18,9 +18,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Flat refundable reservation fee, GST inclusive. Not a percentage: the same
-// ₹8,999 secures a ₹1.6L order and a ₹6L one, because it covers the site
-// verification visit rather than a share of the job.
-const ADVANCE_PAISE = Number(Deno.env.get("ADVANCE_PAISE") ?? "899900");
+// advance secures a ₹1.6L order and a ₹6L one, because it covers the site
+// verification visit rather than a share of the job. The live value is read
+// from seller_settings.advance_amount_paise (editable in the catalog admin);
+// this env var is only the fallback if that row cannot be read.
+const ADVANCE_PAISE_FALLBACK = Number(Deno.env.get("ADVANCE_PAISE") ?? "899900");
 
 // GST on package prices, which are quoted exclusive. Stored on each order
 // alongside the amount it produced, so a rate change never rewrites history.
@@ -140,7 +142,7 @@ Deno.serve(async (req) => {
        packages ( key, name, base_price_paise, hsn_code ),
        cart_item_options (
          product_option_groups ( name, package_products ( name ) ),
-         product_options ( name, finish, material, price_delta_paise )
+         product_options ( name, finish, material, price_delta_paise, hsn_code )
        ),
        cart_item_addons ( package_addons ( key, name, price_paise, hsn_code ) )`
     )
@@ -234,9 +236,22 @@ Deno.serve(async (req) => {
   const gstPaise = Math.floor((subtotalPaise * GST_PERCENT) / 100 / 100) * 100;
   const totalPaise = subtotalPaise + gstPaise;
 
+  // The advance is a single business-wide value the merchant edits in the admin.
+  // Read it here rather than trusting anything the browser sent; fall back to the
+  // env default only if the settings row cannot be read.
+  const { data: sellerSettings } = await admin
+    .from("seller_settings")
+    .select("advance_amount_paise")
+    .eq("id", true)
+    .maybeSingle();
+  const advancePaise =
+    sellerSettings?.advance_amount_paise != null
+      ? Number(sellerSettings.advance_amount_paise)
+      : ADVANCE_PAISE_FALLBACK;
+
   // Flat, and capped at the order total so a cheap order can never be asked
   // for more up front than the whole thing costs.
-  const advanceAmountPaise = Math.min(ADVANCE_PAISE, totalPaise);
+  const advanceAmountPaise = Math.min(advancePaise, totalPaise);
 
   // ----------------------------------------------------------------
   // 5. Terms acceptance
@@ -340,6 +355,9 @@ Deno.serve(async (req) => {
       option_name: c.product_options?.name ?? "",
       finish: c.product_options?.finish ?? null,
       material: c.product_options?.material ?? null,
+      // Snapshot the colour's HSN alongside its price, so an invoice raised
+      // later carries the HSN that applied at order time.
+      hsn_code: c.product_options?.hsn_code ?? null,
       price_delta_paise: Number(c.product_options?.price_delta_paise ?? 0),
     }));
     if (optionRows.length) {

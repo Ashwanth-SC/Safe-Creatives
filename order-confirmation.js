@@ -91,11 +91,11 @@
       "margin:4px 0 0; padding:0; list-style:none; color:#59635d; font-size:12px; line-height:1.8;";
 
     item.order_item_options.forEach((option) => {
-      const delta = Number(option.price_delta_paise || 0);
+      const price = Number(option.price_delta_paise || 0);
       const row = document.createElement("li");
       row.textContent =
         `${option.product_name} — ${option.group_name}: ${option.option_name}` +
-        (delta ? ` (+${SC.money(delta)})` : "");
+        (price ? ` — ${SC.money(price)}` : "");
       list.appendChild(row);
     });
     item.order_item_addons.forEach((addon) => {

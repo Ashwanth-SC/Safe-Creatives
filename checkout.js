@@ -46,11 +46,23 @@
   // the customer SEES before paying; the figures actually charged are
   // recomputed server-side and returned by the function.
   const GST_PERCENT = 18;
-  // Flat ₹8,999, GST inclusive. Display only — the amount actually charged is
-  // recomputed by the create-order function (its ADVANCE_PAISE env var).
-  const ADVANCE_PAISE = 899900;
+  // The reservation advance, GST inclusive. Display only — the amount actually
+  // charged is recomputed by create-order from seller_settings. Loaded from the
+  // same seller_settings row below; the fallback covers a settings read failure.
+  let advancePaise = 899900;
 
   let currentTermsId = null;
+
+  async function loadAdvance() {
+    const { data } = await sb
+      .from("seller_settings")
+      .select("advance_amount_paise")
+      .eq("id", true)
+      .maybeSingle();
+    if (data && data.advance_amount_paise != null) {
+      advancePaise = Number(data.advance_amount_paise);
+    }
+  }
 
   function message(text, isError) {
     checkoutMessage.textContent = text;
@@ -277,15 +289,17 @@
 
     const optionList = document.createElement("ul");
     if (item.cart_item_options?.length) {
-      // "Restful Bed Frame — Size: King (+₹18,000)"
+      // "Restful Bed Frame — Colour: Sand — ₹1,85,000"
+      // The price lives on the colour (size × colour), so a priced option shows
+      // its price rather than a "+delta" against a base that no longer exists.
       item.cart_item_options.forEach((choice) => {
         const group = choice.product_option_groups;
         const option = choice.product_options;
-        const delta = Number(option?.price_delta_paise || 0);
+        const price = Number(option?.price_delta_paise || 0);
         const row = document.createElement("li");
         row.textContent =
           `${group?.package_products?.name} — ${group?.name}: ${option?.name}` +
-          (delta ? ` (+${SC.money(delta)})` : "");
+          (price ? ` — ${SC.money(price)}` : "");
         optionList.appendChild(row);
       });
     } else {
@@ -533,7 +547,7 @@
     );
     const gst = SC.gstPaise(subtotal, GST_PERCENT);
     const grandTotal = subtotal + gst;
-    const advance = Math.min(ADVANCE_PAISE, grandTotal);
+    const advance = Math.min(advancePaise, grandTotal);
 
     cartTotal.textContent = SC.money(subtotal);
     gstPercentEl.textContent = GST_PERCENT;
@@ -550,6 +564,7 @@
   }
 
   reserveButton.addEventListener("click", reserve);
+  await loadAdvance();
   await loadTerms();
   await render();
 })();

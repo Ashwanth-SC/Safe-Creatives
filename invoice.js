@@ -44,7 +44,7 @@
     order_items (
       package_name, hsn_code, base_price_paise, line_total_paise,
       order_item_options ( product_name, group_name, option_name,
-                           finish, material, price_delta_paise ),
+                           finish, material, hsn_code, price_delta_paise ),
       order_item_addons ( addon_name, hsn_code, price_paise )
     )`;
 
@@ -184,11 +184,14 @@
           .map(([productName, options]) => {
             const rows = options
               .map((option) => {
-                const delta = Number(option.price_delta_paise || 0);
+                // Price and HSN live on the colour (size × colour) now.
+                const price = Number(option.price_delta_paise || 0);
                 const spec = [option.finish, option.material].filter(Boolean).join(", ");
                 return `<li>${esc(option.group_name)}: <strong>${esc(option.option_name)}</strong>${
-                  delta ? ` (+₹${rupees(delta)})` : ""
-                }${spec ? ` — ${esc(spec)}` : ""}</li>`;
+                  price ? ` — ₹${rupees(price)}` : ""
+                }${option.hsn_code ? ` (HSN ${esc(option.hsn_code)})` : ""}${
+                  spec ? ` — ${esc(spec)}` : ""
+                }</li>`;
               })
               .join("");
             return `<div class="oi-product"><h3>${esc(productName)}</h3><ul>${rows}</ul></div>`;
@@ -207,14 +210,19 @@
               .join("")
           : `<li class="oi-none">None selected</li>`;
 
+        // Only older orders carry a package base price; new orders price per
+        // colour, so show the base line only when it is non-zero.
+        const baseLine = Number(item.base_price_paise) > 0
+          ? `<p class="oi-base">Base price ₹${rupees(item.base_price_paise)}${
+              item.hsn_code ? ` · HSN ${esc(item.hsn_code)}` : ""
+            }</p>`
+          : "";
         return `<div class="order-item">
           <div class="oi-head">
             <strong>${index + 1}. ${esc(item.package_name)}</strong>
             <span>₹${rupees(item.line_total_paise)}</span>
           </div>
-          <p class="oi-base">Base price ₹${rupees(item.base_price_paise)}${
-            item.hsn_code ? ` · HSN ${esc(item.hsn_code)}` : ""
-          }</p>
+          ${baseLine}
           ${productBlocks}
           <div class="oi-product"><h3>Add-ons</h3><ul>${addonRows}</ul></div>
         </div>`;

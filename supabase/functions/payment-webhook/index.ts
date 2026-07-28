@@ -253,7 +253,7 @@ async function createFinalInvoice(admin: any, orderId: string) {
        contact_name, contact_email, contact_phone,
        delivery_address_line, delivery_city, delivery_state_name,
        delivery_state_code, delivery_pin_code,
-       order_items ( package_name, hsn_code )`
+       order_items ( package_name, hsn_code, order_item_options ( hsn_code ) )`
     )
     .eq("id", orderId)
     .single();
@@ -302,8 +302,14 @@ async function createFinalInvoice(admin: any, orderId: string) {
   const packageNames = (order.order_items ?? [])
     .map((i: { package_name: string }) => i.package_name)
     .join(", ");
-  // The goods HSN — separate from the advance's SAC. First package's code.
+  // The goods HSN — separate from the advance's SAC. The price (and its HSN)
+  // now lives on each colour, so take the first colour HSN across the order's
+  // items, falling back to any legacy package-level HSN for older orders.
+  // deno-lint-ignore no-explicit-any
   const goodsHsn =
+    (order.order_items ?? [])
+      .flatMap((i: any) => i.order_item_options ?? [])
+      .find((o: { hsn_code: string | null }) => o.hsn_code)?.hsn_code ??
     (order.order_items ?? []).find((i: { hsn_code: string | null }) => i.hsn_code)?.hsn_code ??
     null;
 
@@ -588,10 +594,13 @@ function buildInvoiceDocumentHtml(inv: any, order: any): string {
       });
       const products = [...byProduct.entries()].map(([name, opts]) => {
         const rows = opts.map((o) => {
-          const delta = Number(o.price_delta_paise || 0);
+          // The price lives on the colour (size × colour), so a priced option
+          // shows its price and HSN rather than a "+delta" against a base.
+          const price = Number(o.price_delta_paise || 0);
           const spec = [o.finish, o.material].filter(Boolean).map(escapeHtml).join(", ");
           return `<li>${escapeHtml(o.group_name)}: <strong>${escapeHtml(o.option_name)}</strong>${
-            delta ? ` (+₹${rupees(delta)})` : ""}${spec ? ` — ${spec}` : ""}</li>`;
+            price ? ` — ₹${rupees(price)}` : ""}${o.hsn_code ? ` (HSN ${escapeHtml(o.hsn_code)})` : ""}${
+            spec ? ` — ${spec}` : ""}</li>`;
         }).join("");
         return `<div class="oi-product"><h3>${escapeHtml(name)}</h3><ul>${rows}</ul></div>`;
       }).join("");
@@ -602,9 +611,14 @@ function buildInvoiceDocumentHtml(inv: any, order: any): string {
             a.hsn_code ? ` (HSN ${escapeHtml(a.hsn_code)})` : ""} — ₹${rupees(a.price_paise)}</li>`).join("")
         : `<li class="oi-none">None selected</li>`;
 
+      // Only older orders carry a package base price; new orders price per
+      // colour, so the base line is shown only when there is a non-zero base.
+      const baseLine = Number(item.base_price_paise) > 0
+        ? `<p class="oi-base">Base price ₹${rupees(item.base_price_paise)}${item.hsn_code ? ` · HSN ${escapeHtml(item.hsn_code)}` : ""}</p>`
+        : "";
       return `<div class="order-item">
         <div class="oi-head"><strong>${index + 1}. ${escapeHtml(item.package_name)}</strong><span>₹${rupees(item.line_total_paise)}</span></div>
-        <p class="oi-base">Base price ₹${rupees(item.base_price_paise)}${item.hsn_code ? ` · HSN ${escapeHtml(item.hsn_code)}` : ""}</p>
+        ${baseLine}
         ${products}
         <div class="oi-product"><h3>Add-ons</h3><ul>${addonRows}</ul></div>
       </div>`;
@@ -780,7 +794,7 @@ async function emailInvoiceIfUnsent(admin: any, invoiceId: string) {
          order_items (
            package_name, hsn_code, base_price_paise, line_total_paise,
            order_item_options ( product_name, group_name, option_name,
-                                finish, material, price_delta_paise ),
+                                finish, material, hsn_code, price_delta_paise ),
            order_item_addons ( addon_name, hsn_code, price_paise )
          )
        )`

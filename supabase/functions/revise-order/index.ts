@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     const { data: opts, error: optsError } = await admin
       .from("product_options")
       .select(
-        `id, name, finish, material, price_delta_paise,
+        `id, name, finish, material, price_delta_paise, hsn_code,
          product_option_groups ( name, package_products ( packages ( key ) ) )`
       )
       .in("id", newIds);
@@ -150,6 +150,7 @@ Deno.serve(async (req) => {
           option_name: opt.name,
           finish: opt.finish ?? null,
           material: opt.material ?? null,
+          hsn_code: opt.hsn_code ?? null,
           price_delta_paise: Number(opt.price_delta_paise ?? 0),
         })
         .eq("id", change.id);

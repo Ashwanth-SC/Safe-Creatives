@@ -41,7 +41,7 @@
     .select(
       `id, key, name, base_price_paise,
        package_products (
-         id, key, name, description, specs, sort_order,
+         id, key, name, description, sub_heading, specs, sort_order,
          product_option_groups (
            id, key, name, display_as, sort_order,
            product_options ( id, key, name, description, price_delta_paise,
@@ -295,6 +295,7 @@
         <div class="product-info">
           <p class="product-type">MAIN PRODUCT</p>
           <h2>${product.name}</h2>
+          ${product.sub_heading ? `<p class="product-subheading">${product.sub_heading}</p>` : ""}
           <p class="product-description">${product.description || ""}</p>
           <div class="option-groups"></div>
           <div class="specs">
@@ -386,10 +387,10 @@
     return wrap;
   }
 
+  // Size chips carry no price of their own — the price lives on the colour
+  // (size × colour) — so the chip is just the size name.
   function labelFor(option) {
-    return option.price_delta_paise
-      ? `${option.name} (+${SC.money(option.price_delta_paise)})`
-      : option.name;
+    return option.name;
   }
 
   // Re-syncs image, specs, and which buttons look selected. Called after any

@@ -70,15 +70,15 @@
     const { data, error } = await sb
       .from("packages")
       .select(
-        `id, key, name, description, base_price_paise, cover_image_path,
-         hsn_code, is_active, sort_order,
+        `id, key, name, description, cover_image_path,
+         is_active, sort_order,
          package_products (
-           id, key, name, description, specs, hsn_code, sort_order,
+           id, key, name, description, sub_heading, specs, sort_order,
            product_option_groups (
              id, key, name, display_as, sort_order,
-             product_options ( id, key, name, price_delta_paise, image_paths,
-                               swatch_hex, finish, material, parent_option_id,
-                               is_active, sort_order )
+             product_options ( id, key, name, price_delta_paise, hsn_code,
+                               image_paths, swatch_hex, finish, material,
+                               parent_option_id, is_active, sort_order )
            )
          ),
          package_addons ( id, key, name, description, image_path, price_paise,
@@ -255,12 +255,12 @@
     const isSwatch = group.display_as === "swatch";
 
     const name = field("Name", option.name);
-    const price = moneyField("Price change (₹)", option.price_delta_paise);
+    const price = moneyField("Price (₹)", option.price_delta_paise);
     const sort = field("Order", option.sort_order, { type: "number" });
 
     row.append(name, price, sort);
 
-    let hex, finish, material, images;
+    let hex, finish, material, hsn, images;
 
     if (isSwatch) {
       hex = field("Swatch colour", option.swatch_hex || "#cccccc", {
@@ -269,7 +269,11 @@
       });
       finish = field("Finish", option.finish, { placeholder: "Warm sand" });
       material = field("Material", option.material, { placeholder: "Textured linen" });
-      row.append(hex, finish, material);
+      hsn = field("HSN / SAC", option.hsn_code, {
+        placeholder: "9403",
+        hint: "Printed on this item's invoice line",
+      });
+      row.append(hex, finish, material, hsn);
 
       // Four slots because that is the house style; the column is an array so
       // more is possible without a schema change.
@@ -308,6 +312,7 @@
             patch.swatch_hex = hex.input.value.trim() || null;
             patch.finish = finish.input.value.trim() || null;
             patch.material = material.input.value.trim() || null;
+            patch.hsn_code = hsn.input.value.trim() || null;
             patch.image_paths = images
               .map((f) => f.input.value.trim())
               .filter(Boolean);
@@ -366,12 +371,11 @@
     box.appendChild(summary);
 
     const name = field("Size name", sizeOption.name);
-    const price = moneyField("Price change (₹)", sizeOption.price_delta_paise);
     const sort = field("Order", sizeOption.sort_order, { type: "number" });
 
     const head = document.createElement("div");
     head.className = "admin-inline";
-    head.append(name, price, sort);
+    head.append(name, sort);
     box.appendChild(head);
 
     const saveBtn = button("Save size", "admin-small", () => {});
@@ -382,7 +386,6 @@
         () =>
           save("product_options", sizeOption.id, {
             name: name.input.value.trim(),
-            price_delta_paise: toPaise(price.input.value),
             sort_order: Number(sort.input.value) || 0,
           }),
         "Size saved"
@@ -462,19 +465,18 @@
     box.appendChild(summary);
 
     const name = field("Product name", product.name);
+    const subHeading = field("Sub-heading", product.sub_heading, {
+      placeholder: "Shown under the name on the product page",
+    });
     const description = field("Description", product.description, {
       multiline: true,
       rows: 2,
     });
     const sort = field("Order", product.sort_order, { type: "number" });
-    const hsn = field("HSN code", product.hsn_code, {
-      placeholder: "9403",
-      hint: "For reference and line descriptions",
-    });
 
     const head = document.createElement("div");
     head.className = "admin-inline";
-    head.append(name, sort, hsn);
+    head.append(name, subHeading, sort);
     box.append(head, description);
 
     // Spec sub-headings — the fixed rows shown on the product page (COMFORT,
@@ -517,8 +519,8 @@
         () =>
           save("package_products", product.id, {
             name: name.input.value.trim(),
+            sub_heading: subHeading.input.value.trim() || null,
             description: description.input.value.trim() || null,
-            hsn_code: hsn.input.value.trim() || null,
             sort_order: Number(sort.input.value) || 0,
             specs: specEntries
               .map((e) => ({
@@ -675,9 +677,9 @@
   // size columns repeated down the rows.
 
   const CSV_HEADERS = [
-    "product_name", "product_description", "product_hsn",
-    "size_name", "size_price_delta_inr",
-    "colour_name", "colour_price_delta_inr",
+    "product_name", "product_sub_heading", "product_description",
+    "size_name",
+    "colour_name", "colour_price_inr", "colour_hsn",
     "swatch_hex", "finish", "material",
     "image_1", "image_2", "image_3", "image_4",
   ];
@@ -717,9 +719,9 @@
 
   function csvTemplateDataUri() {
     const example = [
-      "Calm Corner Sofa", "A low, softly structured sofa", "9401",
-      "Standard - 280 x 160 cm", "0",
-      "Sand", "0", "#d0b28e", "Warm sand", "Textured linen",
+      "Calm Corner Sofa", "Low, softly structured seating", "A low, softly structured sofa",
+      "Standard - 280 x 160 cm",
+      "Sand", "185000", "9401", "#d0b28e", "Warm sand", "Textured linen",
       "https://your-storage-url/sand-1.jpg", "", "", "",
     ];
     const cell = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
@@ -748,8 +750,8 @@
       if (!product) {
         product = {
           name: pName,
+          subHeading: (r.product_sub_heading || "").trim(),
           description: (r.product_description || "").trim(),
-          hsn: (r.product_hsn || "").trim(),
           sizes: [],
           _sizes: new Map(),
         };
@@ -761,7 +763,6 @@
       if (!size) {
         size = {
           name: sName,
-          priceDelta: toPaise(r.size_price_delta_inr || 0),
           colours: [],
           _colours: new Set(),
         };
@@ -785,7 +786,8 @@
         hex,
         finish: (r.finish || "").trim(),
         material: (r.material || "").trim(),
-        priceDelta: toPaise(r.colour_price_delta_inr || 0),
+        price: toPaise(r.colour_price_inr || 0),
+        hsn: (r.colour_hsn || "").trim(),
         images: [r.image_1, r.image_2, r.image_3, r.image_4]
           .map((x) => (x || "").trim())
           .filter(Boolean),
@@ -803,8 +805,8 @@
         package_id: pkg.id,
         key: slugify(product.name),
         name: product.name,
+        sub_heading: product.subHeading || null,
         description: product.description || null,
-        hsn_code: product.hsn || null,
         sort_order: productSort,
       });
       const sizeGroupId = await create("product_option_groups", {
@@ -821,7 +823,7 @@
           group_id: sizeGroupId,
           key: slugify(size.name),
           name: size.name,
-          price_delta_paise: size.priceDelta,
+          price_delta_paise: 0,
           sort_order: sizeSort,
         });
         let colourSort = 0;
@@ -832,7 +834,8 @@
             parent_option_id: sizeId,
             key: slugify(colour.name),
             name: colour.name,
-            price_delta_paise: colour.priceDelta,
+            price_delta_paise: colour.price,
+            hsn_code: colour.hsn || null,
             swatch_hex: colour.hex || null,
             finish: colour.finish || null,
             material: colour.material || null,
@@ -873,13 +876,13 @@
     const tree = el("ul", "admin-csv-tree");
     products.forEach((p) => {
       const li = el("li");
-      li.appendChild(el("strong", null, p.name + (p.hsn ? ` · HSN ${p.hsn}` : "")));
+      li.appendChild(el("strong", null, p.name + (p.subHeading ? ` · ${p.subHeading}` : "")));
       const sizeUl = el("ul");
       p.sizes.forEach((s) => {
-        sizeUl.appendChild(
-          el("li", null,
-            `${s.name}${s.priceDelta ? ` (+${SC.money(s.priceDelta)})` : ""} — ${s.colours.map((c) => c.name).join(", ")}`)
-        );
+        const colours = s.colours
+          .map((c) => `${c.name} (${SC.money(c.price)}${c.hsn ? `, HSN ${c.hsn}` : ""})`)
+          .join(", ");
+        sizeUl.appendChild(el("li", null, `${s.name} — ${colours}`));
       });
       li.appendChild(sizeUl);
       tree.appendChild(li);
@@ -913,15 +916,14 @@
     box.open = false;
 
     const summary = document.createElement("summary");
-    summary.innerHTML = `<strong>${pkg.name}</strong> <span class="admin-subtle">${SC.money(
-      pkg.base_price_paise
-    )} base · ${pkg.package_products.length} product(s) · ${
+    summary.innerHTML = `<strong>${pkg.name}</strong> <span class="admin-subtle">${
+      pkg.package_products.length
+    } product(s) · ${
       pkg.package_addons.length
     } add-on(s)${pkg.is_active ? "" : " · HIDDEN"}</span>`;
     box.appendChild(summary);
 
     const name = field("Package name", pkg.name);
-    const price = moneyField("Base price (₹)", pkg.base_price_paise);
     const sort = field("Order", pkg.sort_order, { type: "number" });
     const description = field("Description", pkg.description, {
       multiline: true,
@@ -935,15 +937,11 @@
       placeholder: "https://...",
       hint: "Shown on the Sensory Rooms cards",
     });
-    const hsn = field("HSN / SAC code", pkg.hsn_code, {
-      placeholder: "9403",
-      hint: "Printed on invoice lines for this package",
-    });
 
     const head = document.createElement("div");
     head.className = "admin-inline";
-    head.append(name, price, sort, active);
-    box.append(head, description, cover, hsn);
+    head.append(name, sort, active);
+    box.append(head, description, cover);
 
     const saveBtn = button("Save package", "admin-primary-small", () => {});
     saveBtn.addEventListener(
@@ -954,9 +952,7 @@
           save("packages", pkg.id, {
             name: name.input.value.trim(),
             description: description.input.value.trim() || null,
-            base_price_paise: toPaise(price.input.value),
             cover_image_path: cover.input.value.trim() || null,
-            hsn_code: hsn.input.value.trim() || null,
             is_active: active.input.value === "true",
             sort_order: Number(sort.input.value) || 0,
           }),
@@ -1171,7 +1167,7 @@
 
     const { data: settings, error } = await sb
       .from("seller_settings")
-      .select("advance_hsn_code")
+      .select("advance_hsn_code, advance_amount_paise")
       .eq("id", true)
       .maybeSingle();
 
@@ -1186,12 +1182,21 @@
     const title = document.createElement("p");
     title.className = "admin-section-title";
     title.style.margin = "0 0 10px";
-    title.textContent = "Invoice settings";
+    title.textContent = "Invoice & advance settings";
+
+    // The reservation advance, fixed across all orders until changed here. Read
+    // by create-order and shown on the checkout review; capped at the order
+    // total so a cheap order is never asked for more than it costs.
+    const advance = moneyField("Advance amount (₹)", settings?.advance_amount_paise);
 
     const hsn = field("Advance HSN / SAC code", settings?.advance_hsn_code, {
       placeholder: "9954",
       hint: "Printed on the advance line of every invoice. Confirm the classification with your CA — the advance is a service, not goods.",
     });
+
+    const head = document.createElement("div");
+    head.className = "admin-inline";
+    head.append(advance, hsn);
 
     const saveBtn = button("Save settings", "admin-small", () => {});
     saveBtn.addEventListener(
@@ -1202,6 +1207,7 @@
           const { error: saveError } = await sb
             .from("seller_settings")
             .update({
+              advance_amount_paise: toPaise(advance.input.value),
               advance_hsn_code: hsn.input.value.trim() || null,
               updated_at: new Date().toISOString(),
             })
@@ -1216,7 +1222,7 @@
     actions.className = "admin-row-actions";
     actions.appendChild(saveBtn);
 
-    box.append(title, hsn, actions);
+    box.append(title, head, actions);
     container.appendChild(box);
   }
 
@@ -1231,7 +1237,7 @@
         is_active: false,
         sort_order: 99,
       });
-      message("Package created — hidden until you set a price and unhide it");
+      message("Package created — hidden until you add products and unhide it");
       await render();
     } catch (error) {
       message(error.message, true);
