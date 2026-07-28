@@ -801,6 +801,10 @@
     let productSort = pkg.package_products ? pkg.package_products.length : 0;
     for (const product of products) {
       productSort++;
+      // Create the product first, then everything under it. If any child insert
+      // fails, delete the product (its groups and options cascade) so a failure
+      // never leaves a half-built product behind — that orphan would otherwise
+      // block re-importing with a duplicate-key error on the next attempt.
       const productId = await create("package_products", {
         package_id: pkg.id,
         key: slugify(product.name),
@@ -809,40 +813,46 @@
         description: product.description || null,
         sort_order: productSort,
       });
-      const sizeGroupId = await create("product_option_groups", {
-        product_id: productId, key: "size", name: "Size", display_as: "chip", sort_order: 1,
-      });
-      const colourGroupId = await create("product_option_groups", {
-        product_id: productId, key: "colour", name: "Colour", display_as: "swatch", sort_order: 2,
-      });
 
-      let sizeSort = 0;
-      for (const size of product.sizes) {
-        sizeSort++;
-        const sizeId = await create("product_options", {
-          group_id: sizeGroupId,
-          key: slugify(size.name),
-          name: size.name,
-          price_delta_paise: 0,
-          sort_order: sizeSort,
+      try {
+        const sizeGroupId = await create("product_option_groups", {
+          product_id: productId, key: "size", name: "Size", display_as: "chip", sort_order: 1,
         });
-        let colourSort = 0;
-        for (const colour of size.colours) {
-          colourSort++;
-          await create("product_options", {
-            group_id: colourGroupId,
-            parent_option_id: sizeId,
-            key: slugify(colour.name),
-            name: colour.name,
-            price_delta_paise: colour.price,
-            hsn_code: colour.hsn || null,
-            swatch_hex: colour.hex || null,
-            finish: colour.finish || null,
-            material: colour.material || null,
-            image_paths: colour.images,
-            sort_order: colourSort,
+        const colourGroupId = await create("product_option_groups", {
+          product_id: productId, key: "colour", name: "Colour", display_as: "swatch", sort_order: 2,
+        });
+
+        let sizeSort = 0;
+        for (const size of product.sizes) {
+          sizeSort++;
+          const sizeId = await create("product_options", {
+            group_id: sizeGroupId,
+            key: slugify(size.name),
+            name: size.name,
+            price_delta_paise: 0,
+            sort_order: sizeSort,
           });
+          let colourSort = 0;
+          for (const colour of size.colours) {
+            colourSort++;
+            await create("product_options", {
+              group_id: colourGroupId,
+              parent_option_id: sizeId,
+              key: slugify(colour.name),
+              name: colour.name,
+              price_delta_paise: colour.price,
+              hsn_code: colour.hsn || null,
+              swatch_hex: colour.hex || null,
+              finish: colour.finish || null,
+              material: colour.material || null,
+              image_paths: colour.images,
+              sort_order: colourSort,
+            });
+          }
         }
+      } catch (error) {
+        await remove("package_products", productId).catch(() => {});
+        throw error;
       }
     }
   }
@@ -865,16 +875,54 @@
       return;
     }
 
-    const colourCount = products.reduce(
+    // A product's key is unique per package (package_products.package_id + key),
+    // so importing a product whose slug already exists in this package would
+    // fail with a raw constraint error — often left over from an earlier import
+    // that stopped partway. Detect it here and exclude it with a clear note,
+    // rather than letting the insert throw. The merchant deletes the existing
+    // product first if they mean to re-import it.
+    const existingKeys = new Set(
+      (pkg.package_products || []).map((p) => p.key)
+    );
+    const importable = [];
+    products.forEach((p) => {
+      if (existingKeys.has(slugify(p.name))) {
+        warnings.push(
+          `"${p.name}" already exists in "${pkg.name}" — skipped. Delete that product first if you want to re-import it.`
+        );
+      } else {
+        importable.push(p);
+      }
+    });
+
+    if (!importable.length) {
+      container.appendChild(
+        el("p", "admin-csv-error",
+          `Nothing to import — every product in the file already exists in "${pkg.name}". Delete the existing one(s) first, then import again.`)
+      );
+      if (warnings.length) {
+        const w = el("div", "admin-csv-warnings");
+        w.appendChild(el("p", null, "Notes:"));
+        const ul = el("ul");
+        warnings.forEach((x) => ul.appendChild(el("li", null, x)));
+        w.appendChild(ul);
+        container.appendChild(w);
+      }
+      const cancelOnly = button("Cancel", "admin-small", () => { container.textContent = ""; });
+      container.appendChild(cancelOnly);
+      return;
+    }
+
+    const colourCount = importable.reduce(
       (n, p) => n + p.sizes.reduce((m, s) => m + s.colours.length, 0), 0
     );
     container.appendChild(
       el("p", "admin-section-title",
-        `Review — ${products.length} product(s), ${colourCount} colour(s) into "${pkg.name}"`)
+        `Review — ${importable.length} product(s), ${colourCount} colour(s) into "${pkg.name}"`)
     );
 
     const tree = el("ul", "admin-csv-tree");
-    products.forEach((p) => {
+    importable.forEach((p) => {
       const li = el("li");
       li.appendChild(el("strong", null, p.name + (p.subHeading ? ` · ${p.subHeading}` : "")));
       const sizeUl = el("ul");
@@ -898,11 +946,11 @@
       container.appendChild(w);
     }
 
-    const saveBtn = button(`Save ${products.length} product(s)`, "admin-primary-small", () => {});
+    const saveBtn = button(`Save ${importable.length} product(s)`, "admin-primary-small", () => {});
     saveBtn.addEventListener(
       "click",
-      action(saveBtn, () => saveProductsToPackage(pkg, products),
-        `Added ${products.length} product(s) from the CSV`)
+      action(saveBtn, () => saveProductsToPackage(pkg, importable),
+        `Added ${importable.length} product(s) from the CSV`)
     );
     const cancelBtn = button("Cancel", "admin-small", () => { container.textContent = ""; });
     const actions = el("div", "admin-row-actions");
