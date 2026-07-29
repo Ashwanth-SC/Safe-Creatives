@@ -160,7 +160,7 @@ otpForm.addEventListener("submit", async (e) => {
     if (token.length !== 6) {
 
         showMessage(
-            "Enter the 6 digit verification code.",
+            "Enter the 6-digit verification code.",
             "error"
         );
 
