@@ -38,36 +38,58 @@ custom domains and automatic HTTPS. **Recommended: Netlify or Cloudflare Pages.*
   only while you still test locally).
 - [ ] **Custom SMTP still on** (Resend) and the **auth email rate limit raised** —
   built-in email will throttle real signups.
-- [ ] Confirm **all migrations 001–010 are applied**, seed data loaded, and both
+- [ ] Confirm **all migrations 001–017 are applied**, seed data loaded, and both
   admins set (`is_admin = true` for ashwanth@ and sashwanth@safecreatives.com).
+  - ⚠️ **Migration 017 reset every colour price to ₹0** (pricing moved onto each
+    size × colour). The catalog will show ₹0 until you re-enter prices in the
+    admin — see section 6. 017 also added `seller_settings.advance_amount_paise`,
+    which is now where the advance lives (no longer an env var).
 
 ## 4. Edge Function secrets
 
-Set these for the live domain (`supabase secrets set ...`), then redeploy both
+Set these for the live domain (`supabase secrets set ...`), then redeploy the
 functions:
 
 - [ ] `SITE_ORIGIN=https://safecreatives.com` (locks CORS; add `,http://localhost:8000` only if still testing).
 - [ ] `PUBLIC_SITE_URL=https://safecreatives.com` (so invoice emails link correctly).
-- [ ] `ADVANCE_PAISE` — **unset it** so the real ₹8,999 default applies (the ₹5 test override).
+- [ ] **Advance is no longer an env var.** It lives in `seller_settings.advance_amount_paise`
+  and is set in the catalog admin (section 6). `ADVANCE_PAISE` is only a fallback
+  if that row can't be read — you can leave it unset.
 - [ ] Confirm live values are set: `RAZORPAY_KEY_ID`/`_SECRET` (rzp_live_…),
   `RAZORPAY_WEBHOOK_SECRET`, `RESEND_API_KEY`, `PDFSHIFT_API_KEY`,
-  `INVOICE_FROM_EMAIL` (on the Resend-verified domain).
-- [ ] `supabase functions deploy create-order` and `... payment-webhook`.
+  `INVOICE_FROM_EMAIL` (on the Resend-verified domain), `WARRANTY_PDF_URL`
+  (warranty PDF in public Storage, linked from invoice emails).
+- [ ] Deploy **all four** functions:
+  ```
+  supabase functions deploy create-order
+  supabase functions deploy revise-order
+  supabase functions deploy create-installment-link
+  supabase functions deploy payment-webhook --no-verify-jwt
+  ```
 
 ## 5. Payments & email
 
-- [ ] Razorpay in **Live mode**, KYC complete, webhook pointing at
+- [ ] Razorpay in **Live mode**, KYC complete, **Payment Links enabled** (used for
+  the 80% / 20% installments), webhook pointing at
   `https://zcdcalwgyvlcawcflojl.supabase.co/functions/v1/payment-webhook` with
-  events `payment.captured`, `payment.failed`, `refund.processed`, `refund.failed`.
+  events `payment.captured`, `payment.failed`, `refund.processed`, `refund.failed`,
+  and **`payment_link.paid`** (confirms installment payments).
 - [ ] Resend: `safecreatives.com` domain **Verified** (SPF/DKIM), sender on that domain.
 - [ ] Decide the refund-fee policy wording (Razorpay keeps its ~2% + GST on refunds).
 
 ## 6. Real business content (before the first real customer)
 
+- [ ] **Prices & HSN on every colour.** Migration 017 reset all colour prices to
+      ₹0, so in the catalog admin set the **Price + HSN/SAC on each size × colour**
+      for every product. The package total is the sum of the selected colours, so
+      nothing is priced until this is done.
+- [ ] **Advance amount + advance HSN/SAC** in the admin → *Invoice & advance
+      settings* (e.g. ₹8,999). This is the single figure charged to reserve any
+      order; the checkout reads it live.
 - [ ] **`seller_settings`:** real legal name, **GSTIN**, PAN, address, bank details.
       Until the GSTIN is set, invoices print "GSTIN pending registration".
-- [ ] **HSN/SAC codes** on every package, product, add-on, and the advance —
-      confirm classifications with your CA.
+- [ ] **HSN/SAC codes** — confirm all classifications (per-colour goods HSN and the
+      advance SAC) with your CA.
 - [ ] **Terms & conditions:** replace the placeholder `v1` text (publish a new
       version, don't edit v1).
 - [ ] **Product & cover images** hosted in Supabase Storage (not Unsplash/Drive).
@@ -76,16 +98,16 @@ functions:
 ## 7. Launch test (on the live domain)
 
 - [ ] Sign up with a real email → OTP arrives → register.
-- [ ] Configure a package → save → review → **pay the real ₹8,999** with a live method.
-- [ ] Confirm: order `advance_paid`, invoice appears in the dashboard, invoice
-      email with PDF lands in the inbox (not spam).
+- [ ] Configure a package → save → review → **pay the real advance** with a live method.
+- [ ] Confirm: order `advance_paid`, the total equals the colour prices you entered,
+      invoice appears in the dashboard, invoice email with PDF lands (not spam).
 - [ ] Refund that test payment from Razorpay to confirm the refund path + webhook.
 
 ## 8. After launch
 
 - [ ] **Google Search Console:** add `safecreatives.com`, submit `sitemap.xml`.
 - [ ] Add a proper 1200×630 social share image and point `og:image` at it.
-- [ ] Consider making the catalog pages public (browse before login) for SEO —
-      currently login-gated, so they will not rank.
-- [ ] Reconcile `database-schema.sql` with migrations 001–010 (only matters for a
-      fresh DB, but it is currently out of date).
+- [ ] Catalog pages are already public (browse before login), so they can rank —
+      just confirm they are indexed in Search Console.
+- [ ] Reconcile `database-schema.sql` / `seed-catalog.sql` with migrations 001–017
+      (only matters for a fresh DB, but they are currently out of date).
