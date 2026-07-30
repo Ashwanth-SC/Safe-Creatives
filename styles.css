@@ -298,8 +298,8 @@ button:hover { background:transparent; color:var(--ink); }
 .site-header { background:rgba(255,250,243,.92); border-bottom-color:rgba(12,68,68,.2); }
 .hero-button { border-color:#d0b28e; color:#fffaf3; }
 .hero-button:hover { color:#0c4444; background:#d0b28e; }
-.hero-button-light { color:#0c4444; background:#d0b28e; }
-.hero-button-light:hover { color:#0c4444; background:transparent; }
+.hero-button-light { color:#6f222a; background:#d0b28e; }
+.hero-button-light:hover { color:#6f222a; background:transparent; }
 .turnkey-heading .eyebrow, .scope-block .eyebrow, .footer-label { color:#6f222a; }
 .turnkey-heading h2 em { color:#6f222a; }
 .turnkey-heading > p:last-child, .service-card p, .footer-contact { color:#0c4444; }
