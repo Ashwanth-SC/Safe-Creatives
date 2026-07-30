@@ -288,7 +288,7 @@
         <div class="product-media">
           <div class="product-gallery">
             <span class="product-number">${String(index + 1).padStart(2, "0")}</span>
-            <img src="" alt="${product.name}" />
+            <img src="" alt="${product.name} — Safe Creatives sensory room furniture, Chennai" />
           </div>
           <div class="gallery-thumbs"></div>
         </div>
@@ -406,7 +406,7 @@
 
     if (gallery.length) {
       image.src = gallery[index];
-      image.alt = `${product.name} in ${shown.name}`;
+      image.alt = `${product.name} in ${shown.name} — Safe Creatives sensory room furniture, Chennai`;
     }
 
     // Only worth showing thumbnails when there is more than one photo.
@@ -452,7 +452,7 @@
       card.className = `addon-card${selected ? " selected" : ""}`;
       card.dataset.id = addon.key;
       card.innerHTML = `
-        <img src="${addon.image_path || ""}" alt="${addon.name}" />
+        <img src="${addon.image_path || ""}" alt="${addon.name} — sensory room add-on by Safe Creatives, Chennai" />
         <div class="addon-copy">
           <h3>${addon.name}</h3>
           <p>${addon.description || ""}</p>
