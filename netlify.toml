@@ -1,0 +1,9 @@
+# Netlify configuration.
+#
+# This is a plain static site with no build step. The web files live in public/;
+# the backend (migrations/, supabase/, *.sql) deliberately stays out of the
+# published site. Publishing the public/ folder serves index.html at the root.
+
+[build]
+  publish = "public"
+  command = ""
