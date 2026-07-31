@@ -42,9 +42,10 @@ function corsHeadersFor(req: Request): Record<string, string> {
 
 // Which fulfillment stages unlock each installment for the customer. The admin
 // advances fulfillment_stage from the dashboard; ticking "Confirmed" unlocks the
-// confirmation installment, "Production" unlocks the final one.
+// confirmation installment, "Ready to dispatch" (stage 'dispatch') unlocks the
+// final one — the customer pays before we ship.
 const CONFIRMATION_STAGES = ["confirmed", "production", "dispatch", "delivered", "installed"];
-const DISPATCH_STAGES = ["production", "dispatch", "delivered", "installed"];
+const DISPATCH_STAGES = ["dispatch", "delivered", "installed"];
 
 Deno.serve(async (req) => {
   const cors = corsHeadersFor(req);
@@ -135,7 +136,7 @@ Deno.serve(async (req) => {
     if (phase === "dispatch") {
       if (!DISPATCH_STAGES.includes(order.fulfillment_stage)) {
         return json(
-          { error: "The final installment unlocks once your order is in production." },
+          { error: "The final installment unlocks once your order is ready to dispatch." },
           403
         );
       }

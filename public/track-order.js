@@ -25,15 +25,17 @@
     ["reserved", "Reserved"],
     ["confirmed", "Confirmed"],
     ["production", "Production"],
+    ["dispatch", "Ready to dispatch"],
     ["delivered", "Delivered"],
     ["installed", "Installed"],
   ];
 
   // Which fulfillment stages unlock each installment for the customer. Mirrors
   // the gate in the create-installment-order Edge Function (the authoritative
-  // check); this only decides what the page offers.
+  // check); this only decides what the page offers. The final installment
+  // unlocks at "Ready to dispatch" (stage 'dispatch'), not earlier.
   const CONFIRMATION_STAGES = ["confirmed", "production", "dispatch", "delivered", "installed"];
-  const DISPATCH_STAGES = ["production", "dispatch", "delivered", "installed"];
+  const DISPATCH_STAGES = ["dispatch", "delivered", "installed"];
 
   function dateOf(value) {
     return value
@@ -187,7 +189,7 @@
           confirmationPaid &&
           DISPATCH_STAGES.includes(order.fulfillment_stage),
         lockHint: confirmationPaid
-          ? "Unlocks once your order is in production"
+          ? "Unlocks once your order is ready to dispatch"
           : "Pay the confirmation installment first",
       },
     ];

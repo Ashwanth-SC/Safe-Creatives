@@ -527,14 +527,14 @@
   // customer sees on their "Track order" page. Only these operational fields
   // are writable (migration 014 grants UPDATE on exactly these columns to
   // admins); the financial totals above stay read-only and server-computed.
-  // "Confirmed" unlocks the customer's 80% installment; "Production" unlocks the
-  // final 20%. (The old separate "Dispatch" milestone is retired — the final
-  // installment is now the internal 'dispatch' phase, gated on Production.)
+  // "Confirmed" unlocks the customer's 80% installment; "Ready to dispatch"
+  // unlocks the final 20% (stage 'dispatch'). The customer pays before we ship.
   const STAGE_OPTIONS = [
     ["reserved", "Reserved"],
     ["confirmed", "Confirmed"],
     ["cancelled", "Cancelled"],
     ["production", "Production"],
+    ["dispatch", "Ready to dispatch"],
     ["delivered", "Delivered"],
     ["installed", "Installed"],
   ];
