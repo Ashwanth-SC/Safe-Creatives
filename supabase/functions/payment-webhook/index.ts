@@ -999,6 +999,43 @@ async function emailInstallmentReceipt(admin: any, link: any) {
   console.log("Receipt", receiptRef, "emailed to", order.contact_email);
 }
 
+// Shared finalization for a paid installment, whether it arrived via the admin
+// payment link (payment_link.paid) or the customer's inline payment
+// (payment.captured). Marks the milestone paid, emails a receipt, and on the
+// final (dispatch) installment raises the order's tax invoice. Throws on
+// failure so the caller can record it on the event and stop.
+// deno-lint-ignore no-explicit-any
+async function finalizeInstallment(
+  admin: any,
+  opts: { orderId: string; phase: string; amountPaise: number; providerPaymentId: string | null }
+) {
+  const { orderId, phase, amountPaise, providerPaymentId } = opts;
+
+  const paidColumn =
+    phase === "confirmation" ? "confirmation_paid_at" : "dispatch_paid_at";
+  await admin
+    .from("orders")
+    .update({ [paidColumn]: new Date().toISOString() })
+    .eq("id", orderId);
+
+  // Best-effort receipt, shaped like an installment_links row so the existing
+  // receipt builder can be reused unchanged.
+  await emailInstallmentReceipt(admin, {
+    id: null,
+    order_id: orderId,
+    phase,
+    amount_paise: amountPaise,
+    provider_payment_id: providerPaymentId,
+  });
+
+  // The final (dispatch) payment triggers the real tax invoice for the order
+  // value net of the advance.
+  if (phase === "dispatch") {
+    const finalInvoice = await createFinalInvoice(admin, orderId);
+    await emailInvoiceIfUnsent(admin, finalInvoice.id);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -1109,34 +1146,19 @@ Deno.serve(async (req) => {
         })
         .eq("id", link.id);
 
-      // Reflect on the order so it shows paid to the admin and the customer.
-      const paidColumn =
-        link.phase === "confirmation" ? "confirmation_paid_at" : "dispatch_paid_at";
-      await admin
-        .from("orders")
-        .update({ [paidColumn]: new Date().toISOString() })
-        .eq("id", link.order_id);
-
-      // Best-effort receipt: the installment is paid and recorded either way.
+      // Mark the milestone paid, email the receipt, and (on dispatch) raise the
+      // final invoice — shared with the customer's inline payment path.
       try {
-        await emailInstallmentReceipt(admin, link);
-      } catch (receiptError) {
-        console.error("Receipt email failed:", receiptError);
-        await markProcessed(`Installment paid, receipt email failed: ${receiptError}`);
-        return json({ status: "paid, receipt failed" }, 200);
-      }
-
-      // The final (dispatch) payment triggers the real tax invoice for the
-      // order value net of the advance. Best-effort, like the receipt.
-      if (link.phase === "dispatch") {
-        try {
-          const finalInvoice = await createFinalInvoice(admin, link.order_id);
-          await emailInvoiceIfUnsent(admin, finalInvoice.id);
-        } catch (finalError) {
-          console.error("Final invoice failed:", finalError);
-          await markProcessed(`Dispatch paid, final invoice failed: ${finalError}`);
-          return json({ status: "paid, final invoice failed" }, 200);
-        }
+        await finalizeInstallment(admin, {
+          orderId: link.order_id,
+          phase: link.phase,
+          amountPaise: Number(link.amount_paise),
+          providerPaymentId: linkPayment?.id ?? null,
+        });
+      } catch (finalizeError) {
+        console.error("Installment finalize failed:", finalizeError);
+        await markProcessed(`Installment paid, finalize failed: ${finalizeError}`);
+        return json({ status: "paid, finalize failed" }, 200);
       }
 
       await markProcessed();
@@ -1156,7 +1178,7 @@ Deno.serve(async (req) => {
       // stop rather than inventing a payment.
       const { data: payment } = await admin
         .from("payments")
-        .select("id, order_id, amount_paise, status")
+        .select("id, order_id, amount_paise, status, purpose")
         .eq("provider", "razorpay")
         .eq("provider_order_id", providerOrderId)
         .maybeSingle();
@@ -1197,7 +1219,28 @@ Deno.serve(async (req) => {
           })
           .eq("id", payment.id);
 
-        // Only now does the order count as paid.
+        // Installment captures (the customer paid the 80%/20% inline from Track
+        // Order) finalize the milestone and — on the final one — raise the tax
+        // invoice, the same as the admin payment-link path. The advance keeps
+        // its own flow below.
+        if (payment.purpose === "confirmation" || payment.purpose === "dispatch") {
+          try {
+            await finalizeInstallment(admin, {
+              orderId: payment.order_id,
+              phase: payment.purpose,
+              amountPaise: Number(payment.amount_paise),
+              providerPaymentId,
+            });
+          } catch (finalizeError) {
+            console.error("Installment finalize failed:", finalizeError);
+            await markProcessed(`Installment captured, finalize failed: ${finalizeError}`);
+            return json({ status: "captured, finalize failed" }, 200);
+          }
+          await markProcessed();
+          return json({ status: "installment paid" }, 200);
+        }
+
+        // Only now does the order count as paid (advance).
         await admin
           .from("orders")
           .update({ status: "advance_paid" })
@@ -1300,10 +1343,38 @@ Deno.serve(async (req) => {
       }
 
       if (refundStatus === "processed") {
-        await admin
-          .from("orders")
-          .update({ status: "refunded" })
-          .eq("id", payment.order_id);
+        // Mark the ORDER refunded only when every captured rupee has come back —
+        // a partial refund, or refunding one of several payments, must not close
+        // the whole order (the status enum has no partial-refund state).
+        const { data: orderPayments } = await admin
+          .from("payments")
+          .select("id, amount_paise, status")
+          .eq("order_id", payment.order_id);
+
+        const capturedTotal = (orderPayments ?? [])
+          .filter((p: { status: string }) => p.status === "captured")
+          .reduce((sum: number, p: { amount_paise: number }) => sum + Number(p.amount_paise || 0), 0);
+
+        const paymentIds = (orderPayments ?? []).map((p: { id: string }) => p.id);
+        let refundedTotal = 0;
+        if (paymentIds.length) {
+          const { data: processedRefunds } = await admin
+            .from("refunds")
+            .select("amount_paise")
+            .in("payment_id", paymentIds)
+            .eq("status", "processed");
+          refundedTotal = (processedRefunds ?? []).reduce(
+            (sum: number, r: { amount_paise: number }) => sum + Number(r.amount_paise || 0),
+            0
+          );
+        }
+
+        if (capturedTotal > 0 && refundedTotal >= capturedTotal) {
+          await admin
+            .from("orders")
+            .update({ status: "refunded" })
+            .eq("id", payment.order_id);
+        }
       }
 
       await markProcessed();

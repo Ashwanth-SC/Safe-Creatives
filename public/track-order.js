@@ -25,10 +25,15 @@
     ["reserved", "Reserved"],
     ["confirmed", "Confirmed"],
     ["production", "Production"],
-    ["dispatch", "Dispatch"],
     ["delivered", "Delivered"],
     ["installed", "Installed"],
   ];
+
+  // Which fulfillment stages unlock each installment for the customer. Mirrors
+  // the gate in the create-installment-order Edge Function (the authoritative
+  // check); this only decides what the page offers.
+  const CONFIRMATION_STAGES = ["confirmed", "production", "dispatch", "delivered", "installed"];
+  const DISPATCH_STAGES = ["production", "dispatch", "delivered", "installed"];
 
   function dateOf(value) {
     return value
@@ -152,30 +157,169 @@
     const dispatch = balance - confirmation;
 
     const advancePaid = order.status !== "pending_advance";
+    const confirmationPaid = Boolean(order.confirmation_paid_at);
+    const dispatchPaid = Boolean(order.dispatch_paid_at);
+    const closed =
+      order.status === "cancelled" ||
+      order.status === "refunded" ||
+      order.fulfillment_stage === "cancelled";
 
+    // Each installment can be paid by the customer here once the admin advances
+    // the milestone that unlocks it. The Edge Function re-checks this gate; the
+    // page only decides whether to offer the button.
     const rows = [
-      ["Advance", advance, advancePaid],
-      ["Confirmation (80%)", confirmation, Boolean(order.confirmation_paid_at)],
-      ["Balance on dispatch (20%)", dispatch, Boolean(order.dispatch_paid_at)],
+      { label: "Advance", amount: advance, paid: advancePaid },
+      {
+        label: "Confirmation (80%)",
+        amount: confirmation,
+        paid: confirmationPaid,
+        phase: "confirmation",
+        unlocked: advancePaid && CONFIRMATION_STAGES.includes(order.fulfillment_stage),
+        lockHint: "Unlocks once your order is confirmed",
+      },
+      {
+        label: "Final balance (20%)",
+        amount: dispatch,
+        paid: dispatchPaid,
+        phase: "dispatch",
+        unlocked:
+          advancePaid &&
+          confirmationPaid &&
+          DISPATCH_STAGES.includes(order.fulfillment_stage),
+        lockHint: confirmationPaid
+          ? "Unlocks once your order is in production"
+          : "Pay the confirmation installment first",
+      },
     ];
 
     const wrap = document.createElement("div");
     wrap.className = "track-payments";
     wrap.innerHTML = '<p class="track-subhead">Payments</p>';
 
-    rows.forEach(([label, amount, paid]) => {
+    rows.forEach((r) => {
       const row = document.createElement("div");
       row.className = "track-pay";
-      row.innerHTML = `
-        <span class="track-pay-label">${label}</span>
-        <span class="track-pay-amount">${money(amount)}</span>
-        <span class="track-badge ${paid ? "is-paid" : "is-pending"}">${
-        paid ? "Paid" : "Pending"
-      }</span>`;
+
+      const label = document.createElement("span");
+      label.className = "track-pay-label";
+      label.textContent = r.label;
+
+      const amount = document.createElement("span");
+      amount.className = "track-pay-amount";
+      amount.textContent = money(r.amount);
+
+      let right;
+      if (r.paid) {
+        right = badge("Paid", "is-paid");
+      } else if (r.phase && !closed && r.unlocked) {
+        right = document.createElement("button");
+        right.type = "button";
+        right.className = "track-pay-btn";
+        right.textContent = "Pay now";
+        right.addEventListener("click", () => payInstallment(order, r.phase, right));
+      } else if (r.phase && !closed) {
+        right = document.createElement("span");
+        right.className = "track-pay-lock";
+        right.textContent = r.lockHint;
+      } else {
+        right = badge("Pending", "is-pending");
+      }
+
+      row.append(label, amount, right);
       wrap.appendChild(row);
     });
 
     return wrap;
+  }
+
+  function badge(text, cls) {
+    const el = document.createElement("span");
+    el.className = `track-badge ${cls}`;
+    el.textContent = text;
+    return el;
+  }
+
+  // --------------------------------------------------------------------
+  // Installment payment — inline Razorpay, mirroring the advance checkout
+  // --------------------------------------------------------------------
+
+  async function payInstallment(order, phase, button) {
+    button.disabled = true;
+    const original = button.textContent;
+    button.textContent = "Starting…";
+    try {
+      const { data, error } = await sb.functions.invoke("create-installment-order", {
+        body: { order_id: order.id, phase },
+      });
+      if (error) throw await describeFunctionError(error);
+      if (data?.error) throw new Error(data.error);
+      openRazorpay(data);
+    } catch (payError) {
+      window.alert(`Could not start payment: ${payError.message}`);
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+
+  function openRazorpay(data) {
+    if (typeof window.Razorpay !== "function") {
+      window.alert(
+        "The payment window could not load. Check your connection and try again."
+      );
+      return;
+    }
+    const label =
+      data.phase === "confirmation" ? "Confirmation (80%)" : "Final balance (20%)";
+    const checkout = new window.Razorpay({
+      key: data.razorpay_key_id,
+      order_id: data.razorpay_order_id,
+      amount: data.amount_paise,
+      currency: data.currency || "INR",
+      name: "Safe Creatives",
+      description: `${label} — ${data.order_number}`,
+      prefill: {
+        name: data.contact_name || "",
+        email: data.contact_email || "",
+        contact: data.contact_phone || "",
+      },
+      notes: { order_number: data.order_number, phase: data.phase },
+      theme: { color: "#6f222a" },
+      handler: function () {
+        // The webhook is what actually marks it paid; give it a moment, then
+        // reload so the row reflects the new state.
+        list.insertAdjacentHTML(
+          "afterbegin",
+          '<p class="track-empty">Payment received — confirming your order…</p>'
+        );
+        window.setTimeout(() => window.location.reload(), 2500);
+      },
+    });
+    checkout.on("payment.failed", function (response) {
+      window.alert(
+        `Payment failed: ${response?.error?.description || "unknown error"}. You can try again.`
+      );
+    });
+    checkout.open();
+  }
+
+  // supabase-js collapses a non-2xx into a generic message and leaves the real
+  // response on error.context; dig out the function's own error text.
+  async function describeFunctionError(error) {
+    const response = error?.context;
+    if (!response || typeof response.clone !== "function") return error;
+    try {
+      const body = await response.clone().json();
+      if (body?.error) return new Error(body.error);
+    } catch {
+      /* not JSON */
+    }
+    try {
+      const text = await response.clone().text();
+      if (text) return new Error(`${response.status}: ${text}`);
+    } catch {
+      /* already consumed */
+    }
+    return error;
   }
 
   // --------------------------------------------------------------------

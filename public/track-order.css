@@ -45,6 +45,10 @@
 .track-badge { padding:4px 10px; font:9px "DM Mono",monospace; letter-spacing:.08em; text-transform:uppercase; }
 .track-badge.is-paid { color:#0c4444; background:rgba(12,68,68,.1); }
 .track-badge.is-pending { color:#8a6d1a; background:rgba(208,178,142,.28); }
+.track-pay-btn { padding:8px 15px; border:1px solid #6f222a; background:#6f222a; color:#fff; font:11px "DM Sans",sans-serif; cursor:pointer; white-space:nowrap; transition:opacity .15s; }
+.track-pay-btn:hover { opacity:.9; }
+.track-pay-btn:disabled { opacity:.55; cursor:default; }
+.track-pay-lock { max-width:170px; color:#8a8a80; font:9px "DM Mono",monospace; letter-spacing:.04em; line-height:1.4; text-align:right; }
 
 .track-install { margin-top:26px; padding-top:24px; border-top:1px solid rgba(23,23,23,.1); }
 .install-options { display:flex; flex-wrap:wrap; gap:10px; }
@@ -70,8 +74,9 @@
   .track-step::before { top:-50%; left:9px; width:2px; height:100%; }
   .track-dot { margin:0; }
   .track-step-label { font-size:13px; }
-  .track-pay { grid-template-columns:1fr auto; row-gap:2px; }
+  .track-pay { grid-template-columns:1fr auto; row-gap:4px; }
   .track-pay-amount { grid-column:2; grid-row:1; }
-  .track-badge { grid-column:2; grid-row:2; justify-self:end; }
+  .track-badge, .track-pay-btn, .track-pay-lock { grid-column:2; grid-row:2; justify-self:end; }
+  .track-pay-lock { text-align:right; }
   .track-pay-label { grid-column:1; grid-row:1 / span 2; }
 }

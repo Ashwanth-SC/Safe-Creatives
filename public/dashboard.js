@@ -527,12 +527,14 @@
   // customer sees on their "Track order" page. Only these operational fields
   // are writable (migration 014 grants UPDATE on exactly these columns to
   // admins); the financial totals above stay read-only and server-computed.
+  // "Confirmed" unlocks the customer's 80% installment; "Production" unlocks the
+  // final 20%. (The old separate "Dispatch" milestone is retired — the final
+  // installment is now the internal 'dispatch' phase, gated on Production.)
   const STAGE_OPTIONS = [
     ["reserved", "Reserved"],
     ["confirmed", "Confirmed"],
     ["cancelled", "Cancelled"],
     ["production", "Production"],
-    ["dispatch", "Dispatch"],
     ["delivered", "Delivered"],
     ["installed", "Installed"],
   ];
@@ -936,6 +938,13 @@
   // Payments
   // ------------------------------------------------------------------
 
+  const PURPOSE_LABEL = {
+    advance: "Advance",
+    confirmation: "Confirmation 80%",
+    dispatch: "Final 20%",
+    balance: "Balance",
+  };
+
   async function paymentsPanel() {
     const [{ data: payments, error }, { data: refunds }] = await Promise.all([
       sb
@@ -954,8 +963,19 @@
 
     if (error) throw error;
 
-    const refundByPayment = new Map();
-    (refunds || []).forEach((r) => refundByPayment.set(r.payment_id, r));
+    // Sum refunds per payment; pending + processed both count against what is
+    // still refundable. Refunds arrive newest-first, so the first seen is latest.
+    const refundedByPayment = new Map();
+    const latestRefundByPayment = new Map();
+    (refunds || []).forEach((r) => {
+      if (["pending", "processed"].includes(r.status)) {
+        refundedByPayment.set(
+          r.payment_id,
+          (refundedByPayment.get(r.payment_id) || 0) + Number(r.amount_paise || 0)
+        );
+      }
+      if (!latestRefundByPayment.has(r.payment_id)) latestRefundByPayment.set(r.payment_id, r);
+    });
 
     const rows = (payments || []).map((p) => {
       const tone =
@@ -964,18 +984,30 @@
           : ["failed", "cancelled"].includes(p.status)
           ? "bad"
           : "warn";
-      const refund = refundByPayment.get(p.id);
+      const refunded = refundedByPayment.get(p.id) || 0;
+      const latest = latestRefundByPayment.get(p.id);
+      const remaining = p.status === "captured" ? Number(p.amount_paise) - refunded : 0;
+
+      let action = "—";
+      if (p.status === "captured" && remaining > 0) {
+        const btn = el("button", "admin-small admin-danger", "Refund");
+        btn.type = "button";
+        btn.addEventListener("click", () => initiateRefund(p, remaining));
+        action = btn;
+      }
 
       return [
         p.orders?.order_number || "—",
         p.orders?.contact_name || "—",
+        PURPOSE_LABEL[p.purpose] || p.purpose || "—",
         SC.money(p.amount_paise),
         pill(PAYMENT_STATUS[p.status] || p.status, tone),
         p.method || "—",
-        refund ? `${SC.money(refund.amount_paise)} (${refund.status})` : "—",
+        refunded ? `${SC.money(refunded)} (${latest?.status || "—"})` : "—",
         p.provider_payment_id || p.provider_order_id || "—",
         p.failure_reason || "—",
         when(p.created_at),
+        action,
       ];
     });
 
@@ -983,16 +1015,81 @@
       [
         "Order",
         "Customer",
+        "Purpose",
         "Amount",
         "Status",
         "Method",
-        "Refund",
+        "Refunded",
         "Gateway ID",
         "Note",
         "When",
+        "Action",
       ],
       rows
     );
+  }
+
+  // Initiate a refund against one captured payment (full or partial).
+  async function initiateRefund(payment, remaining) {
+    const remainingRupees = remaining / 100;
+    const input = window.prompt(
+      `Refund ${payment.orders?.order_number || "payment"} — amount in ₹.\n` +
+        `Refundable remaining: ₹${remainingRupees.toLocaleString("en-IN")}.`,
+      String(remainingRupees)
+    );
+    if (input === null) return;
+    const amountPaise = Math.round(Number(input) * 100);
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
+      window.alert("Please enter a valid amount.");
+      return;
+    }
+    if (amountPaise > remaining) {
+      window.alert(
+        `That exceeds the refundable remaining (₹${remainingRupees.toLocaleString("en-IN")}).`
+      );
+      return;
+    }
+    const reason = window.prompt("Reason for the refund (optional):", "") || null;
+    if (
+      !window.confirm(
+        `Refund ${SC.money(amountPaise)} to the customer?\n\n` +
+          `Razorpay does not return its processing fee on a refund.`
+      )
+    )
+      return;
+
+    const { data, error } = await sb.functions.invoke("create-refund", {
+      body: { payment_id: payment.id, amount_paise: amountPaise, reason },
+    });
+    if (error) {
+      const detail = await functionErrorText(error);
+      message(`Refund failed: ${detail}`, true);
+      window.alert(`Refund failed: ${detail}`);
+      return;
+    }
+    if (data?.error) {
+      window.alert(`Refund failed: ${data.error}`);
+      return;
+    }
+    window.alert(
+      `Refund initiated: ${SC.money(data.amount_paise)}.\n\n` +
+        `It shows here as "processed" once Razorpay completes it (usually 5–7 business days).`
+    );
+    show("payments");
+  }
+
+  // Pull the Edge Function's own error text out of a non-2xx response.
+  async function functionErrorText(error) {
+    const response = error?.context;
+    if (response && typeof response.clone === "function") {
+      try {
+        const body = await response.clone().json();
+        if (body?.error) return body.error;
+      } catch {
+        /* not JSON */
+      }
+    }
+    return error.message || "Unknown error";
   }
 
   // ------------------------------------------------------------------
