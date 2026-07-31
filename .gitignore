@@ -1,0 +1,19 @@
+# Root ignores. The served web files live in public/ (with their own
+# public/.gitignore); this covers the repo root, which that file no longer does.
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Supabase CLI local state (config.toml IS tracked)
+supabase/.temp/
+supabase/.branches/
