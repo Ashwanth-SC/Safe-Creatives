@@ -237,8 +237,8 @@ button:hover { background:transparent; color:var(--ink); }
   .package-header, .checkout-header, .auth-header { grid-template-columns:1fr auto 1fr; height:72px; align-content:center; }
   /* Logo only on the narrowest screens so the back link sits truly centred
      rather than being pushed off-centre by the wider wordmark. */
-  .package-header .brand span, .checkout-header .brand span { display:none; }
-  .package-header .catalog-back, .checkout-header .catalog-back { font-size:12px; }
+  .package-header .brand span, .checkout-header .brand span, .auth-header .brand span { display:none; }
+  .package-header .catalog-back, .checkout-header .catalog-back, .auth-header .header-home-link { font-size:12px; }
 }
 
 .auth-page { min-height:calc(100svh - var(--header-h)); padding:calc(var(--header-h) + 30px) 20px 56px; display:grid; place-items:center; background:#f5f5f3; }
