@@ -128,25 +128,42 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .pricing-note strong { color:#6f222a; font-weight:600; }
 /* Cross-link from the sensory catalog to bespoke turnkey work. */
 /* Sensory-rooms page — two clean sections.
-   1) Hero: centered title, then "what's included" and "how it works", each
-      contained and centered so nothing spills past the viewport. */
-.catalog-hero { max-width:1220px; margin:0 auto; padding:clamp(26px,4.5vw,52px) 7vw clamp(44px,5.5vw,70px); }
-.catalog-hero-head { text-align:center; margin-bottom:clamp(30px,4vw,50px); }
-.catalog-hero-head .eyebrow { margin:0 0 14px; color:#6f222a; }
-.catalog-hero-head h1 { margin:0; font-size:clamp(46px,8vw,92px); line-height:.85; letter-spacing:-.045em; }
+   1) Hero, all on one screen (desktop): the title with its tagline beside it,
+      then "what's included" and "how it works" sitting side by side below. */
+/* Header sits in normal flow (~86px); subtract it so the hero is exactly one
+   screen and nothing spills into a stray scroll below the workflow. */
+.catalog-hero { max-width:1220px; margin:0 auto; box-sizing:border-box; min-height:calc(100vh - 86px); padding:clamp(22px,4vw,42px) 7vw clamp(30px,4vw,50px); display:flex; flex-direction:column; justify-content:center; gap:clamp(30px,4.5vw,58px); }
+.catalog-hero-head { display:flex; align-items:flex-end; justify-content:space-between; gap:26px; }
+.catalog-hero-head h1 { margin:0; font-size:clamp(46px,7vw,84px); line-height:.85; letter-spacing:-.045em; }
 .catalog-hero-head h1 em { color:#6f222a; }
-.catalog-hero-block + .catalog-hero-block { margin-top:clamp(42px,5vw,64px); }
-.section-eyebrow { max-width:1180px; margin:0 auto 22px; color:#6f222a; text-align:center; }
-.catalog-hero .catalog-features { margin:0 auto; }
-.catalog-workflow { max-width:1040px; margin:0 auto; padding-top:24px; }
-/* The workflow's connector line assumes four across; drop it and let the steps
-   wrap once there isn't room for four. */
-@media (max-width:760px) {
-  .catalog-hero .catalog-workflow { grid-template-columns:repeat(2,1fr); gap:34px 18px; }
-  .catalog-workflow .workflow-line { display:none; }
-  .catalog-workflow .workflow-step p { max-width:none; }
+.catalog-hero-tag { margin:0 0 10px; text-align:right; line-height:1.55; color:#6f222a; }
+.catalog-hero-grid { display:grid; grid-template-columns:1fr 1fr; gap:clamp(30px,4.5vw,66px); align-items:start; }
+.catalog-hero-block { margin:0; }
+.section-eyebrow { margin:0 0 18px; color:#6f222a; }
+/* Compact the shared feature/workflow blocks so both columns clear one screen. */
+.catalog-hero .catalog-features { margin:0; grid-template-columns:repeat(2,1fr); gap:14px; }
+.catalog-hero .catalog-features .sensory-feature { padding:18px 18px 16px; }
+.catalog-hero .catalog-features .feature-icon { width:38px; height:38px; margin-bottom:12px; }
+.catalog-hero .catalog-features .feature-icon svg { width:20px; height:20px; }
+.catalog-hero .catalog-features .sensory-feature strong { font-size:clamp(22px,2.2vw,29px); }
+.catalog-hero .catalog-workflow { max-width:none; margin:0; padding-top:0; grid-template-columns:repeat(2,1fr); gap:26px 20px; }
+.catalog-hero .catalog-workflow .workflow-line { display:none; }
+.catalog-hero .catalog-workflow .step-number { margin-bottom:12px; }
+.catalog-hero .catalog-workflow .step-dot { margin-bottom:16px; }
+.catalog-hero .catalog-workflow .workflow-step h3 { margin-bottom:9px; }
+.catalog-hero .catalog-workflow .workflow-step p { max-width:none; }
+/* Below desktop: stop forcing one screen — stack, breathe, and let it scroll.
+   Tagline moves above the title (column-reverse) so it reads as an eyebrow. */
+@media (max-width:900px) {
+  .catalog-hero { min-height:0; display:block; padding:clamp(92px,15vw,120px) 7vw 56px; }
+  .catalog-hero-head { display:flex; flex-direction:column-reverse; align-items:flex-start; gap:14px; margin-bottom:clamp(40px,7vw,56px); }
+  .catalog-hero-tag { margin:0; text-align:left; }
+  .catalog-hero-grid { grid-template-columns:1fr; gap:clamp(40px,7vw,58px); }
 }
-@media (max-width:430px) { .catalog-hero .catalog-workflow { grid-template-columns:1fr; } }
+@media (max-width:520px) {
+  .catalog-hero .catalog-features { grid-template-columns:1fr; }
+  .catalog-hero .catalog-workflow { grid-template-columns:1fr; gap:24px; }
+}
 
 /* 2) A short intro, then the packages. */
 .catalog-body { border-top:1px solid rgba(23,23,23,.1); }
