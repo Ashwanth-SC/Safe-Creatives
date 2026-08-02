@@ -127,6 +127,34 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 /* Pricing / reservation note — sets expectations before anyone reserves. */
 .pricing-note strong { color:#6f222a; font-weight:600; }
 /* Cross-link from the sensory catalog to bespoke turnkey work. */
+/* Sensory-rooms page — two clean sections.
+   1) Hero: centered title, then "what's included" and "how it works", each
+      contained and centered so nothing spills past the viewport. */
+.catalog-hero { max-width:1220px; margin:0 auto; padding:clamp(26px,4.5vw,52px) 7vw clamp(44px,5.5vw,70px); }
+.catalog-hero-head { text-align:center; margin-bottom:clamp(30px,4vw,50px); }
+.catalog-hero-head .eyebrow { margin:0 0 14px; color:#6f222a; }
+.catalog-hero-head h1 { margin:0; font-size:clamp(46px,8vw,92px); line-height:.85; letter-spacing:-.045em; }
+.catalog-hero-head h1 em { color:#6f222a; }
+.catalog-hero-block + .catalog-hero-block { margin-top:clamp(42px,5vw,64px); }
+.section-eyebrow { max-width:1180px; margin:0 auto 22px; color:#6f222a; text-align:center; }
+.catalog-hero .catalog-features { margin:0 auto; }
+.catalog-workflow { max-width:1040px; margin:0 auto; padding-top:24px; }
+/* The workflow's connector line assumes four across; drop it and let the steps
+   wrap once there isn't room for four. */
+@media (max-width:760px) {
+  .catalog-hero .catalog-workflow { grid-template-columns:repeat(2,1fr); gap:34px 18px; }
+  .catalog-workflow .workflow-line { display:none; }
+  .catalog-workflow .workflow-step p { max-width:none; }
+}
+@media (max-width:430px) { .catalog-hero .catalog-workflow { grid-template-columns:1fr; } }
+
+/* 2) A short intro, then the packages. */
+.catalog-body { border-top:1px solid rgba(23,23,23,.1); }
+.catalog-lede { max-width:720px; margin:0 auto; padding:clamp(42px,6vw,66px) 7vw clamp(28px,3.5vw,40px); text-align:center; }
+.catalog-lede p { margin:0 0 15px; color:#59635d; font-size:15px; line-height:1.75; }
+.catalog-lede p:last-child { margin-bottom:0; }
+.catalog-lede .lede-lead { color:#3a423d; font-weight:500; }
+
 .catalog-bespoke { padding:44px 7vw 72px; text-align:center; }
 .catalog-bespoke p { max-width:620px; margin:0 auto; color:#59635d; font-size:14.5px; line-height:1.6; }
 .catalog-bespoke a { color:#6f222a; text-decoration:underline; text-underline-offset:4px; }

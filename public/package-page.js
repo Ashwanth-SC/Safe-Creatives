@@ -651,21 +651,24 @@
 
   async function reviewOrder() {
     if (!requireLogin()) return;
-    window.location.href = "checkout.html";
+    await confirmLeave("checkout.html");
   }
 
-  // A gentle save reminder before the customer navigates away from the
-  // configurator — to add another package, or back to Sensory rooms via the
-  // header — in case they haven't saved the package they just personalised.
-  async function confirmLeave(destination) {
-    const proceed = await confirmDialog({
+  // A gentle save reminder before ANY action that leaves the configurator — the
+  // header "Sensory rooms" link, "Add package", "Review order", or opening the
+  // account menu — so a personalised package is never abandoned unsaved.
+  function saveReminder() {
+    return confirmDialog({
       eyebrow: "BEFORE YOU LEAVE",
       title: "Saved this package?",
       body: "Hope you have saved this personalised package to cart before you move to any other page.",
       cancelText: "Go back",
       confirmText: "Yes, continue",
     });
-    if (proceed) window.location.href = destination;
+  }
+
+  async function confirmLeave(destination) {
+    if (await saveReminder()) window.location.href = destination;
   }
 
   // ------------------------------------------------------------------
@@ -687,6 +690,27 @@
       confirmLeave(link.getAttribute("href"));
     });
   });
+
+  // The profile button opens the account menu, whose links leave the page — so
+  // guard opening it with the same reminder. auth.js injects the button after
+  // this runs, so intercept in the capture phase (before its own click handler).
+  document.addEventListener(
+    "click",
+    (event) => {
+      const profileBtn = event.target.closest(".account-link");
+      if (!profileBtn) return;
+      const dropdown = document.querySelector(".account-dropdown");
+      if (dropdown && !dropdown.hidden) return; // menu already open → allow close
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      saveReminder().then((proceed) => {
+        if (!proceed) return;
+        if (dropdown) dropdown.hidden = false;
+        else window.location.href = profileBtn.getAttribute("href") || "login.html";
+      });
+    },
+    true
+  );
 
   if (isEditing) {
     document.querySelector("#save-package").textContent = "Update package";
