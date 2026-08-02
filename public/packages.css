@@ -5,7 +5,10 @@
    same size — align-items alone does not reconcile their intrinsic heights. */
 /* margin:0 is load-bearing — the <button>s otherwise pick up a 9px margin-top
    that the <a> does not, which nudged 'Add package' above the other two. */
-.package-actions button,.package-actions a { box-sizing:border-box; height:50px; margin:0; display:inline-flex; align-items:center; justify-content:center; padding:0 20px; border:1px solid #6f222a; color:#6f222a; background:transparent; font:12px "DM Sans",sans-serif; line-height:1.2; white-space:nowrap; text-decoration:none; cursor:pointer; }.package-actions .primary { color:#fff; background:#6f222a; }.save-message { min-height:18px; margin:0; text-align:center; color:#0c4444; font-size:13px; }
+.package-actions button,.package-actions a { box-sizing:border-box; height:50px; margin:0; display:inline-flex; align-items:center; justify-content:center; padding:0 20px; border:1px solid #6f222a; color:#6f222a; background:transparent; font:12px "DM Sans",sans-serif; line-height:1.2; white-space:nowrap; text-decoration:none; cursor:pointer; }.package-actions .primary { color:#fff; background:#6f222a; }
+.package-actions button.is-loading { color:transparent; position:relative; pointer-events:none; }
+.package-actions button.is-loading::after { content:""; position:absolute; top:50%; left:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border:2px solid rgba(111,34,42,.3); border-top-color:#6f222a; border-radius:50%; animation:sc-btn-spin .7s linear infinite; }
+@keyframes sc-btn-spin { to { transform:rotate(360deg); } }.save-message { min-height:18px; margin:0; text-align:center; color:#0c4444; font-size:13px; }
 @media (max-width:720px) { .package-catalog,.addon-grid { grid-template-columns:1fr; }.package-card { min-height:68vh; }.product-block { grid-template-columns:1fr; }.products-wrap { padding:60px 24px 20px; }.addons-section { padding:60px 24px; }.package-actions { flex-direction:column; align-items:stretch; padding:42px 24px 65px; text-align:center; }.package-actions button,.package-actions a { text-align:center; }.package-topbar { padding:14px 24px; }.package-hero { padding:75px 24px; }.catalog-intro { padding:110px 24px 65px; } }
 @media (max-width:460px) {
   .catalog-intro h1, .package-hero h1 { font-size:clamp(52px,16vw,78px); }

@@ -617,6 +617,7 @@
 
     const button = document.querySelector("#save-package");
     button.disabled = true;
+    button.classList.add("is-loading");
 
     try {
       if (isEditing) {
@@ -644,24 +645,27 @@
       return false;
     } finally {
       button.disabled = false;
+      button.classList.remove("is-loading");
     }
   }
 
   async function reviewOrder() {
     if (!requireLogin()) return;
+    window.location.href = "checkout.html";
+  }
 
-    // Deliberately does NOT offer to save. Offering it here misled people who
-    // had already pressed Save into saving a second copy. This only checks
-    // they meant to move on.
+  // A gentle save reminder before the customer navigates away from the
+  // configurator — to add another package, or back to Sensory rooms via the
+  // header — in case they haven't saved the package they just personalised.
+  async function confirmLeave(destination) {
     const proceed = await confirmDialog({
-      eyebrow: "REVIEW YOUR ORDER",
+      eyebrow: "BEFORE YOU LEAVE",
       title: "Saved this package?",
-      body: "Only saved packages appear in your order review. If you have not pressed Save to cart yet, go back and do that first.",
+      body: "Hope you have saved this personalised package to cart before you move to any other page.",
       cancelText: "Go back",
       confirmText: "Yes, continue",
     });
-
-    if (proceed) window.location.href = "checkout.html";
+    if (proceed) window.location.href = destination;
   }
 
   // ------------------------------------------------------------------
@@ -674,6 +678,15 @@
 
   document.querySelector("#save-package").addEventListener("click", savePackage);
   document.querySelector("#review-order").addEventListener("click", reviewOrder);
+
+  // Both the header "← Sensory rooms" link and the "Add package" link leave this
+  // configurator for sensory-rooms.html; guard both with the save reminder.
+  document.querySelectorAll('a[href="sensory-rooms.html"]').forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      confirmLeave(link.getAttribute("href"));
+    });
+  });
 
   if (isEditing) {
     document.querySelector("#save-package").textContent = "Update package";

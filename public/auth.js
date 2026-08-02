@@ -261,11 +261,13 @@ window.SC = (function () {
         '<a class="account-admin-link" href="admin.html">Catalog admin</a>'
       : "";
 
-    // Every signed-in customer can follow their orders' progress and payments.
+    // Every signed-in customer can jump to their cart and follow their orders.
+    const cartLink =
+      '<a class="account-admin-link" href="checkout.html">View cart</a>';
     const trackLink =
       '<a class="account-admin-link" href="track-order.html">Track my orders</a>';
 
-    dropdown.innerHTML = `<span class="account-status"></span>${adminLink}${trackLink}<button type="button" class="logout-button">Log out</button>`;
+    dropdown.innerHTML = `<span class="account-status"></span>${adminLink}${cartLink}${trackLink}<button type="button" class="logout-button">Log out</button>`;
     container.appendChild(dropdown);
 
     dropdown.querySelector(".account-status").textContent =
