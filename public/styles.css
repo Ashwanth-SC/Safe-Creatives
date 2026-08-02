@@ -137,8 +137,16 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .catalog-hero-head h1 { margin:0; font-size:clamp(46px,7vw,84px); line-height:.85; letter-spacing:-.045em; }
 .catalog-hero-head h1 em { color:#6f222a; }
 .catalog-hero-tag { margin:0 0 10px; text-align:right; line-height:1.55; color:#6f222a; }
-.catalog-hero-grid { display:grid; grid-template-columns:1fr 1fr; gap:clamp(30px,4.5vw,66px); align-items:start; }
+.catalog-hero-grid { display:grid; grid-template-columns:1fr 1fr; gap:clamp(30px,4.5vw,66px); align-items:stretch; }
 .catalog-hero-block { margin:0; }
+/* Match the two columns' heights: each block fills its (stretched) grid cell and
+   its two rows split evenly, so the workflow spreads to the same height as the
+   taller feature cards. Desktop only — below 900px the columns stack. */
+@media (min-width:901px) {
+  .catalog-hero-block { display:flex; flex-direction:column; }
+  .catalog-hero .catalog-features,
+  .catalog-hero .catalog-workflow { flex:1; grid-auto-rows:1fr; }
+}
 .section-eyebrow { margin:0 0 18px; color:#6f222a; }
 /* Compact the shared feature/workflow blocks so both columns clear one screen. */
 .catalog-hero .catalog-features { margin:0; grid-template-columns:repeat(2,1fr); gap:14px; }
