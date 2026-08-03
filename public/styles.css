@@ -170,7 +170,16 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 }
 @media (max-width:520px) {
   .catalog-hero .catalog-features { grid-template-columns:1fr; }
-  .catalog-hero .catalog-workflow { grid-template-columns:1fr; gap:24px; }
+  /* Single column on phones — bring back a vertical connector running through
+     the step dots, matching the index sensory workflow. */
+  .catalog-hero .catalog-workflow { grid-template-columns:1fr; gap:28px; padding-left:6px; }
+  .catalog-hero .catalog-workflow .workflow-line { display:block; top:11px; bottom:11px; left:17px; right:auto; width:1px; height:auto; }
+  .catalog-hero .catalog-workflow .workflow-line::after { inset:0; width:100%; height:25%; background:linear-gradient(180deg,transparent,#6f222a,transparent); background-size:100% 25%; background-repeat:no-repeat; animation-name:workflowLineGlowVertical; }
+  .catalog-hero .catalog-workflow .workflow-step { display:grid; grid-template-columns:22px 1fr; column-gap:16px; align-items:start; }
+  .catalog-hero .catalog-workflow .step-dot { grid-column:1; grid-row:1; margin:0; }
+  .catalog-hero .catalog-workflow .step-number { grid-column:2; grid-row:1; margin:0 0 6px; }
+  .catalog-hero .catalog-workflow .workflow-step h3 { grid-column:2; grid-row:2; }
+  .catalog-hero .catalog-workflow .workflow-step p { grid-column:2; grid-row:3; margin:0; }
 }
 
 /* 2) A short intro, then the packages. */

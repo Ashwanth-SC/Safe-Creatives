@@ -35,6 +35,10 @@
   .service-workflow > div:nth-child(3) i { animation-delay:.25s; }
   .service-workflow > div:nth-child(4) i { animation-delay:.5s; }
   .service-workflow > div:nth-child(5) i { animation-delay:.75s; }
+  /* nth-child(1) is the connector line, so the five dots are children 2–6.
+     Handover (child 6) needs the final step of the wave, or it snaps back to
+     0s and glows in sync with Onboarding instead of flowing on. */
+  .service-workflow > div:nth-child(6) i { animation-delay:1s; }
 }
 @keyframes turnkeyReveal { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
 @keyframes workflowPulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.18); background:#d0b28e; } }
