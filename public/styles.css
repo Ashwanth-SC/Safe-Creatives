@@ -45,6 +45,16 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .account-link { justify-self:end; display:grid; width:38px; height:38px; border:1px solid var(--ink); border-radius:50%; place-items:center; color:var(--ink); transition:background .2s,color .2s; }
 .account-link:hover { color:var(--paper); background:var(--ink); }
 .account-link svg { width:18px; fill:none; stroke:currentColor; stroke-width:1.35; stroke-linecap:round; }
+/* Cart + account grouped at the header's end. On pages where the account icon
+   is injected (absolutely positioned), the wrapper inherits that positioning. */
+.header-actions { justify-self:end; display:flex; align-items:center; gap:12px; }
+.header-actions--floating { position:absolute; top:24px; right:4.1vw; z-index:30; }
+.header-actions .account-link.auth-generated { position:static; top:auto; right:auto; }
+.cart-link { position:relative; display:grid; place-items:center; width:38px; height:38px; color:var(--ink); transition:color .2s; }
+.cart-link svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+.cart-link:hover { color:#6f222a; }
+.cart-count { position:absolute; top:-3px; right:-4px; min-width:16px; height:16px; padding:0 4px; box-sizing:border-box; border-radius:9px; background:#6f222a; color:#fff; font:600 10px/16px "DM Sans",sans-serif; text-align:center; }
+.cart-count[hidden] { display:none; }
 /* Header back/utility link. Lives here (not only in packages.css) because
    checkout, order-confirmation, admin and dashboard use it but do not load
    packages.css — without this it fell back to the browser's default blue. */
@@ -57,24 +67,39 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .account-status { display:block; overflow:hidden; margin-bottom:12px; color:#59635d; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
 .logout-button { width:100%; margin:0; padding:10px; border:1px solid #6f222a; background:transparent; color:#6f222a; font:12px "DM Sans",sans-serif; cursor:pointer; }
 .logout-button:hover { color:#fff; background:#6f222a; }
-.hero { position:relative; min-height:100svh; overflow:hidden; display:grid; place-items:center; color:#fff; background:#33443b; }
+.hero { position:relative; min-height:100svh; overflow:hidden; display:flex; flex-direction:column; color:#fff; background:#33443b; }
 .hero-slides, .hero-shade { position:absolute; inset:0; }
 .hero-slides { display:flex; width:300%; animation:swipe 24s infinite ease-in-out; }
 .hero-slide { position:relative; width:33.333%; flex:0 0 33.333%; overflow:hidden; }
 .hero-slide img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
 .hero-shade { background:linear-gradient(90deg,rgba(111,34,42,.56),rgba(12,68,68,.12) 60%,rgba(12,68,68,.26)); }
-.hero-content { position:relative; z-index:1; width:min(100% - 40px,1000px); padding:100px 0 40px; text-align:center; }
+.hero-content { position:relative; z-index:1; width:min(100% - 40px,1000px); margin:auto; padding:100px 0 24px; text-align:center; }
+/* Trust strip sits at the bottom of the hero (content centres above it), so the
+   whole intro reads as one screen on desktop. */
+.hero .trust-band { position:relative; z-index:1; padding-top:clamp(15px,1.8vw,20px); padding-bottom:clamp(15px,1.8vw,20px); background:linear-gradient(to top, rgba(9,26,25,.72), rgba(9,26,25,.3)); border-top:1px solid rgba(255,255,255,.16); backdrop-filter:blur(4px); }
+.hero .trust-item + .trust-item { border-left-color:rgba(255,255,255,.22); }
 .hero-content .eyebrow { margin-bottom:25px; color:rgba(255,255,255,.85); }
 .hero-content h1 { max-width:860px; margin:0 auto; font-family:"DM Sans",Arial,sans-serif; font-size:clamp(26px,3.6vw,56px); line-height:1.08; font-weight:500; letter-spacing:-.05em; }
 .hero-content h1 span { color:rgba(255,255,255,.5); font-weight:300; }
 .hero-content h1 em { display:block; margin-top:12px; font-family:"Playfair Display",Georgia,serif; font-weight:500; letter-spacing:-.04em; }
-.hero-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:12px; margin-top:38px; }
+.hero-sub { max-width:600px; margin:22px auto 0; color:rgba(255,255,255,.9); font-size:clamp(15px,1.6vw,18px); line-height:1.6; }
+.hero-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:12px; margin-top:34px; }
 .hero-button { display:inline-flex; align-items:center; gap:19px; padding:15px 20px; border:1px solid #fff; color:#fff; font-size:12px; text-decoration:none; transition:background .2s,color .2s; }
 .hero-button:hover { color:var(--ink); background:#fff; }
 .hero-button-light { color:var(--ink); background:#fff; }
 .hero-button-light:hover { color:#fff; background:transparent; }
 .placeholder-anchor { position:absolute; top:100%; }
 @keyframes swipe { 0%,27% { transform:translateX(0); } 33%,60% { transform:translateX(-33.333%); } 66%,93% { transform:translateX(-66.666%); } 100% { transform:translateX(0); } }
+/* Trust band — existing facts surfaced right under the hero, before anyone
+   scrolls. A calm teal strip between the image hero and the light About. */
+.trust-band { padding:clamp(24px,3.4vw,34px) 7vw; background:#0c4444; color:#fff; }
+.trust-inner { max-width:1120px; margin:0 auto; display:grid; grid-template-columns:repeat(4,1fr); gap:clamp(16px,2vw,28px); }
+.trust-item { text-align:center; padding:2px 10px; }
+.trust-item + .trust-item { border-left:1px solid rgba(255,255,255,.18); }
+.trust-item strong { display:block; font-family:"Playfair Display",Georgia,serif; font-weight:500; font-size:clamp(21px,2.4vw,30px); line-height:1; letter-spacing:-.02em; color:#d0b28e; }
+.trust-item span { display:block; margin-top:7px; color:rgba(255,255,255,.82); font-size:12.5px; line-height:1.45; }
+@media (max-width:640px) { .trust-inner { grid-template-columns:1fr 1fr; gap:22px 12px; } .trust-item:nth-child(3) { border-left:0; } }
+
 .about-section { min-height:100vh; padding:clamp(76px,10vw,150px) 7vw; display:flex; flex-direction:column; justify-content:center; background:#f7f7f4; }
 .about-intro { display:grid; grid-template-columns:1fr 1fr; column-gap:8vw; align-items:end; max-width:1200px; margin:0 auto clamp(50px,7vw,90px); }
 .about-intro .eyebrow { grid-column:1 / -1; margin-bottom:20px; color:#666; }
@@ -91,7 +116,11 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .founder-role { margin:0 0 12px; color:#68746d; font:10px "DM Mono",monospace; letter-spacing:.15em; }
 .founder-copy h3 { margin:0 0 13px; font-family:"Playfair Display",Georgia,serif; font-size:clamp(27px,3vw,40px); font-weight:500; letter-spacing:-.045em; }
 .founder-copy > p:last-child { max-width:410px; margin:0; color:#5d625e; font-size:14px; line-height:1.65; }
-.sensory-section { min-height:100vh; padding:clamp(76px,9vw,135px) 7vw; display:grid; grid-template-columns:minmax(260px,.75fr) minmax(0,1.25fr); gap:clamp(48px,8vw,130px); align-items:center; background:#d0b28e; }
+/* Copy + "includes" cards side by side, workflow full-width centered below. */
+.sensory-section { min-height:100vh; padding:clamp(76px,9vw,135px) 7vw; display:flex; flex-direction:column; justify-content:center; gap:clamp(44px,6vw,74px); background:#d0b28e; }
+.sensory-top { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.82fr); gap:clamp(40px,6vw,96px); align-items:center; max-width:1200px; width:100%; margin:0 auto; }
+.sensory-section .sensory-features { grid-template-columns:repeat(2,1fr); gap:14px; }
+.sensory-section .workflow { max-width:1040px; width:100%; margin:0 auto; }
 .sensory-copy { max-width:470px; }
 .sensory-copy .eyebrow { margin-bottom:22px; color:#68746d; }
 .sensory-copy h2 { margin:0 0 28px; font-size:clamp(54px,6.5vw,98px); line-height:.92; letter-spacing:-.065em; }
@@ -132,54 +161,44 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
       then "what's included" and "how it works" sitting side by side below. */
 /* Header sits in normal flow (~86px); subtract it so the hero is exactly one
    screen and nothing spills into a stray scroll below the workflow. */
-.catalog-hero { max-width:1220px; margin:0 auto; box-sizing:border-box; min-height:calc(100vh - 86px); padding:clamp(22px,4vw,42px) 7vw clamp(30px,4vw,50px); display:flex; flex-direction:column; justify-content:center; gap:clamp(30px,4.5vw,58px); }
-.catalog-hero-head { display:flex; align-items:flex-end; justify-content:space-between; gap:26px; }
-.catalog-hero-head h1 { margin:0; font-size:clamp(46px,7vw,84px); line-height:.85; letter-spacing:-.045em; }
-.catalog-hero-head h1 em { color:#6f222a; }
-.catalog-hero-tag { margin:0 0 10px; text-align:right; line-height:1.55; color:#6f222a; }
-.catalog-hero-grid { display:grid; grid-template-columns:1fr 1fr; gap:clamp(30px,4.5vw,66px); align-items:stretch; }
+/* One-screen hero: the title with its tagline and intro copy on the left, the
+   "includes" cards top-aligned on the right, workflow centered below. */
+.catalog-hero { max-width:1220px; margin:0 auto; box-sizing:border-box; min-height:calc(100vh - 86px); padding:clamp(14px,2.4vw,26px) 7vw clamp(16px,2.4vw,30px); display:flex; flex-direction:column; justify-content:center; gap:clamp(16px,2.4vw,30px); }
+.catalog-hero-left h1 { margin:0; font-size:clamp(40px,5vw,64px); line-height:.88; letter-spacing:-.045em; }
+.catalog-hero-left h1 em { color:#6f222a; }
+.catalog-hero .catalog-hero-tag { margin:13px 0 0; text-align:left; line-height:1.5; color:#6f222a; }
+/* Left column: intro copy. Right column: the "includes" cards, top-aligned with
+   the title. Workflow sits full width below (.catalog-hero-flow). */
+.catalog-hero-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.82fr); gap:clamp(34px,5vw,72px); align-items:start; }
 .catalog-hero-block { margin:0; }
-/* Match the two columns' heights: each block fills its (stretched) grid cell and
-   its two rows split evenly, so the workflow spreads to the same height as the
-   taller feature cards. Desktop only — below 900px the columns stack. */
-@media (min-width:901px) {
-  .catalog-hero-block { display:flex; flex-direction:column; }
-  .catalog-hero .catalog-features,
-  .catalog-hero .catalog-workflow { flex:1; grid-auto-rows:1fr; }
-}
+.catalog-hero-lede { margin-top:clamp(16px,2vw,24px); }
+.catalog-hero-lede p { margin:0 0 11px; color:#59635d; font-size:14px; line-height:1.62; }
+.catalog-hero-lede p:last-child { margin-bottom:0; }
+.catalog-hero-lede .lede-lead { color:#3a423d; font-weight:500; }
 .section-eyebrow { margin:0 0 18px; color:#6f222a; }
 /* Compact the shared feature/workflow blocks so both columns clear one screen. */
-.catalog-hero .catalog-features { margin:0; grid-template-columns:repeat(2,1fr); gap:14px; }
-.catalog-hero .catalog-features .sensory-feature { padding:18px 18px 16px; }
-.catalog-hero .catalog-features .feature-icon { width:38px; height:38px; margin-bottom:12px; }
-.catalog-hero .catalog-features .feature-icon svg { width:20px; height:20px; }
-.catalog-hero .catalog-features .sensory-feature strong { font-size:clamp(22px,2.2vw,29px); }
-.catalog-hero .catalog-workflow { max-width:none; margin:0; padding-top:0; grid-template-columns:repeat(2,1fr); gap:26px 20px; }
-.catalog-hero .catalog-workflow .workflow-line { display:none; }
-.catalog-hero .catalog-workflow .step-number { margin-bottom:12px; }
-.catalog-hero .catalog-workflow .step-dot { margin-bottom:16px; }
-.catalog-hero .catalog-workflow .workflow-step h3 { margin-bottom:9px; }
-.catalog-hero .catalog-workflow .workflow-step p { max-width:none; }
+.catalog-hero .catalog-features { margin:0; grid-template-columns:repeat(2,1fr); gap:12px; }
+.catalog-hero .catalog-features .sensory-feature { padding:14px 15px 13px; }
+.catalog-hero .catalog-features .feature-icon { width:32px; height:32px; margin-bottom:8px; }
+.catalog-hero .catalog-features .feature-icon svg { width:17px; height:17px; }
+.catalog-hero .catalog-features .sensory-feature strong { font-size:clamp(20px,2vw,26px); margin-bottom:1px; }
+.catalog-hero .catalog-features .feature-label { margin-bottom:5px; }
+.catalog-hero .catalog-features .feature-desc { font-size:12px; line-height:1.45; }
+/* Workflow: full-width, centered, four across with its connector — identical to
+   the homepage sensory workflow. Base .workflow provides the grid, the line, and
+   the mobile (<=600px) vertical treatment. */
+.catalog-hero-flow { max-width:940px; width:100%; margin:0 auto; }
+.catalog-hero-flow .section-eyebrow { margin-bottom:12px; text-align:center; }
+.catalog-hero .catalog-workflow { max-width:none; margin:0 auto; }
 /* Below desktop: stop forcing one screen — stack, breathe, and let it scroll.
    Tagline moves above the title (column-reverse) so it reads as an eyebrow. */
 @media (max-width:900px) {
   .catalog-hero { min-height:0; display:block; padding:clamp(92px,15vw,120px) 7vw 56px; }
-  .catalog-hero-head { display:flex; flex-direction:column-reverse; align-items:flex-start; gap:14px; margin-bottom:clamp(40px,7vw,56px); }
-  .catalog-hero-tag { margin:0; text-align:left; }
-  .catalog-hero-grid { grid-template-columns:1fr; gap:clamp(40px,7vw,58px); }
+  .catalog-hero-grid { grid-template-columns:1fr; gap:clamp(30px,6vw,44px); }
+  .catalog-hero-flow { margin-top:clamp(30px,6vw,46px); }
 }
 @media (max-width:520px) {
   .catalog-hero .catalog-features { grid-template-columns:1fr; }
-  /* Single column on phones — bring back a vertical connector running through
-     the step dots, matching the index sensory workflow. */
-  .catalog-hero .catalog-workflow { grid-template-columns:1fr; gap:28px; padding-left:6px; }
-  .catalog-hero .catalog-workflow .workflow-line { display:block; top:11px; bottom:11px; left:17px; right:auto; width:1px; height:auto; }
-  .catalog-hero .catalog-workflow .workflow-line::after { inset:0; width:100%; height:25%; background:linear-gradient(180deg,transparent,#6f222a,transparent); background-size:100% 25%; background-repeat:no-repeat; animation-name:workflowLineGlowVertical; }
-  .catalog-hero .catalog-workflow .workflow-step { display:grid; grid-template-columns:22px 1fr; column-gap:16px; align-items:start; }
-  .catalog-hero .catalog-workflow .step-dot { grid-column:1; grid-row:1; margin:0; }
-  .catalog-hero .catalog-workflow .step-number { grid-column:2; grid-row:1; margin:0 0 6px; }
-  .catalog-hero .catalog-workflow .workflow-step h3 { grid-column:2; grid-row:2; }
-  .catalog-hero .catalog-workflow .workflow-step p { grid-column:2; grid-row:3; margin:0; }
 }
 
 /* 2) A short intro, then the packages. */
@@ -188,6 +207,34 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .catalog-lede p { margin:0 0 15px; color:#59635d; font-size:15px; line-height:1.75; }
 .catalog-lede p:last-child { margin-bottom:0; }
 .catalog-lede .lede-lead { color:#3a423d; font-weight:500; }
+
+/* Four-sense strip — how a sensory room engages sight, sound, scent and touch.
+   Each .sense-media is a placeholder image slot: drop an <img> inside to
+   replace it and the "Photo" label disappears automatically. */
+.sense-strip { max-width:1200px; margin:0 auto; padding:clamp(50px,7vw,84px) 7vw clamp(20px,3vw,34px); }
+.sense-head { max-width:660px; margin:0 auto clamp(30px,4vw,46px); text-align:center; }
+.sense-head .section-eyebrow { text-align:center; margin-bottom:16px; }
+.sense-head h2 { margin:0; font-family:"Playfair Display",Georgia,serif; font-weight:500; font-size:clamp(30px,4.4vw,52px); line-height:1; letter-spacing:-.05em; color:#171717; }
+.sense-lede { max-width:56ch; margin:18px auto 0; color:#59635d; font-size:15px; line-height:1.7; }
+.sense-cta-line { max-width:56ch; margin:18px auto 0; color:#3a423d; font-size:16px; font-weight:500; line-height:1.6; }
+/* Big, clickable poster panels (two across), each opening full-size in a
+   lightbox. The descriptive copy now lives inside the poster artwork, so the
+   panel is just the image (a sense name shows only while the file is missing). */
+.sense-posters { display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(16px,2vw,26px); max-width:1000px; margin:0 auto; }
+.sense-poster { position:relative; display:block; width:100%; aspect-ratio:4/5; padding:0; border:1px solid rgba(23,23,23,.1); border-radius:18px; overflow:hidden; background:linear-gradient(150deg,#e8eee8,#d9e1d9 55%,#e7d7bf); cursor:pointer; transition:transform .3s ease, box-shadow .3s ease; }
+.sense-poster img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.sense-poster-ph { position:absolute; inset:0; display:grid; place-items:center; font-family:"Playfair Display",Georgia,serif; font-size:clamp(22px,3vw,32px); font-weight:500; letter-spacing:-.03em; color:#6f6357; }
+.sense-poster:focus-visible { outline:2px solid #0c4444; outline-offset:3px; }
+@media (prefers-reduced-motion:no-preference) { .sense-poster:hover { transform:translateY(-4px); box-shadow:0 18px 40px rgba(23,23,23,.14); } }
+@media (max-width:640px) { .sense-posters { grid-template-columns:1fr; max-width:460px; } }
+
+/* Lightbox for the full-size posters. */
+.sense-lightbox { position:fixed; inset:0; z-index:80; display:grid; place-items:center; padding:24px; background:rgba(12,20,19,.9); backdrop-filter:blur(4px); animation:senseFade .2s ease both; }
+.sense-lightbox[hidden] { display:none; }
+.sense-lightbox img { max-width:min(92vw,720px); max-height:90vh; border-radius:12px; box-shadow:0 30px 80px rgba(0,0,0,.55); }
+.sense-lightbox-close { position:absolute; top:16px; right:20px; display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:50%; background:rgba(255,255,255,.14); color:#fff; font-size:26px; line-height:1; cursor:pointer; transition:background .2s; }
+.sense-lightbox-close:hover { background:rgba(255,255,255,.26); }
+@keyframes senseFade { from { opacity:0; } to { opacity:1; } }
 
 .catalog-bespoke { padding:44px 7vw 72px; text-align:center; }
 .catalog-bespoke p { max-width:620px; margin:0 auto; color:#59635d; font-size:14.5px; line-height:1.6; }
@@ -327,7 +374,7 @@ button:hover { background:transparent; color:var(--ink); }
 .inline-button:hover { color:#555; background:none; }
 @media (max-width:640px) { .auth-page { min-height:calc(100svh - var(--header-h)); padding:calc(var(--header-h) + 20px) 16px 30px; } .auth-card { padding:32px 25px 28px; } .auth-card h1 { font-size:43px; } }
 @media (max-width:720px) { .about-section { padding:70px 24px 86px; } .about-intro { display:block; margin-bottom:48px; } .about-intro .eyebrow { margin-bottom:22px; } .about-lede { margin-top:28px; } .founder-grid { grid-template-columns:1fr; gap:52px; } }
-@media (max-width:900px) { .sensory-section { grid-template-columns:1fr; min-height:auto; padding:80px 7vw 90px; } .sensory-copy { max-width:620px; } .workflow { margin-top:15px; } }
+@media (max-width:900px) { .sensory-section { min-height:auto; padding:80px 7vw 90px; gap:44px; } .sensory-top { grid-template-columns:1fr; gap:36px; } .sensory-copy { max-width:620px; } .workflow { margin-top:0; } }
 @media (max-width:600px) { .sensory-section { padding:70px 24px 80px; } .workflow { grid-template-columns:1fr; gap:27px; padding:0 0 0 6px; } .workflow-line { top:11px; bottom:11px; left:17px; right:auto; width:1px; height:auto; } .workflow-line::after { inset:0; width:100%; height:25%; background:linear-gradient(180deg,transparent,#293a32,transparent); background-size:100% 25%; animation-name:workflowLineGlowVertical; } .workflow-step { display:grid; grid-template-columns:22px 1fr; column-gap:16px; align-items:start; } .step-dot { grid-column:1; grid-row:1; margin:0; } .step-number { grid-column:2; grid-row:1; margin:0 0 6px; } .workflow-step h3 { grid-column:2; grid-row:2; } .workflow-step p { grid-column:2; grid-row:3; margin-bottom:0; } }
 @keyframes workflowLineGlowVertical { 0%,100% { background-position:0 -25%; opacity:.2; } 50% { background-position:0 100%; opacity:.8; } }
 .turnkey-section { min-height:100vh; padding:clamp(80px,10vw,145px) 7vw; background:#fffaf3; color:#0c4444; }
@@ -425,3 +472,31 @@ button:hover { background:transparent; color:var(--ink); }
 /* State dropdown on the registration card, matching the underlined inputs */
 .auth-card select { width:100%; margin-bottom:12px; padding:13px 0; border:0; border-bottom:1px solid #9ea39a; background:transparent; color:var(--ink); font:14px inherit; outline:none; cursor:pointer; }
 .auth-card select:focus { border-color:var(--ink); }
+
+/* ===========================================================================
+   UI REFINEMENT LAYER — calmer, softer, more consistent (an "Apple-like" pass).
+   Appended last so it wins by source order without rewriting existing rules.
+   Shape, elevation and motion only — no copy or colour-role changes.
+   ========================================================================= */
+:root{
+  --r-btn:999px; --r-card:18px; --r-media:16px;
+  --shadow-soft:0 1px 2px rgba(12,68,68,.05), 0 12px 30px rgba(12,68,68,.08);
+  --shadow-hover:0 22px 48px rgba(12,68,68,.15);
+  --ease-calm:cubic-bezier(.2,.7,.2,1);
+}
+/* One calm pill shape for every call to action */
+.hero-button, .sensory-cta, .turnkey-cta,
+.account-card button, .auth-card button, .primary-button{
+  border-radius:var(--r-btn);
+  transition:background .25s var(--ease-calm), color .25s var(--ease-calm),
+             transform .25s var(--ease-calm), box-shadow .25s var(--ease-calm);
+}
+@media (prefers-reduced-motion:no-preference){
+  .hero-button:hover, .sensory-cta:hover, .turnkey-cta:hover{ transform:translateY(-1px); }
+}
+/* Soft, rounded surfaces */
+.sensory-feature{ border-radius:14px; }
+.catalog-features .sensory-feature{ border-radius:var(--r-card); box-shadow:var(--shadow-soft); }
+.catalog-features .sensory-feature:hover{ box-shadow:var(--shadow-hover); }
+.founder-image-wrap{ border-radius:var(--r-media); }
+.account-card, .auth-card{ border-radius:var(--r-card); }

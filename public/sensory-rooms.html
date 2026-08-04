@@ -7,11 +7,16 @@
       <!-- SECTION 1 — Hero: title, what's included, and how it works, all
            held within one screen on desktop. -->
       <section class="catalog-hero" aria-labelledby="catalog-title">
-        <div class="catalog-hero-head">
-          <h1 id="catalog-title">Sensory<br /><em>rooms.</em></h1>
-          <p class="eyebrow catalog-hero-tag">DESIGNED AROUND<br />EVERYDAY COMFORT</p>
-        </div>
         <div class="catalog-hero-grid">
+        <div class="catalog-hero-block catalog-hero-left">
+          <h1 id="catalog-title">Sensory<br /><em>rooms.</em></h1>
+          <p class="eyebrow catalog-hero-tag">DESIGNED AROUND EVERYDAY COMFORT</p>
+          <div class="catalog-hero-lede">
+            <p>Calming, adaptable rooms for anyone who experiences the world a little more personally — and for those who share the space with them.</p>
+            <p class="lede-lead">Sensory Rooms brings premium interiors that are functional and aesthetic, personalised on every product, and delivered to your home quickly, reliably and with quality you can trust.</p>
+            <p>Each package is a comprehensive, one-stop solution for your interior — a thoughtfully curated space designed to engage every sense, bringing sensory harmony to your home.</p>
+          </div>
+        </div>
         <div class="catalog-hero-block">
           <p class="eyebrow section-eyebrow" id="features-eyebrow">EVERY SENSORY ROOM INCLUDES</p>
           <ul class="sensory-features catalog-features" aria-labelledby="features-eyebrow">
@@ -41,7 +46,8 @@
           </li>
           </ul>
         </div>
-        <div class="catalog-hero-block">
+        </div>
+        <div class="catalog-hero-flow">
           <p class="eyebrow section-eyebrow">HOW IT WORKS</p>
           <div class="workflow catalog-workflow" aria-label="Sensory room order workflow">
             <div class="workflow-line" aria-hidden="true"></div>
@@ -51,16 +57,18 @@
             <article class="workflow-step"><span class="step-number">04</span><div class="step-dot"></div><h3>Dispatch<br />&amp; installation</h3><p>Your products arrive ready to install/ assemble and become a part of your life!</p></article>
           </div>
         </div>
-        </div>
       </section>
 
-      <!-- SECTION 2 — A short intro, then the packages. -->
+      <!-- SECTION 2 — the four senses, then the packages. -->
       <section class="catalog-body">
-        <div class="catalog-lede">
-          <p>Calming, adaptable rooms for anyone who experiences the world a little more personally — and for those who share the space with them.</p>
-          <p class="lede-lead">Sensory Rooms brings premium interiors that are functional and aesthetic, personalised on every product, and delivered to your home quickly, reliably and with quality you can trust.</p>
-          <p>Each package is a comprehensive, one-stop solution for your interior — not just furniture and tube lights, but a thoughtfully curated space designed to engage every sense: sight, sound, smell and feel, bringing sensory harmony to your home.</p>
-        </div>
+        <section class="sense-strip" aria-labelledby="sense-title">
+          <div class="sense-head">
+            <p class="eyebrow section-eyebrow">A SPACE FOR EVERY SENSE</p>
+            <h2 id="sense-title">Designed to engage every sense.</h2>
+            <p class="sense-lede">Each package is shaped around the whole experience of a room — how it looks, sounds, smells and feels — not just how it's furnished.</p>
+            <p class="sense-cta-line">Let's get right into it. Start by selecting a package below.</p>
+          </div>
+        </section>
         <!-- Cards are rendered by sensory-rooms.js from the catalog. Add or
              hide a package in the admin page, not here. -->
         <section class="package-catalog" aria-label="Sensory room packages"></section>

@@ -226,6 +226,67 @@ window.SC = (function () {
     return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20c.5-4 3.4-6.5 7.5-6.5s7 2.5 7.5 6.5"></path></svg>';
   }
 
+  function cartIcon() {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>';
+  }
+
+  // Persistent cart link with a live item count. Signed-in customers can see
+  // and reach their cart from any page instead of digging through the account
+  // menu. The count is a convenience read; the authoritative figure is still
+  // recomputed at checkout.
+  function setUpCartLink(container, accountTrigger) {
+    if (document.querySelector(".cart-link")) return;
+
+    // Group the cart + account into one right-aligned cluster so the header's
+    // grid still lands them at the end, whatever header variant this is.
+    let actions = accountTrigger.parentElement;
+    if (!actions || !actions.classList.contains("header-actions")) {
+      actions = document.createElement("div");
+      actions.className = "header-actions";
+      // Injected account icons are absolutely positioned; the wrapper takes over
+      // that positioning so the cart sits beside the icon rather than adrift.
+      if (accountTrigger.classList.contains("auth-generated")) {
+        actions.classList.add("header-actions--floating");
+      }
+      container.insertBefore(actions, accountTrigger);
+      actions.appendChild(accountTrigger);
+    }
+
+    const cart = document.createElement("a");
+    cart.className = "cart-link";
+    cart.href = "checkout.html";
+    cart.setAttribute("aria-label", "View cart");
+    cart.innerHTML = `${cartIcon()}<span class="cart-count" hidden>0</span>`;
+    actions.insertBefore(cart, accountTrigger);
+
+    updateCartCount(cart);
+  }
+
+  async function updateCartCount(cartEl) {
+    const badge = cartEl.querySelector(".cart-count");
+    try {
+      const userId = state.session?.user?.id;
+      if (!userId) return;
+      const { data: cart } = await sb
+        .from("carts")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!cart) return;
+      const { count } = await sb
+        .from("cart_items")
+        .select("id", { count: "exact", head: true })
+        .eq("cart_id", cart.id);
+      if (count && count > 0) {
+        badge.textContent = count > 99 ? "99+" : String(count);
+        badge.hidden = false;
+      }
+    } catch (_ignored) {
+      // Any failure leaves the badge hidden; the icon still links to the cart.
+    }
+  }
+
   function setUpAccountMenu() {
     // Print-oriented pages (the invoice) opt out: a floating account icon
     // has no place on a document headed for paper.
@@ -249,6 +310,8 @@ window.SC = (function () {
 
     if (!state.session) return;
 
+    setUpCartLink(container, trigger);
+
     const dropdown = document.createElement("div");
     dropdown.className = "account-dropdown";
     dropdown.hidden = true;
@@ -261,13 +324,12 @@ window.SC = (function () {
         '<a class="account-admin-link" href="admin.html">Catalog admin</a>'
       : "";
 
-    // Every signed-in customer can jump to their cart and follow their orders.
-    const cartLink =
-      '<a class="account-admin-link" href="checkout.html">View cart</a>';
+    // The cart now has its own icon in the header, so the account menu just
+    // carries order tracking.
     const trackLink =
       '<a class="account-admin-link" href="track-order.html">Track my orders</a>';
 
-    dropdown.innerHTML = `<span class="account-status"></span>${adminLink}${cartLink}${trackLink}<button type="button" class="logout-button">Log out</button>`;
+    dropdown.innerHTML = `<span class="account-status"></span>${adminLink}${trackLink}<button type="button" class="logout-button">Log out</button>`;
     container.appendChild(dropdown);
 
     dropdown.querySelector(".account-status").textContent =

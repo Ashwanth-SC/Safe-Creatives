@@ -660,10 +660,10 @@
   function saveReminder() {
     return confirmDialog({
       eyebrow: "BEFORE YOU LEAVE",
-      title: "Saved this package?",
-      body: "Hope you have saved this personalised package to cart before you move to any other page.",
-      cancelText: "Go back",
-      confirmText: "Yes, continue",
+      title: "Save your package first?",
+      body: "Leaving this page will clear the options you've chosen. Save this package to your cart to keep them — you can always change them later.",
+      cancelText: "Stay here",
+      confirmText: "Leave anyway",
     });
   }
 

@@ -42,3 +42,7 @@
 }
 @keyframes turnkeyReveal { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
 @keyframes workflowPulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.18); background:#d0b28e; } }
+
+/* UI refinement layer — soft radius on the enquiry card, pill CTAs. */
+.enquiry-card { border-radius:18px; }
+.form-step button { border-radius:999px; }

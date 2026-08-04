@@ -67,6 +67,9 @@
 .package-total { justify-self:center; display:flex; align-items:baseline; gap:8px; white-space:nowrap; }
 .package-total small { opacity:.72; font:9px "DM Mono",monospace; letter-spacing:.12em; }
 .package-topbar .account-link { justify-self:end; width:30px; height:30px; }
+.package-topbar .header-actions--floating { top:8px; right:7vw; }
+.package-topbar .cart-link { width:30px; height:30px; }
+.package-topbar .cart-link svg { width:19px; height:19px; }
 .package-topbar .account-link svg { width:100%; height:100%; fill:none; stroke:currentColor; stroke-width:1.5; }
 
 /* ---------------------------------------------------------------------------
@@ -113,3 +116,57 @@
 
 /* Package prices are quoted exclusive of GST; say so where the number is. */
 .total-gst { font-style:normal; font-size:10px; opacity:.72; letter-spacing:.06em; }
+
+/* ---------------------------------------------------------------------------
+   UI refinement layer — soft radii on the shop surfaces, pill CTAs, rounded
+   media. Appended last; shape only, no copy or layout-role changes.
+   ------------------------------------------------------------------------ */
+.package-catalog { gap:16px; padding:16px clamp(16px,4vw,40px) 0; }
+.package-card { border-radius:22px; }
+.package-card .package-meta { max-width:340px; margin:0 0 18px; color:rgba(255,255,255,.9); font:12px "DM Sans",sans-serif; line-height:1.5; letter-spacing:.02em; }
+.package-card p:not(.eyebrow):not(.package-meta) { margin-bottom:13px; }
+.addon-card { border-radius:16px; }
+.product-gallery { border-radius:16px; }
+.gallery-thumb { border-radius:10px; }
+.option-select { border-radius:10px; }
+.chip-option { border-radius:999px; }
+.addon-toggle { border-radius:999px; }
+.package-actions button, .package-actions a { border-radius:999px; }
+
+/* ---------------------------------------------------------------------------
+   Sticky "price + reserve" bar (product pages)
+   The running total and the primary action stay in reach at all times, with a
+   line of reassurance right beside the button. Keeps the #package-total,
+   #save-package and #review-order ids the configurator already binds to, so no
+   JS wiring changes — this bar simply relocates them into a fixed footer.
+   ------------------------------------------------------------------------ */
+.package-page { padding-bottom:104px; }
+.reserve-bar { position:fixed; left:0; right:0; bottom:0; z-index:38; background:rgba(255,255,255,.86); backdrop-filter:blur(14px) saturate(1.2); border-top:1px solid rgba(23,23,23,.12); box-shadow:0 -10px 34px rgba(12,68,68,.09); }
+.reserve-bar-inner { max-width:1200px; margin:0 auto; padding:12px 7vw; display:flex; align-items:center; justify-content:space-between; gap:24px; }
+.reserve-price { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.reserve-price small { color:#7a7f78; font:9px "DM Mono",monospace; letter-spacing:.14em; }
+.reserve-amount { display:flex; align-items:baseline; gap:8px; font-family:"Playfair Display",Georgia,serif; font-size:clamp(20px,2.4vw,26px); font-weight:500; letter-spacing:-.02em; color:#171717; }
+.reserve-amount .total-gst { font-family:"DM Sans",sans-serif; font-style:normal; font-size:10px; opacity:.7; letter-spacing:.06em; }
+.reserve-reassure { max-width:44ch; margin:3px 0 0; color:#59635d; font-size:11.5px; line-height:1.4; }
+.reserve-actions { display:flex; gap:10px; flex:none; }
+.reserve-actions button { box-sizing:border-box; height:48px; margin:0; padding:0 22px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #6f222a; border-radius:999px; background:transparent; color:#6f222a; font:12px "DM Sans",sans-serif; white-space:nowrap; cursor:pointer; transition:background .2s, color .2s, transform .2s; }
+.reserve-actions button.primary { background:#6f222a; color:#fff; }
+@media (prefers-reduced-motion:no-preference) { .reserve-actions button:hover { transform:translateY(-1px); } }
+.reserve-actions button:hover { background:#d0b28e; color:#171717; border-color:#d0b28e; }
+/* Loading spinner while a save is in flight (mirrors .package-actions). */
+.reserve-actions button.is-loading { color:transparent; position:relative; pointer-events:none; }
+.reserve-actions button.is-loading::after { content:""; position:absolute; top:50%; left:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border:2px solid rgba(111,34,42,.3); border-top-color:#6f222a; border-radius:50%; animation:sc-btn-spin .7s linear infinite; }
+/* Keep the save toast and WhatsApp button clear of the fixed bar. */
+.package-page .save-message { bottom:116px; }
+.package-page .whatsapp-float { bottom:92px; }
+@media (max-width:640px) {
+  .reserve-bar-inner { flex-direction:column; align-items:stretch; gap:9px; padding:11px 20px; }
+  .reserve-price { flex-direction:row; align-items:baseline; justify-content:space-between; gap:10px; }
+  .reserve-reassure { display:none; }
+  .reserve-actions button { flex:1; padding:0 14px; }
+  .package-page { padding-bottom:132px; }
+  .package-page .save-message { bottom:150px; }
+  .package-page .whatsapp-float { bottom:150px; }
+}
+.cart-confirm-card { border-radius:18px; }
+.save-message { border-radius:14px; }

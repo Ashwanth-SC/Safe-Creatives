@@ -57,3 +57,19 @@
 .address-part select { width:100%; margin:0; padding:11px 12px; border:1px solid rgba(23,23,23,.25); background:#fff; font:13px "DM Sans",sans-serif; cursor:pointer; }
 .address-part select:focus { outline:2px solid #0c4444; outline-offset:1px; border-color:#0c4444; }
 @media (min-width:521px) { .address-split { grid-template-columns:1fr 1fr .8fr; } }
+
+/* Order-confirmation success moment + a "track your order" call to action. */
+.success-check { display:grid; place-items:center; width:56px; height:56px; margin-bottom:22px; border-radius:50%; background:rgba(12,68,68,.1); color:#0c4444; }
+.success-check svg { width:28px; height:28px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+a.reserve-button { box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-decoration:none; }
+
+/* Reassurance chips beside the Reserve button. */
+.checkout-trust { list-style:none; display:flex; flex-wrap:wrap; gap:9px 18px; margin:16px 0 0; padding:0; }
+.checkout-trust li { position:relative; padding-left:21px; color:#3a423d; font-size:12.5px; line-height:1.4; }
+.checkout-trust li::before { content:""; position:absolute; left:0; top:1px; width:15px; height:15px; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230c4444' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E"); background-size:contain; background-repeat:no-repeat; }
+
+/* UI refinement layer — soft radii on cards, inputs and the reserve pill. */
+.customer-card, .cart-card { border-radius:18px; }
+.cart-confirm-card { border-radius:18px; }
+.reserve-button, .cart-confirm-actions button, .address-editor button { border-radius:999px; }
+.address-editor textarea, .address-part input, .address-part select, .terms-body { border-radius:12px; }
