@@ -2,9 +2,10 @@
 // Safe Creatives — turnkey payment receipt renderer
 // ============================================================================
 //
-// One printed page from ?number=SC-RCPT-0001. Reads the receipt row (which
-// already snapshots the client + project details at issue time) and the
-// company header from seller_settings, then renders a printable receipt.
+// One printed page from ?number=<receipt_number> (e.g. 29/1/06/08/2026 —
+// project no. / milestone no. / date). Reads the receipt row (which already
+// snapshots the client + project details at issue time) and the company header
+// from seller_settings, then renders a printable receipt.
 //
 // RLS decides access: turnkey_receipts is admin-only, so a non-admin (or a
 // logged-out visitor, who is bounced to login by data-requires-auth) simply
@@ -140,6 +141,8 @@
         <div><span>Mode of payment</span>${escapeHtml(receipt.payment_mode)}</div>
         <div><span>Date</span>${fmtDate(receipt.receipt_date)}</div>
       </div>
+
+      ${receipt.notes ? `<div class="r-note-block"><span>Note</span>${escapeHtml(receipt.notes)}</div>` : ""}
     </div>
 
     <div class="r-foot">

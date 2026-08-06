@@ -53,6 +53,17 @@
 
   const MODE_OPTIONS = ["Cash", "UPI", "Bank transfer", "Cheque", "Card"];
 
+  // The payment milestones a receipt can be issued for, in order. The 1-based
+  // position in this list becomes the middle segment of the receipt number
+  // (project no. / milestone no. / date), so the order here is significant.
+  const RECEIPT_TYPES = [
+    "Design Initiation",
+    "DSO Payment",
+    "Execution installment",
+    "Accessories payment",
+    "Handover payment",
+  ];
+
   function statusTone(status) {
     if (status === "Lead") return "warn";
     if (status === "Closed") return "muted";
@@ -432,18 +443,24 @@
     amountI.min = "0";
     amountI.step = "1";
     const dateI = input("date", todayISO());
-    const nameI = input("text");
-    nameI.placeholder = "Advance";
+    // "Receipt for" is now a fixed list of milestones. The leading blank stops
+    // the admin from saving without choosing one.
+    const typeS = select([["", "Select…"], ...RECEIPT_TYPES], "");
     const modeS = select(MODE_OPTIONS, "UPI");
+    const notesI = textarea("");
+    notesI.placeholder = "Anything important to print on the receipt (optional)";
 
     const grid = el("div", "admin-inline");
     grid.append(
       field("Project", projectS),
       field("Amount (₹)", amountI),
       field("Date", dateI),
-      field("Receipt for", nameI),
+      field("Receipt for", typeS),
       field("Mode of payment", modeS)
     );
+    // The note runs full width below the inline grid.
+    const wide = el("div");
+    wide.append(field("Note", notesI));
 
     const msg = el("p", "admin-hint", "");
     const btn = el("button", "admin-primary", "Save & open receipt");
@@ -453,18 +470,25 @@
       const amount = rupeesToPaise(amountI.value);
       if (!project) return void (msg.textContent = "Choose a project.");
       if (!amount) return void (msg.textContent = "Enter a valid amount.");
-      if (!nameI.value.trim())
-        return void (msg.textContent = "Enter what the receipt is for (e.g. Advance).");
+      if (!typeS.value) return void (msg.textContent = "Choose what the receipt is for.");
       if (!dateI.value) return void (msg.textContent = "Pick a date.");
+
+      // Receipt number = project no. / milestone no. (its 1-based position in
+      // RECEIPT_TYPES) / the chosen date as DD/MM/YYYY. e.g. 29/1/06/08/2026.
+      const milestoneNo = RECEIPT_TYPES.indexOf(typeS.value) + 1;
+      const [y, m, d] = dateI.value.split("-");
+      const receiptNumber = `${project.project_number}/${milestoneNo}/${d}/${m}/${y}`;
 
       btn.disabled = true;
       // Snapshot the client + project details onto the receipt so it stays fixed.
       const payload = {
+        receipt_number: receiptNumber,
         project_id: project.id,
         amount_paise: amount,
         receipt_date: dateI.value,
-        receipt_name: nameI.value.trim(),
+        receipt_name: typeS.value,
         payment_mode: modeS.value,
+        notes: notesI.value.trim() || null,
         client_name: project.client_name,
         client_phone: project.client_phone || null,
         project_name: project.project_name || null,
@@ -485,7 +509,7 @@
 
     const actions = el("div", "admin-row-actions");
     actions.appendChild(btn);
-    block.append(grid, actions, msg);
+    block.append(grid, wide, actions, msg);
     frag.appendChild(block);
 
     // ---- List ----
