@@ -320,7 +320,8 @@ window.SC = (function () {
     // This is convenience, not security: admin.html is protected by RLS, so
     // anyone who finds the address without the flag sees "Admin only".
     const adminLink = state.profile?.is_admin
-      ? '<a class="account-admin-link" href="dashboard.html">Dashboard</a>' +
+      ? '<a class="account-admin-link" href="dashboard.html">Sensory Rooms Dashboard</a>' +
+        '<a class="account-admin-link" href="turnkey-dashboard.html">Turnkey Solutions Dashboard</a>' +
         '<a class="account-admin-link" href="admin.html">Catalog admin</a>'
       : "";
 

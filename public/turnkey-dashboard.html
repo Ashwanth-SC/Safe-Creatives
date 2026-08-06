@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/png" href="./ASSET/SC_Logo_Logomark_Secondary.png" />
-    <title>Sensory Rooms Dashboard | Safe Creatives</title>
+    <title>Turnkey Solutions Dashboard | Safe Creatives</title>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="admin.css" />
   </head>
   <body data-requires-auth="true">
     <header class="site-header admin-header">
       <a class="brand" href="index.html"><img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" /><span>SAFE CREATIVES</span></a>
-      <div class="admin-header-mid"><span class="admin-badge">SENSORY ROOMS</span><a class="catalog-back" href="turnkey-dashboard.html">Turnkey ↗︎</a><a class="catalog-back" href="admin.html">Catalog admin ↗︎</a></div>
+      <div class="admin-header-mid"><span class="admin-badge">TURNKEY SOLUTIONS</span><a class="catalog-back" href="dashboard.html">Sensory rooms ↗︎</a><a class="catalog-back" href="admin.html">Catalog admin ↗︎</a></div>
       <a class="account-link" href="login.html" aria-label="Open account menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20c.5-4 3.4-6.5 7.5-6.5s7 2.5 7.5 6.5"></path></svg></a>
     </header>
 
@@ -21,34 +21,31 @@
       <section id="denied" class="admin-denied" hidden>
         <p class="eyebrow">NOT AVAILABLE</p>
         <h1>Admin only.</h1>
-        <p>This dashboard shows customer and order data and is limited to staff accounts.</p>
+        <p>This dashboard holds turnkey lead and project data and is limited to staff accounts.</p>
         <p><a href="index.html">Back to the site</a></p>
       </section>
 
-      <div id="dash-body" hidden>
+      <div id="tk-body" hidden>
         <section class="admin-intro">
-          <p class="eyebrow">SENSORY ROOMS · OPERATIONS</p>
-          <h1>Dashboard<span>.</span></h1>
+          <p class="eyebrow">TURNKEY SOLUTIONS</p>
+          <h1>Projects<span>.</span></h1>
           <p>
-            Everything that has happened on the site. Read-only by design —
-            order totals are what the server computed and are not editable here.
+            Your turnkey leads and projects — every enquiry from the website
+            lands here, and you can add leads from other channels, track their
+            status, and issue receipts.
           </p>
         </section>
 
-        <!-- Headline counts, so the follow-up list is visible without hunting -->
-        <div class="stat-row" id="stats"></div>
+        <div class="stat-row" id="tk-stats"></div>
 
         <nav class="tab-bar" role="tablist">
-          <button type="button" class="tab is-active" data-tab="orders" role="tab">Orders</button>
-          <button type="button" class="tab" data-tab="carts" role="tab">Abandoned carts</button>
-          <button type="button" class="tab" data-tab="people" role="tab">Registrations</button>
-          <button type="button" class="tab" data-tab="payments" role="tab">Payments</button>
-          <button type="button" class="tab" data-tab="invoices" role="tab">Invoices</button>
+          <button type="button" class="tab is-active" data-tab="customers" role="tab">Customer database</button>
+          <button type="button" class="tab" data-tab="receipts" role="tab">Receipts</button>
         </nav>
 
-        <p id="dash-message" class="admin-message" role="status"></p>
+        <p id="tk-message" class="admin-message" role="status"></p>
 
-        <section id="panel" class="dash-panel"></section>
+        <section id="tk-panel" class="dash-panel"></section>
       </div>
 
     </main>
@@ -56,6 +53,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
     <script src="auth.js"></script>
-    <script src="dashboard.js"></script>
+    <script src="turnkey-dashboard.js"></script>
   </body>
 </html>

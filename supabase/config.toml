@@ -23,6 +23,11 @@ project_id = "safe-creatives"
 # whose cart to price, so gateway verification stays ON.
 verify_jwt = true
 
+[functions.submit-turnkey-lead]
+# Called by an anonymous visitor submitting the turnkey enquiry form. supabase-js
+# sends the public anon key as the JWT, which passes verification, so it stays ON.
+verify_jwt = true
+
 [functions.payment-webhook]
 # Razorpay calls this server-to-server and sends no Supabase JWT. With
 # verification on, every callback is rejected before the handler runs --

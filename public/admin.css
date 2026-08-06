@@ -209,6 +209,15 @@ button:disabled { opacity: .5; cursor: progress; }
 .order-doc:hover { text-decoration:underline; }
 .order-doc-none { color:#8b8f88; font-size:11.5px; font-style:italic; }
 
+/* --- Turnkey CRM ---------------------------------------------------------- */
+.tk-add { margin-bottom: 16px; }
+.tk-add[open] { padding-bottom: 16px; }
+.tk-add > summary { color: #6f222a; font-weight: 500; }
+.tk-add .admin-inline,
+.tk-edit .admin-inline { margin-top: 12px; }
+.tk-edit { padding: 4px 0 8px; }
+.tk-edit > .admin-hint:first-child { margin-bottom: 12px; }
+
 /* ============================================================================
    Admin / dashboard header — brand left, badge+link centred, profile right.
    auth.js used to inject the profile button as a stray 4th grid item that

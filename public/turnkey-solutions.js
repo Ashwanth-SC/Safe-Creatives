@@ -21,22 +21,43 @@ form.addEventListener('submit', async (event) => {
   const submit = form.querySelector('.form-submit');
   submit.disabled = true;
   submit.textContent = 'Sending…';
-  if (form.querySelector('[name="access_key"]').value === 'YOUR_WEB3FORMS_ACCESS_KEY') {
-    message.textContent = 'Add your Web3Forms access key in turnkey-solutions.html to enable submissions.';
-    message.className = 'form-message error';
-    submit.disabled = false;
-    submit.textContent = 'Submit enquiry ↗︎';
-    return;
-  }
+
+  const fd = new FormData(form);
+  const body = {
+    full_name: fd.get('full_name'),
+    phone: fd.get('phone'),
+    email: fd.get('email'),
+    pin_code: fd.get('pin_code'),
+    area_sqft: fd.get('area_sqft'),
+    project_category: fd.get('project_category'),
+    requirement: fd.get('requirement'),
+    // Honeypot: empty for a real person; the Edge Function drops it if set.
+    botcheck: Boolean(fd.get('botcheck')),
+  };
+
   try {
-    const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error('Submission failed');
+    // Saves the lead into the Turnkey dashboard and emails all admins.
+    const { data, error } = await sb.functions.invoke('submit-turnkey-lead', { body });
+    if (error) throw error;
+    if (data && data.error) throw new Error(data.error);
     form.reset();
     steps.forEach((step, i) => step.classList.toggle('active', i === 0));
+    currentStep = 0;
     message.textContent = 'Thanks for reaching out, our representatives will get in touch with you shortly.';
     message.className = 'form-message success';
   } catch (error) {
+    // Surface the real cause in the console — a 404 means the Edge Function
+    // isn't deployed yet; the function's own message (from error.context) tells
+    // you if it's a validation or database problem.
+    console.error('Turnkey enquiry submission failed:', error);
+    try {
+      const detail = await error?.context?.clone?.().json?.();
+      if (detail?.error) console.error('Function said:', detail.error);
+    } catch (_ignored) { /* response had no JSON body */ }
     message.textContent = 'Something went wrong while sending your enquiry. Please try again.';
     message.className = 'form-message error';
-  } finally { submit.disabled = false; submit.textContent = 'Submit enquiry ↗︎'; }
+  } finally {
+    submit.disabled = false;
+    submit.textContent = 'Submit enquiry ↗︎';
+  }
 });
