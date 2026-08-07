@@ -494,12 +494,12 @@
       if (!typeS.value) return void (msg.textContent = "Choose what the receipt is for.");
       if (!dateI.value) return void (msg.textContent = "Pick a date.");
 
-      // Receipt number = project number / milestone number (its 1-based
-      // position in RECEIPT_TYPES) / the chosen date as DD/MM/YYYY.
-      // e.g. 29/1/06/08/2026.
+      // Receipt number = project number / 1.<milestone number> (the milestone's
+      // 1-based position in RECEIPT_TYPES) / the chosen date as DD/MM/YYYY.
+      // e.g. 29/1.1/06/08/2026.
       const milestoneNo = RECEIPT_TYPES.indexOf(typeS.value) + 1;
       const [y, m, d] = dateI.value.split("-");
-      const receiptNumber = `${project.project_number}/${milestoneNo}/${d}/${m}/${y}`;
+      const receiptNumber = `${project.project_number}/1.${milestoneNo}/${d}/${m}/${y}`;
 
       btn.disabled = true;
       // Snapshot the client + project details onto the receipt so it stays fixed.
