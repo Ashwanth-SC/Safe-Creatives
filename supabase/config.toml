@@ -34,6 +34,11 @@ verify_jwt = true
 # verification stays ON.
 verify_jwt = true
 
+[functions.send-turnkey-document]
+# Called by a signed-in admin to email a signed project document to the client.
+# Re-checks is_admin on the caller's JWT, so verification stays ON.
+verify_jwt = true
+
 [functions.payment-webhook]
 # Razorpay calls this server-to-server and sends no Supabase JWT. With
 # verification on, every callback is rejected before the handler runs --

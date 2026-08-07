@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="./ASSET/SC_Logo_Logomark_Secondary.png" />
+    <title>Document | Safe Creatives</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; }
+      body { background: #e9e9e6; font: 13px/1.55 "Segoe UI", Arial, sans-serif; color: #171717; }
+
+      .toolbar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 16px 16px 4px; }
+      .toolbar button, .toolbar a { padding: 9px 16px; border: 1px solid #0c4444; background: #0c4444; color: #fff; font: 12px inherit; cursor: pointer; text-decoration: none; }
+      .toolbar a.toolbar-back { background: transparent; color: #0c4444; }
+      .toolbar #email-btn { background: #6f222a; border-color: #6f222a; }
+      .toolbar button:disabled { opacity: .55; cursor: progress; }
+      .email-status { text-align: center; font: 12px inherit; margin: 4px 0 12px; }
+      .email-status.is-ok { color: #0c4444; }
+      .email-status.is-error { color: #6f222a; }
+
+      .error { max-width: 520px; margin: 40px auto; padding: 20px; background: #fff; text-align: center; color: #6f222a; }
+
+      .sheet { width: 200mm; max-width: calc(100% - 24px); margin: 0 auto 30px; padding: 20px; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+
+      .d-head { padding-bottom: 14px; border-bottom: 2px solid #0c4444; }
+      .d-eyebrow { font-size: 12px; letter-spacing: .14em; color: #6f222a; }
+      .d-title { margin-top: 4px; font-size: 21px; font-weight: 700; color: #0c4444; }
+      .d-annexure { margin-top: 2px; font-size: 14px; color: #444; }
+
+      .d-meta { display: flex; flex-wrap: wrap; gap: 12px 40px; margin: 16px 0 18px; }
+      .d-meta div { font-size: 13px; }
+      .d-meta span { display: block; color: #777; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+
+      .d-frame { width: 100%; height: 78vh; border: 1px solid rgba(23,23,23,.18); background: #f4f4f2; }
+      .d-fallback { padding: 28px; text-align: center; background: #f4f6f3; border: 1px solid rgba(12,68,68,.2); color: #444; }
+      .d-fallback a { color: #0c4444; font-weight: 600; }
+    </style>
+  </head>
+  <body data-requires-auth="true" data-no-menu="true">
+    <div class="toolbar no-print">
+      <button id="download-btn" type="button">Download</button>
+      <button id="email-btn" type="button">Send email to customer</button>
+      <a class="toolbar-back" href="turnkey-dashboard.html">← Back to dashboard</a>
+    </div>
+    <p id="email-status" class="email-status no-print" hidden></p>
+
+    <p id="document-error" class="error" hidden></p>
+    <div class="sheet" id="sheet" hidden></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="auth.js"></script>
+    <script src="document.js"></script>
+  </body>
+</html>

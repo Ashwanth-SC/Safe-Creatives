@@ -64,6 +64,16 @@
     "Handover payment",
   ];
 
+  // The documents signed over a project. Free text in the DB, but the dashboard
+  // offers these three. A Design Sign Off contract can be signed more than once
+  // (revisions), so each upload also takes an optional annexure name.
+  const DOCUMENT_TYPES = [
+    "Client engagement letter",
+    "Design Sign Off contract",
+    "Handover letter",
+  ];
+  const DOCUMENT_BUCKET = "turnkey-documents";
+
   function statusTone(status) {
     if (status === "Lead") return "warn";
     if (status === "Closed") return "muted";
@@ -89,6 +99,23 @@
       return { status: "error", detail: data?.error || data?.reason || "unknown error" };
     } catch (e) {
       console.error("Receipt email failed:", e);
+      return { status: "error", detail: e?.message || String(e) };
+    }
+  }
+
+  // Emails a saved document to the client via the send-turnkey-document Edge
+  // Function (attaches the uploaded file). Same status shape as emailReceipt.
+  async function emailDocument(docId) {
+    try {
+      const { data, error } = await sb.functions.invoke("send-turnkey-document", {
+        body: { id: docId },
+      });
+      if (error) throw error;
+      if (data?.ok) return { status: "sent", to: data.to };
+      if (data?.reason === "no_email") return { status: "no_email" };
+      return { status: "error", detail: data?.error || data?.reason || "unknown error" };
+    } catch (e) {
+      console.error("Document email failed:", e);
       return { status: "error", detail: e?.message || String(e) };
     }
   }
@@ -659,6 +686,233 @@
   }
 
   // ------------------------------------------------------------------
+  // Documents panel — upload a signed document and open a viewer
+  // ------------------------------------------------------------------
+
+  async function loadDocuments() {
+    const { data, error } = await sb
+      .from("turnkey_documents")
+      .select(
+        `id, document_type, annexure_name, document_number, signed_date, file_name,
+         storage_path, created_at, client_name, project_name,
+         turnkey_projects ( project_number, client_email )`
+      )
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function documentsPanel() {
+    const [projects, documents] = await Promise.all([loadProjects(), loadDocuments()]);
+    const projectsById = new Map(projects.map((p) => [p.id, p]));
+    const frag = document.createDocumentFragment();
+
+    // ---- Upload form ----
+    const block = el("details", "admin-package tk-add");
+    block.open = true;
+    block.appendChild(el("summary", null, "Upload a document"));
+
+    const projectS = document.createElement("select");
+    projectS.appendChild(
+      el("option", null, projects.length ? "Select a project…" : "No projects yet — add one first")
+    );
+    projects.forEach((p) => {
+      const o = el(
+        "option",
+        null,
+        `#${p.project_number} — ${p.client_name}` + (p.project_name ? ` — ${p.project_name}` : "")
+      );
+      o.value = p.id;
+      projectS.appendChild(o);
+    });
+
+    const typeS = select([["", "Select…"], ...DOCUMENT_TYPES], "");
+    const annexI = input("text");
+    annexI.placeholder = "Annexure / reference name (optional)";
+    const numberI = input("text");
+    numberI.placeholder = "e.g. SC-DSO-29-A";
+    const dateI = input("date", todayISO());
+    const fileI = input("file");
+    const notesI = textarea("");
+    notesI.placeholder = "Anything important to mention in the email (optional)";
+
+    const grid = el("div", "admin-inline");
+    grid.append(
+      field("Project", projectS),
+      field("Document", typeS),
+      field("Annexure name", annexI),
+      field("Document number", numberI),
+      field("Date of signing", dateI),
+      field("File", fileI)
+    );
+    const wide = el("div");
+    wide.append(field("Note", notesI));
+
+    const msg = el("p", "admin-hint", "");
+    const btn = el("button", "admin-primary", "Save & open document");
+    btn.type = "button";
+    btn.addEventListener("click", async () => {
+      const project = projectsById.get(projectS.value);
+      const file = fileI.files && fileI.files[0];
+      if (!project) return void (msg.textContent = "Choose a project.");
+      if (!typeS.value) return void (msg.textContent = "Choose which document this is.");
+      if (!file) return void (msg.textContent = "Choose a file to upload.");
+
+      btn.disabled = true;
+      msg.textContent = "Uploading…";
+
+      // Store the file under the project, keyed by time so repeat sign-offs of
+      // the same document never collide.
+      const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+      const path = `${project.id}/${Date.now()}-${safeName}`;
+      const { error: upError } = await sb.storage
+        .from(DOCUMENT_BUCKET)
+        .upload(path, file, { contentType: file.type || undefined, upsert: false });
+      if (upError) {
+        btn.disabled = false;
+        return void (msg.textContent = `Upload failed: ${upError.message}`);
+      }
+
+      // Snapshot the client + project details onto the document row.
+      const payload = {
+        project_id: project.id,
+        document_type: typeS.value,
+        annexure_name: annexI.value.trim() || null,
+        document_number: numberI.value.trim() || null,
+        signed_date: dateI.value || null,
+        storage_path: path,
+        file_name: file.name,
+        mime_type: file.type || null,
+        file_size: file.size,
+        client_name: project.client_name,
+        client_phone: project.client_phone || null,
+        client_email: project.client_email || null,
+        project_name: project.project_name || null,
+        notes: notesI.value.trim() || null,
+      };
+      const { data, error } = await sb
+        .from("turnkey_documents")
+        .insert(payload)
+        .select("id")
+        .single();
+      btn.disabled = false;
+      if (error) {
+        // Don't leave the just-uploaded file orphaned if the row didn't save.
+        await sb.storage.from(DOCUMENT_BUCKET).remove([path]);
+        return void (msg.textContent = `Could not save: ${error.message}`);
+      }
+
+      // Save only — the document opens in its own tab to review and then email.
+      window.open(`document.html?id=${encodeURIComponent(data.id)}`, "_blank");
+      await show("documents");
+      message(`Document saved for #${project.project_number}. It's open in a new tab — review it, then use “Send email to customer” there (or the Email action on the row).`);
+    });
+
+    const actions = el("div", "admin-row-actions");
+    actions.appendChild(btn);
+    block.append(grid, wide, actions, msg);
+    frag.appendChild(block);
+
+    // ---- List ----
+    frag.appendChild(
+      el(
+        "p",
+        "dash-note",
+        "Every signed document, newest first. Open one to preview it, download it, or email it to the client."
+      )
+    );
+
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Document", "Reference", "Project", "No.", "Signed", ""].forEach((h) =>
+      hr.appendChild(el("th", null, h))
+    );
+    thead.appendChild(hr);
+
+    const tbody = el("tbody");
+    if (!documents.length) {
+      const tr = el("tr");
+      const td = el("td", "dash-empty", "No documents yet.");
+      td.colSpan = 6;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+    documents.forEach((docRow) => {
+      const open = el("a", "invoice-open", "Open ↗︎");
+      open.href = `document.html?id=${encodeURIComponent(docRow.id)}`;
+      open.target = "_blank";
+
+      const projEmail = docRow.turnkey_projects?.client_email || "";
+      const emailBtn = el("button", "tk-email-link", "Email");
+      emailBtn.type = "button";
+      if (!projEmail) {
+        emailBtn.disabled = true;
+        emailBtn.title = "No email on file for this client";
+      } else {
+        emailBtn.addEventListener("click", async () => {
+          if (!window.confirm(`Email this document to ${projEmail}?`)) return;
+          const label = emailBtn.textContent;
+          emailBtn.disabled = true;
+          emailBtn.textContent = "Sending…";
+          const sent = await emailDocument(docRow.id);
+          emailBtn.textContent = label;
+          emailBtn.disabled = false;
+          if (sent.status === "sent") message(`Document emailed to ${sent.to}.`);
+          else if (sent.status === "no_email") message("No email on file; nothing sent.", true);
+          else message(`Could not email: ${sent.detail}.`, true);
+        });
+      }
+
+      const del = el("button", "tk-delete-link", "Delete");
+      del.type = "button";
+      del.addEventListener("click", async () => {
+        if (!window.confirm(`Delete this document (${docRow.document_type})? This cannot be undone.`)) return;
+        del.disabled = true;
+        const { error: delError } = await sb.from("turnkey_documents").delete().eq("id", docRow.id);
+        if (delError) {
+          del.disabled = false;
+          return void message(`Could not delete: ${delError.message}`, true);
+        }
+        // Best effort: drop the stored file too, so nothing is left behind.
+        if (docRow.storage_path) await sb.storage.from(DOCUMENT_BUCKET).remove([docRow.storage_path]);
+        message("Document deleted.");
+        show("documents");
+      });
+
+      const rowActions = el("div", "tk-cell-actions");
+      rowActions.append(open, emailBtn, del);
+
+      const projLabel =
+        (docRow.turnkey_projects?.project_number != null ? `#${docRow.turnkey_projects.project_number} — ` : "") +
+        (docRow.client_name || "—") +
+        (docRow.project_name ? ` — ${docRow.project_name}` : "");
+      const cells = [
+        el("strong", null, docRow.document_type),
+        docRow.annexure_name || "—",
+        projLabel,
+        docRow.document_number || "—",
+        fmtDate(docRow.signed_date),
+        rowActions,
+      ];
+      const tr = el("tr");
+      cells.forEach((cell) => {
+        const td = el("td");
+        if (cell instanceof Node) td.appendChild(cell);
+        else td.textContent = cell ?? "—";
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+    t.append(thead, tbody);
+    scroll.appendChild(t);
+    frag.appendChild(scroll);
+    return frag;
+  }
+
+  // ------------------------------------------------------------------
   // Headline counts
   // ------------------------------------------------------------------
 
@@ -696,6 +950,7 @@
   const PANELS = {
     customers: customersPanel,
     receipts: receiptsPanel,
+    documents: documentsPanel,
   };
 
   async function show(tab) {
