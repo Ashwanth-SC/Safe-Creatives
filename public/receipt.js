@@ -2,11 +2,10 @@
 // Safe Creatives — turnkey payment receipt renderer
 // ============================================================================
 //
-// One printed page from ?number=<receipt_number> (e.g.
-// 29/1.Design Initiation/06/08/2026 — project code / milestone / date). Reads
-// the receipt row (which already snapshots the client + project details at
-// issue time) and the company header from seller_settings, then renders a
-// printable receipt.
+// One printed page from ?number=<receipt_number> (e.g. 29/1/06/08/2026 —
+// project number / milestone number / date). Reads the receipt row (which
+// already snapshots the client + project details at issue time) and the
+// company header from seller_settings, then renders a printable receipt.
 //
 // RLS decides access: turnkey_receipts is admin-only, so a non-admin (or a
 // logged-out visitor, who is bounced to login by data-requires-auth) simply
