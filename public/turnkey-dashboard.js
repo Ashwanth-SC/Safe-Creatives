@@ -75,6 +75,24 @@
     messageEl.className = `admin-message${isError ? " is-error" : " is-ok"}`;
   }
 
+  // Emails a saved receipt to the client via the send-turnkey-receipt Edge
+  // Function (renders the PDF + sends it with a thank-you note). Returns a short
+  // status so callers can report it: "sent" | "no_email" | "error".
+  async function emailReceipt(receiptNumber) {
+    try {
+      const { data, error } = await sb.functions.invoke("send-turnkey-receipt", {
+        body: { receipt_number: receiptNumber },
+      });
+      if (error) throw error;
+      if (data?.ok) return { status: "sent", to: data.to };
+      if (data?.reason === "no_email") return { status: "no_email" };
+      return { status: "error", detail: data?.error || data?.reason || "unknown error" };
+    } catch (e) {
+      console.error("Receipt email failed:", e);
+      return { status: "error", detail: e?.message || String(e) };
+    }
+  }
+
   // ------------------------------------------------------------------
   // Small DOM + formatting helpers (same shapes as the sensory dashboard)
   // ------------------------------------------------------------------
@@ -429,7 +447,8 @@
       .from("turnkey_receipts")
       .select(
         `id, receipt_number, amount_paise, receipt_date, receipt_name, payment_mode,
-         client_name, project_name, created_at, turnkey_projects ( project_number )`
+         client_name, project_name, created_at,
+         turnkey_projects ( project_number, client_email )`
       )
       .order("created_at", { ascending: false });
     if (error) throw error;
@@ -524,9 +543,25 @@
       btn.disabled = false;
       if (error) return void (msg.textContent = `Could not save: ${error.message}`);
 
-      message(`Receipt ${data.receipt_number} saved for #${project.project_number}.`);
-      window.open(`receipt.html?number=${encodeURIComponent(data.receipt_number)}`, "_blank");
-      show("receipts");
+      const rcpt = data.receipt_number;
+      window.open(`receipt.html?number=${encodeURIComponent(rcpt)}`, "_blank");
+      await show("receipts");
+
+      // Automatically email the receipt to the client. The receipt is already
+      // saved, so any email problem is reported but never undoes the save.
+      if (!project.client_email) {
+        message(`Receipt ${rcpt} saved. This client has no email on file, so nothing was sent.`);
+        return;
+      }
+      message(`Receipt ${rcpt} saved. Emailing ${project.client_email}…`);
+      const sent = await emailReceipt(rcpt);
+      if (sent.status === "sent") {
+        message(`Receipt ${rcpt} saved and emailed to ${sent.to}.`);
+      } else if (sent.status === "no_email") {
+        message(`Receipt ${rcpt} saved, but no email is on file, so nothing was sent.`);
+      } else {
+        message(`Receipt ${rcpt} saved, but the email didn't go out (${sent.detail}). Use “Email” on the row to retry.`, true);
+      }
     });
 
     const actions = el("div", "admin-row-actions");
@@ -581,8 +616,31 @@
         show("receipts");
       });
 
+      // Email the receipt to the client (resend, or send a receipt whose client
+      // only got an email added later). Disabled when there's no address.
+      const projEmail = r.turnkey_projects?.client_email || "";
+      const emailBtn = el("button", "tk-email-link", "Email");
+      emailBtn.type = "button";
+      if (!projEmail) {
+        emailBtn.disabled = true;
+        emailBtn.title = "No email on file for this client";
+      } else {
+        emailBtn.addEventListener("click", async () => {
+          if (!window.confirm(`Email receipt ${r.receipt_number} to ${projEmail}?`)) return;
+          const label = emailBtn.textContent;
+          emailBtn.disabled = true;
+          emailBtn.textContent = "Sending…";
+          const sent = await emailReceipt(r.receipt_number);
+          emailBtn.textContent = label;
+          emailBtn.disabled = false;
+          if (sent.status === "sent") message(`Receipt ${r.receipt_number} emailed to ${sent.to}.`);
+          else if (sent.status === "no_email") message(`No email on file for ${r.receipt_number}; nothing sent.`, true);
+          else message(`Could not email ${r.receipt_number}: ${sent.detail}.`, true);
+        });
+      }
+
       const rowActions = el("div", "tk-cell-actions");
-      rowActions.append(open, del);
+      rowActions.append(open, emailBtn, del);
 
       const projLabel =
         (r.turnkey_projects?.project_number != null ? `#${r.turnkey_projects.project_number} — ` : "") +

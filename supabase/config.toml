@@ -28,6 +28,12 @@ verify_jwt = true
 # sends the public anon key as the JWT, which passes verification, so it stays ON.
 verify_jwt = true
 
+[functions.send-turnkey-receipt]
+# Called by a signed-in admin from the Turnkey dashboard to email a receipt to
+# the client. The function re-checks is_admin on the caller's JWT, so
+# verification stays ON.
+verify_jwt = true
+
 [functions.payment-webhook]
 # Razorpay calls this server-to-server and sends no Supabase JWT. With
 # verification on, every callback is rejected before the handler runs --
