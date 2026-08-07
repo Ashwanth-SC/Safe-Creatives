@@ -156,4 +156,40 @@
 
   sheet.hidden = false;
   printBtn.addEventListener("click", () => window.print());
+
+  // --- Send to customer -----------------------------------------------------
+  // Emailing is a deliberate action here (not automatic on save), so a receipt
+  // is never sent before it has been reviewed on this page.
+  const emailBtn = document.querySelector("#email-btn");
+  const emailStatus = document.querySelector("#email-status");
+
+  function setStatus(text, isError) {
+    emailStatus.textContent = text || "";
+    emailStatus.hidden = !text;
+    emailStatus.className = `email-status no-print${isError ? " is-error" : " is-ok"}`;
+  }
+
+  emailBtn.addEventListener("click", async () => {
+    if (!window.confirm("Send this receipt to the customer's email?")) return;
+    const label = emailBtn.textContent;
+    emailBtn.disabled = true;
+    emailBtn.textContent = "Sending…";
+    setStatus("");
+    try {
+      const { data, error } = await sb.functions.invoke("send-turnkey-receipt", {
+        body: { receipt_number: number },
+      });
+      if (error) throw error;
+      if (data?.ok) setStatus(`Emailed to ${data.to}.`);
+      else if (data?.reason === "no_email")
+        setStatus("No email is on file for this client. Add one on the lead, then try again.", true);
+      else setStatus(`Could not send: ${data?.error || data?.reason || "unknown error"}.`, true);
+    } catch (sendError) {
+      console.error("Send receipt email failed:", sendError);
+      setStatus(`Could not send: ${sendError?.message || sendError}.`, true);
+    } finally {
+      emailBtn.disabled = false;
+      emailBtn.textContent = label;
+    }
+  });
 })();

@@ -544,24 +544,11 @@
       if (error) return void (msg.textContent = `Could not save: ${error.message}`);
 
       const rcpt = data.receipt_number;
+      // Save only — the receipt opens in its own tab where you can review it and
+      // then choose to email it. Nothing is sent automatically.
       window.open(`receipt.html?number=${encodeURIComponent(rcpt)}`, "_blank");
       await show("receipts");
-
-      // Automatically email the receipt to the client. The receipt is already
-      // saved, so any email problem is reported but never undoes the save.
-      if (!project.client_email) {
-        message(`Receipt ${rcpt} saved. This client has no email on file, so nothing was sent.`);
-        return;
-      }
-      message(`Receipt ${rcpt} saved. Emailing ${project.client_email}…`);
-      const sent = await emailReceipt(rcpt);
-      if (sent.status === "sent") {
-        message(`Receipt ${rcpt} saved and emailed to ${sent.to}.`);
-      } else if (sent.status === "no_email") {
-        message(`Receipt ${rcpt} saved, but no email is on file, so nothing was sent.`);
-      } else {
-        message(`Receipt ${rcpt} saved, but the email didn't go out (${sent.detail}). Use “Email” on the row to retry.`, true);
-      }
+      message(`Receipt ${rcpt} saved for #${project.project_number}. It's open in a new tab — review it, then use “Send email to customer” there (or the Email action on the row).`);
     });
 
     const actions = el("div", "admin-row-actions");
