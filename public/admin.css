@@ -202,6 +202,12 @@ button:disabled { opacity: .5; cursor: progress; }
 .invoice-open { color:#0c4444; font-size:12px; text-decoration:none; white-space:nowrap; }
 .invoice-open:hover { text-decoration:underline; }
 
+/* Compact per-row actions (e.g. Open + Delete in the Turnkey receipts table) */
+.tk-cell-actions { display:flex; gap:14px; align-items:center; white-space:nowrap; }
+.tk-delete-link { border:0; background:none; padding:0; color:#6f222a; font:12px "DM Sans",sans-serif; cursor:pointer; }
+.tk-delete-link:hover { text-decoration:underline; }
+.tk-delete-link:disabled { opacity:.5; cursor:default; text-decoration:none; }
+
 /* Printable-document links inside an order's detail panel */
 .order-docs { grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:12px 16px; margin-top:2px; background:#fff; border:1px solid rgba(23,23,23,.12); }
 .order-docs-label { color:#6f222a; font:9px "DM Mono",monospace; letter-spacing:.12em; text-transform:uppercase; }

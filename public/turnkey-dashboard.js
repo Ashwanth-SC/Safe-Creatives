@@ -318,8 +318,29 @@
       onSaved();
     });
 
+    // Delete the lead. Receipts reference the project with ON DELETE RESTRICT,
+    // so a project that has issued receipts can't be removed until those are
+    // deleted first — we translate that database error into plain guidance.
+    const del = el("button", "admin-danger", "Delete lead");
+    del.type = "button";
+    del.addEventListener("click", async () => {
+      if (!window.confirm(`Delete lead #${p.project_number} — ${p.client_name}? This cannot be undone.`)) return;
+      del.disabled = true;
+      const { error } = await sb.from("turnkey_projects").delete().eq("id", p.id);
+      del.disabled = false;
+      if (error) {
+        msg.textContent =
+          error.code === "23503" || /foreign key|violates/i.test(error.message)
+            ? "This project has receipts. Delete its receipts first, then delete the project."
+            : `Could not delete: ${error.message}`;
+        return;
+      }
+      message(`Deleted #${p.project_number} — ${p.client_name}.`);
+      onSaved();
+    });
+
     const actions = el("div", "admin-row-actions");
-    actions.appendChild(btn);
+    actions.append(btn, del);
     wrap.append(f.grid, f.wide, actions, msg);
     return wrap;
   }
@@ -407,7 +428,7 @@
     const { data, error } = await sb
       .from("turnkey_receipts")
       .select(
-        `receipt_number, amount_paise, receipt_date, receipt_name, payment_mode,
+        `id, receipt_number, amount_paise, receipt_date, receipt_name, payment_mode,
          client_name, project_name, created_at, turnkey_projects ( project_number )`
       )
       .order("created_at", { ascending: false });
@@ -473,11 +494,12 @@
       if (!typeS.value) return void (msg.textContent = "Choose what the receipt is for.");
       if (!dateI.value) return void (msg.textContent = "Pick a date.");
 
-      // Receipt number = project no. / milestone no. (its 1-based position in
-      // RECEIPT_TYPES) / the chosen date as DD/MM/YYYY. e.g. 29/1/06/08/2026.
+      // Receipt number = project code / milestone (its 1-based position in
+      // RECEIPT_TYPES + the "receipt for" label) / the chosen date as
+      // DD/MM/YYYY. e.g. 29/1.Design Initiation/06/08/2026.
       const milestoneNo = RECEIPT_TYPES.indexOf(typeS.value) + 1;
       const [y, m, d] = dateI.value.split("-");
-      const receiptNumber = `${project.project_number}/${milestoneNo}/${d}/${m}/${y}`;
+      const receiptNumber = `${project.project_number}/${milestoneNo}.${typeS.value}/${d}/${m}/${y}`;
 
       btn.disabled = true;
       // Snapshot the client + project details onto the receipt so it stays fixed.
@@ -542,6 +564,26 @@
       const open = el("a", "invoice-open", "Open ↗︎");
       open.href = `receipt.html?number=${encodeURIComponent(r.receipt_number)}`;
       open.target = "_blank";
+
+      // Deleting a receipt is irreversible, so confirm first. Receipts have no
+      // dependants, so the delete always succeeds for an admin.
+      const del = el("button", "tk-delete-link", "Delete");
+      del.type = "button";
+      del.addEventListener("click", async () => {
+        if (!window.confirm(`Delete receipt ${r.receipt_number}? This cannot be undone.`)) return;
+        del.disabled = true;
+        const { error } = await sb.from("turnkey_receipts").delete().eq("id", r.id);
+        if (error) {
+          del.disabled = false;
+          return void message(`Could not delete receipt: ${error.message}`, true);
+        }
+        message(`Deleted receipt ${r.receipt_number}.`);
+        show("receipts");
+      });
+
+      const rowActions = el("div", "tk-cell-actions");
+      rowActions.append(open, del);
+
       const projLabel =
         (r.turnkey_projects?.project_number != null ? `#${r.turnkey_projects.project_number} — ` : "") +
         (r.client_name || "—") +
@@ -553,7 +595,7 @@
         money(r.amount_paise),
         r.payment_mode,
         fmtDate(r.receipt_date),
-        open,
+        rowActions,
       ];
       const tr = el("tr");
       cells.forEach((cell) => {
