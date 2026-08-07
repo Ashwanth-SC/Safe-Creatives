@@ -263,7 +263,6 @@ function buildReceiptEmailHtml(receipt: any, seller: any): string {
     ${receipt.notes ? `<p style="margin:14px 0 0;padding:12px 14px;background:#faf7f2;border-left:3px solid #6f222a;font-size:13px;white-space:pre-line;">${escapeHtml(receipt.notes)}</p>` : ""}
 
     <p style="margin:22px 0 0;font-size:13px;color:#555;line-height:1.6;">
-      If anything looks off, just reply to this email and we'll help.<br />
       Warm regards,<br />${escapeHtml(coName)}
     </p>
   </div>
