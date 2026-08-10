@@ -36,6 +36,29 @@
     return node;
   }
 
+  // Minimal RFC-4180-ish CSV parser: handles quoted fields, escaped quotes ("")
+  // and newlines inside quotes. Returns an array of string arrays.
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], field = "", inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else field += ch;
+      } else if (ch === '"') inQuotes = true;
+      else if (ch === ",") { row.push(field); field = ""; }
+      else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else if (ch !== "\r") field += ch;
+    }
+    if (field !== "" || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  const normalizeHeader = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+
   // ------------------------------------------------------------------
   // Generic editable grid
   // ------------------------------------------------------------------
@@ -141,8 +164,84 @@
       message("Row added — fill it in.");
     });
 
+    // --- Import CSV (append only — never edits or removes existing rows) ----
+    const importInput = document.createElement("input");
+    importInput.type = "file";
+    importInput.accept = ".csv,text/csv";
+    importInput.style.display = "none";
+
+    const importBtn = el("button", "admin-primary-small", "Import CSV");
+    importBtn.type = "button";
+    importBtn.addEventListener("click", () => importInput.click());
+
+    importInput.addEventListener("change", async () => {
+      const file = importInput.files && importInput.files[0];
+      importInput.value = ""; // let the same file be picked again later
+      if (!file) return;
+
+      let text;
+      try {
+        text = await file.text();
+      } catch {
+        return void message("Could not read the file.", true);
+      }
+
+      const grid = parseCSV(text).filter((r) => r.some((c) => String(c).trim() !== ""));
+      if (grid.length < 2) return void message("The CSV has no data rows.", true);
+
+      // Map each CSV column (by header) to one of our fields; ignore the rest.
+      const headers = grid[0].map(normalizeHeader);
+      const idxToKey = {};
+      headers.forEach((h, i) => {
+        const col = columns.find(
+          (c) => normalizeHeader(c.label) === h || normalizeHeader(c.key) === h
+        );
+        if (col) idxToKey[i] = col.key;
+      });
+      if (!Object.keys(idxToKey).length) {
+        return void message(
+          `No columns matched. The CSV's first row should be headers like: ${columns
+            .map((c) => c.label)
+            .join(", ")}.`,
+          true
+        );
+      }
+
+      const payloads = grid
+        .slice(1)
+        .map((r) => {
+          const obj = {};
+          r.forEach((val, i) => {
+            const key = idxToKey[i];
+            if (!key) return;
+            const v = String(val).trim();
+            if (v !== "") obj[key] = v;
+          });
+          return obj;
+        })
+        .filter((obj) => Object.keys(obj).length > 0);
+
+      if (!payloads.length) return void message("No filled-in rows found in the CSV.", true);
+      if (
+        !window.confirm(
+          `Append ${payloads.length} row(s) from “${file.name}”? Existing rows won't be changed.`
+        )
+      )
+        return;
+
+      importBtn.disabled = true;
+      const { data, error } = await sb.from(table).insert(payloads).select("*");
+      importBtn.disabled = false;
+      if (error) return void message(`Import failed: ${error.message}`, true);
+
+      const empty = tbody.querySelector(".db-empty-row");
+      if (empty) empty.remove();
+      (data || []).forEach((row) => tbody.appendChild(makeRow(row)));
+      message(`Appended ${data ? data.length : payloads.length} row(s) from ${file.name}.`);
+    });
+
     const actions = el("div", "admin-row-actions");
-    actions.appendChild(addBtn);
+    actions.append(addBtn, importBtn, importInput);
 
     const frag = document.createDocumentFragment();
     frag.append(scroll, actions);
