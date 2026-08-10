@@ -74,6 +74,26 @@
   ];
   const DOCUMENT_BUCKET = "turnkey-documents";
 
+  // Common spaces offered as a starting checklist on a project's first quotation
+  // setup. They're seeded unticked — the user ticks the ones that apply, and can
+  // add or delete any of them. Stored per project in turnkey_project_spaces.
+  const DEFAULT_SPACES = [
+    "Living Area",
+    "Dining Area",
+    "Kitchen",
+    "Master Bedroom",
+    "Study Bedroom",
+    "Children's Bedroom",
+    "Pooja Area",
+    "Master Bathroom",
+    "Study Bathroom",
+    "Children's Bathroom",
+    "Service Area",
+    "Foyer",
+    "Balcony",
+    "Utility",
+  ];
+
   function statusTone(status) {
     if (status === "Lead") return "warn";
     if (status === "Closed") return "muted";
@@ -913,6 +933,297 @@
   }
 
   // ------------------------------------------------------------------
+  // Quotations panel — per-project setup (spaces + margin / GST / discount)
+  // ------------------------------------------------------------------
+
+  async function loadProjectSettings(projectId) {
+    const { data, error } = await sb
+      .from("turnkey_projects")
+      .select("id, project_number, client_name, project_name, margin_percent, gst_percent, discount_percent")
+      .eq("id", projectId)
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function loadProjectSpaces(projectId) {
+    const { data, error } = await sb
+      .from("turnkey_project_spaces")
+      .select("id, name, is_selected")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+
+  // First time a project is opened it has no spaces, so seed the common list
+  // (unticked) to give the user a checklist to work from.
+  async function seedDefaultSpaces(projectId) {
+    const rows = DEFAULT_SPACES.map((name) => ({ project_id: projectId, name, is_selected: false }));
+    await sb
+      .from("turnkey_project_spaces")
+      .upsert(rows, { onConflict: "project_id,name", ignoreDuplicates: true });
+  }
+
+  function pct(value) {
+    return value == null ? "—" : `${Number(value)}%`;
+  }
+
+  async function quotationsPanel() {
+    const projects = await loadProjects();
+    const frag = document.createDocumentFragment();
+
+    frag.appendChild(
+      el(
+        "p",
+        "dash-note",
+        "Pick a project to set up its quotation. Margin, GST and discount are saved on the project; the applicable spaces are saved per project — tick the ones that apply, and add or delete any."
+      )
+    );
+
+    const projectS = document.createElement("select");
+    projectS.appendChild(
+      el("option", null, projects.length ? "Select a project…" : "No projects yet — add one first")
+    );
+    projects.forEach((p) => {
+      const o = el(
+        "option",
+        null,
+        `#${p.project_number} — ${p.client_name}` + (p.project_name ? ` — ${p.project_name}` : "")
+      );
+      o.value = p.id;
+      projectS.appendChild(o);
+    });
+
+    const row = el("div", "admin-inline");
+    row.appendChild(field("Project", projectS));
+    frag.appendChild(row);
+
+    const settingsWrap = el("div", "tk-qt-settings");
+    frag.appendChild(settingsWrap);
+
+    projectS.addEventListener("change", () => renderSettings(projectS.value));
+    settingsWrap.appendChild(el("p", "dash-note", "Select a project above to begin."));
+
+    // --- render the setting area for the chosen project --------------------
+    async function renderSettings(projectId, mode) {
+      settingsWrap.textContent = "";
+      if (!projectId) {
+        settingsWrap.appendChild(el("p", "dash-note", "Select a project above to begin."));
+        return;
+      }
+      settingsWrap.appendChild(el("p", "dash-note", "Loading…"));
+
+      let project, spaces;
+      try {
+        project = await loadProjectSettings(projectId);
+        spaces = await loadProjectSpaces(projectId);
+        if (!spaces.length) {
+          await seedDefaultSpaces(projectId);
+          spaces = await loadProjectSpaces(projectId);
+        }
+      } catch (error) {
+        settingsWrap.textContent = "";
+        settingsWrap.appendChild(
+          el(
+            "p",
+            "admin-message is-error",
+            `Could not load: ${error.message}. If this mentions a missing table or column, run migration 021-quotation-project-setup.sql.`
+          )
+        );
+        return;
+      }
+
+      const configured = project.margin_percent != null;
+      const view = mode || (configured ? "view" : "edit");
+      settingsWrap.textContent = "";
+      settingsWrap.appendChild(view === "view" ? renderView(project, spaces) : renderEdit(project, spaces));
+    }
+
+    // --- read-only summary, with an Edit button ----------------------------
+    function renderView(project, spaces) {
+      const wrap = el("div", "admin-package");
+      wrap.appendChild(el("p", "eyebrow", "PROJECT SETTINGS"));
+
+      const nums = el("div", "admin-inline");
+      const stat = (label, value) => {
+        const d = el("div", "admin-field");
+        d.appendChild(el("span", null, label));
+        d.appendChild(el("strong", null, value));
+        return d;
+      };
+      nums.append(
+        stat("Margin", pct(project.margin_percent)),
+        stat("GST", pct(project.gst_percent)),
+        stat("Discount", pct(project.discount_percent))
+      );
+      wrap.appendChild(nums);
+
+      wrap.appendChild(el("span", "admin-field-label", "Applicable spaces"));
+      const chips = el("div", "tk-chips");
+      const selected = spaces.filter((s) => s.is_selected);
+      if (!selected.length) chips.appendChild(el("span", "dash-note", "None ticked yet."));
+      else selected.forEach((s) => chips.appendChild(pill(s.name, "muted")));
+      wrap.appendChild(chips);
+
+      const editBtn = el("button", "admin-primary-small", "Edit settings");
+      editBtn.type = "button";
+      editBtn.addEventListener("click", () => renderSettings(project.id, "edit"));
+      const actions = el("div", "admin-row-actions");
+      actions.appendChild(editBtn);
+      wrap.appendChild(actions);
+
+      wrap.appendChild(
+        el("p", "dash-note", "The quotation builder for this project will appear here next.")
+      );
+      return wrap;
+    }
+
+    // --- editable form (also the first-time setup) -------------------------
+    function renderEdit(project, spaces) {
+      const wrap = el("div", "admin-package");
+      const configured = project.margin_percent != null;
+      wrap.appendChild(el("p", "eyebrow", configured ? "EDIT PROJECT SETTINGS" : "SET UP THIS PROJECT"));
+
+      // Spaces checklist — changes save immediately to the separate table.
+      wrap.appendChild(el("span", "admin-field-label", "Applicable spaces"));
+      const list = el("div", "tk-space-list");
+      wrap.appendChild(list);
+      renderSpaceList(list, project.id, spaces);
+
+      // Add a space
+      const addWrap = el("div", "tk-space-add");
+      const addI = input("text");
+      addI.placeholder = "Add a space (e.g. Home Theatre)";
+      const addBtn = el("button", "admin-primary-small", "Add");
+      addBtn.type = "button";
+      const addSpace = async () => {
+        const name = addI.value.trim();
+        if (!name) return;
+        addBtn.disabled = true;
+        const { data, error } = await sb
+          .from("turnkey_project_spaces")
+          .insert({ project_id: project.id, name, is_selected: true })
+          .select("id, name, is_selected")
+          .single();
+        addBtn.disabled = false;
+        if (error) return void message(`Could not add space: ${error.message}`, true);
+        spaces.push(data);
+        addI.value = "";
+        renderSpaceList(list, project.id, spaces);
+      };
+      addBtn.addEventListener("click", addSpace);
+      addI.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addSpace(); }
+      });
+      addWrap.append(addI, addBtn);
+      wrap.appendChild(addWrap);
+
+      // Margin / GST / discount
+      const marginI = input("number", project.margin_percent != null ? project.margin_percent : "");
+      const gstI = input("number", project.gst_percent != null ? project.gst_percent : "");
+      const discountI = input("number", project.discount_percent != null ? project.discount_percent : "");
+      [marginI, gstI, discountI].forEach((i) => { i.min = "0"; i.step = "0.01"; });
+      marginI.placeholder = "25";
+      gstI.placeholder = "18";
+      discountI.placeholder = "0";
+
+      const grid = el("div", "admin-inline");
+      grid.append(
+        field("Margin (%)", marginI),
+        field("GST (%)", gstI),
+        field("Discount (%)", discountI)
+      );
+      wrap.appendChild(grid);
+
+      const msg = el("p", "admin-hint", "");
+      const saveBtn = el("button", "admin-primary", "Save project settings");
+      saveBtn.type = "button";
+      saveBtn.addEventListener("click", async () => {
+        const margin = Number(marginI.value);
+        const gst = Number(gstI.value);
+        const discRaw = discountI.value.trim();
+        const discount = discRaw === "" ? 0 : Number(discRaw);
+        if (marginI.value.trim() === "" || !Number.isFinite(margin) || margin < 0)
+          return void (msg.textContent = "Enter a valid margin %.");
+        if (gstI.value.trim() === "" || !Number.isFinite(gst) || gst < 0)
+          return void (msg.textContent = "Enter a valid GST %.");
+        if (!Number.isFinite(discount) || discount < 0)
+          return void (msg.textContent = "Enter a valid discount %.");
+
+        saveBtn.disabled = true;
+        const { error } = await sb
+          .from("turnkey_projects")
+          .update({ margin_percent: margin, gst_percent: gst, discount_percent: discount })
+          .eq("id", project.id);
+        saveBtn.disabled = false;
+        if (error) return void (msg.textContent = `Could not save: ${error.message}`);
+        message(`Saved settings for #${project.project_number}.`);
+        renderSettings(project.id, "view");
+      });
+
+      const actions = el("div", "admin-row-actions");
+      actions.appendChild(saveBtn);
+      if (configured) {
+        const cancelBtn = el("button", "admin-danger", "Cancel");
+        cancelBtn.type = "button";
+        cancelBtn.addEventListener("click", () => renderSettings(project.id, "view"));
+        actions.appendChild(cancelBtn);
+      }
+      wrap.append(actions, msg);
+      return wrap;
+    }
+
+    // Rebuilds the tickable space rows into `container`.
+    function renderSpaceList(container, projectId, spaces) {
+      container.textContent = "";
+      if (!spaces.length) {
+        container.appendChild(el("p", "dash-note", "No spaces yet — add one below."));
+        return;
+      }
+      spaces.forEach((space) => {
+        const rowEl = el("label", "tk-space-row");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!space.is_selected;
+        cb.addEventListener("change", async () => {
+          const next = cb.checked;
+          cb.disabled = true;
+          const { error } = await sb
+            .from("turnkey_project_spaces")
+            .update({ is_selected: next })
+            .eq("id", space.id);
+          cb.disabled = false;
+          if (error) {
+            cb.checked = !next;
+            return void message(`Could not update space: ${error.message}`, true);
+          }
+          space.is_selected = next;
+        });
+
+        const del = el("button", "tk-delete-link", "✕");
+        del.type = "button";
+        del.title = "Delete this space";
+        del.addEventListener("click", async (e) => {
+          e.preventDefault();
+          del.disabled = true;
+          const { error } = await sb.from("turnkey_project_spaces").delete().eq("id", space.id);
+          del.disabled = false;
+          if (error) return void message(`Could not delete space: ${error.message}`, true);
+          const idx = spaces.findIndex((s) => s.id === space.id);
+          if (idx >= 0) spaces.splice(idx, 1);
+          renderSpaceList(container, projectId, spaces);
+        });
+
+        rowEl.append(cb, el("span", null, space.name), del);
+        container.appendChild(rowEl);
+      });
+    }
+
+    return frag;
+  }
+
+  // ------------------------------------------------------------------
   // Headline counts
   // ------------------------------------------------------------------
 
@@ -951,6 +1262,7 @@
     customers: customersPanel,
     receipts: receiptsPanel,
     documents: documentsPanel,
+    quotations: quotationsPanel,
   };
 
   async function show(tab) {
