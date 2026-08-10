@@ -223,6 +223,16 @@ button:disabled { opacity: .5; cursor: progress; }
 .tk-space-add { display:flex; gap:8px; align-items:center; margin-bottom:8px; max-width:440px; }
 .tk-space-add input { flex:1; }
 
+/* Editable reference-data grid (Turnkey database window) */
+.db-grid td { padding:0; border-bottom:1px solid rgba(23,23,23,.08); }
+.db-grid th { white-space:nowrap; }
+.grid-input { width:100%; min-width:120px; border:1px solid transparent; background:transparent; padding:8px; font:13px "DM Sans",sans-serif; color:#171717; }
+.grid-input:hover { border-color:rgba(23,23,23,.14); }
+.grid-input:focus { border-color:#0c4444; background:#fff; outline:none; }
+.db-grid-del { text-align:center; }
+.db-grid-del .tk-delete-link { font-size:13px; color:#bbb; }
+.db-grid-del .tk-delete-link:hover { color:#6f222a; }
+
 /* Printable-document links inside an order's detail panel */
 .order-docs { grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:12px 16px; margin-top:2px; background:#fff; border:1px solid rgba(23,23,23,.12); }
 .order-docs-label { color:#6f222a; font:9px "DM Mono",monospace; letter-spacing:.12em; text-transform:uppercase; }
