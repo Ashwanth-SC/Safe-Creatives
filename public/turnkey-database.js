@@ -296,9 +296,9 @@
     return wrap;
   }
 
-  async function loadCategories() {
+  async function loadCategoryList(table) {
     const { data, error } = await sb
-      .from("turnkey_product_categories")
+      .from(table)
       .select("id, name")
       .order("name", { ascending: true });
     if (error) throw error;
@@ -327,24 +327,26 @@
     return { wrap, select };
   }
 
-  // The add/delete manager for the Product category dropdown options.
-  function renderCategoryManager(cats) {
+  // Reusable add/delete manager for a dropdown's options (product categories,
+  // labour categories, ...). `table` is the options table, `tab` the panel to
+  // reload after a change.
+  function renderCategoryManager(cats, { table, tab, label, placeholder }) {
     const box = el("div", "tk-cat-manager");
-    box.appendChild(el("span", "admin-field-label", "Product categories"));
+    box.appendChild(el("span", "admin-field-label", label));
 
     const chips = el("div", "tk-chips");
-    if (!cats.length) chips.appendChild(el("span", "dash-note", "No categories yet — add one below."));
+    if (!cats.length) chips.appendChild(el("span", "dash-note", "None yet — add one below."));
     cats.forEach((cat) => {
       const chip = el("span", "tk-cat-chip");
       chip.appendChild(el("span", null, cat.name));
       const x = el("button", "tk-cat-x", "✕");
       x.type = "button";
-      x.title = "Delete category";
+      x.title = "Delete";
       x.addEventListener("click", async () => {
-        if (!window.confirm(`Delete the category “${cat.name}”? Products already using it keep the value.`)) return;
-        const { error } = await sb.from("turnkey_product_categories").delete().eq("id", cat.id);
+        if (!window.confirm(`Delete “${cat.name}”? Rows already using it keep the value.`)) return;
+        const { error } = await sb.from(table).delete().eq("id", cat.id);
         if (error) return void message(`Could not delete: ${error.message}`, true);
-        show("products");
+        show(tab);
       });
       chip.appendChild(x);
       chips.appendChild(chip);
@@ -354,21 +356,21 @@
     const addWrap = el("div", "tk-space-add");
     const addI = document.createElement("input");
     addI.type = "text";
-    addI.placeholder = "Add a category (e.g. Plywood)";
-    const addBtn = el("button", "admin-primary-small", "Add category");
+    addI.placeholder = placeholder;
+    const addBtn = el("button", "admin-primary-small", "Add");
     addBtn.type = "button";
     const add = async () => {
       const name = addI.value.trim();
       if (!name) return;
       addBtn.disabled = true;
-      const { error } = await sb.from("turnkey_product_categories").insert({ name });
+      const { error } = await sb.from(table).insert({ name });
       addBtn.disabled = false;
       if (error)
         return void message(
-          /duplicate|unique/i.test(error.message) ? "That category already exists." : `Could not add: ${error.message}`,
+          /duplicate|unique/i.test(error.message) ? "That entry already exists." : `Could not add: ${error.message}`,
           true
         );
-      show("products");
+      show(tab);
     };
     addBtn.addEventListener("click", add);
     addI.addEventListener("keydown", (e) => {
@@ -380,7 +382,10 @@
   }
 
   async function productsPanel() {
-    const [cats, supplierNames] = await Promise.all([loadCategories(), loadSupplierNames()]);
+    const [cats, supplierNames] = await Promise.all([
+      loadCategoryList("turnkey_product_categories"),
+      loadSupplierNames(),
+    ]);
     const catNames = cats.map((c) => c.name);
 
     const grid = editableGrid({
@@ -405,7 +410,14 @@
         "Your product specs and pricing. Manage the categories below (they fill the Product category dropdown), then add rows, edit cells, or import a CSV."
       )
     );
-    wrap.appendChild(renderCategoryManager(cats));
+    wrap.appendChild(
+      renderCategoryManager(cats, {
+        table: "turnkey_product_categories",
+        tab: "products",
+        label: "Product categories",
+        placeholder: "Add a category (e.g. Plywood)",
+      })
+    );
 
     // Filters — narrow the grid by supplier and/or category (server-side).
     const filters = { supplier: "", category: "" };
@@ -428,9 +440,47 @@
     return wrap;
   }
 
+  async function labourPanel() {
+    const cats = await loadCategoryList("turnkey_labour_categories");
+    const catNames = cats.map((c) => c.name);
+
+    const grid = editableGrid({
+      table: "turnkey_labour",
+      orderBy: "created_at",
+      columns: [
+        { key: "category", label: "Labour category", type: "select", options: catNames },
+        { key: "name", label: "Name" },
+        { key: "contact_number", label: "Contact number", aliases: ["contact", "phone", "spoc contact"] },
+        { key: "cost_per_day", label: "Cost per day", type: "number", aliases: ["cost/day", "cost per day"] },
+        { key: "cost_per_sqft", label: "Cost per sqft", type: "number", aliases: ["cost/sqft", "cost per sqft"] },
+      ],
+    });
+
+    const wrap = document.createDocumentFragment();
+    wrap.appendChild(
+      el(
+        "p",
+        "dash-note",
+        "Your labourers/contractors and their rates. Manage the labour categories below (they fill the Labour category dropdown), then add rows, edit cells, or import a CSV."
+      )
+    );
+    wrap.appendChild(
+      renderCategoryManager(cats, {
+        table: "turnkey_labour_categories",
+        tab: "labour",
+        label: "Labour categories",
+        placeholder: "Add a category (e.g. Carpenter)",
+      })
+    );
+    wrap.appendChild(grid.frag);
+    await grid.load();
+    return wrap;
+  }
+
   const PANELS = {
     suppliers: suppliersPanel,
     products: productsPanel,
+    labour: labourPanel,
   };
 
   async function show(tab) {
