@@ -18,16 +18,15 @@
 begin;
 
 create table if not exists turnkey_suppliers (
-  id            uuid primary key default gen_random_uuid(),
-  supplier      text,          -- short name / identifier
-  company_name  text,
-  spoc          text,          -- single point of contact (person)
-  spoc_contact  text,
-  spoc_mail     text,
-  address       text,
-  gst_number    text,
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  id                     uuid primary key default gen_random_uuid(),
+  supplier_company_name  text,
+  spoc                   text,   -- single point of contact (person)
+  spoc_contact           text,
+  spoc_mail              text,
+  address                text,
+  gst_number             text,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
 );
 
 comment on table turnkey_suppliers is

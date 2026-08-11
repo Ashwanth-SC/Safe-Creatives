@@ -257,8 +257,7 @@
       table: "turnkey_suppliers",
       orderBy: "created_at",
       columns: [
-        { key: "supplier", label: "Supplier" },
-        { key: "company_name", label: "Company name" },
+        { key: "supplier_company_name", label: "Supplier company name" },
         { key: "spoc", label: "SPOC" },
         { key: "spoc_contact", label: "SPOC contact" },
         { key: "spoc_mail", label: "SPOC mail ID" },
