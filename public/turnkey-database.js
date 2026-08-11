@@ -151,8 +151,13 @@
       return tr;
     }
 
-    async function load() {
+    async function load(filters) {
       let query = sb.from(table).select("*");
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v) query = query.eq(k, v);
+        });
+      }
       if (orderBy) query = query.order(orderBy, { ascending: true });
       const { data, error } = await query;
       if (error) throw error;
@@ -300,6 +305,28 @@
     return data || [];
   }
 
+  // Distinct supplier names (from the Supplier database) for the products
+  // Supplier dropdown and the supplier filter.
+  async function loadSupplierNames() {
+    const { data, error } = await sb
+      .from("turnkey_suppliers")
+      .select("supplier_company_name")
+      .order("supplier_company_name", { ascending: true });
+    if (error) throw error;
+    return [...new Set((data || []).map((s) => s.supplier_company_name).filter(Boolean))];
+  }
+
+  // A labelled "All / …" filter dropdown.
+  function filterSelect(labelText, options) {
+    const wrap = el("label", "admin-field");
+    wrap.appendChild(el("span", null, labelText));
+    const select = document.createElement("select");
+    select.appendChild(new Option("All", ""));
+    options.forEach((o) => select.appendChild(new Option(o, o)));
+    wrap.appendChild(select);
+    return { wrap, select };
+  }
+
   // The add/delete manager for the Product category dropdown options.
   function renderCategoryManager(cats) {
     const box = el("div", "tk-cat-manager");
@@ -353,14 +380,14 @@
   }
 
   async function productsPanel() {
-    const cats = await loadCategories();
+    const [cats, supplierNames] = await Promise.all([loadCategories(), loadSupplierNames()]);
     const catNames = cats.map((c) => c.name);
 
     const grid = editableGrid({
       table: "turnkey_products",
       orderBy: "created_at",
       columns: [
-        { key: "supplier", label: "Supplier" },
+        { key: "supplier", label: "Supplier", type: "select", options: supplierNames, aliases: ["supplier company name"] },
         { key: "product_name", label: "Product name", aliases: ["brand name"] },
         { key: "category", label: "Product category", type: "select", options: catNames },
         { key: "std_width", label: "Standard width", type: "number", aliases: ["std width"] },
@@ -379,8 +406,25 @@
       )
     );
     wrap.appendChild(renderCategoryManager(cats));
+
+    // Filters — narrow the grid by supplier and/or category (server-side).
+    const filters = { supplier: "", category: "" };
+    const supplierF = filterSelect("Filter by supplier", supplierNames);
+    const categoryF = filterSelect("Filter by category", catNames);
+    supplierF.select.addEventListener("change", () => {
+      filters.supplier = supplierF.select.value;
+      grid.load(filters);
+    });
+    categoryF.select.addEventListener("change", () => {
+      filters.category = categoryF.select.value;
+      grid.load(filters);
+    });
+    const filterRow = el("div", "tk-filter-row");
+    filterRow.append(supplierF.wrap, categoryF.wrap);
+    wrap.appendChild(filterRow);
+
     wrap.appendChild(grid.frag);
-    await grid.load();
+    await grid.load(filters);
     return wrap;
   }
 
