@@ -85,25 +85,39 @@
       const tr = el("tr");
       columns.forEach((c) => {
         const td = el("td");
-        const inp = document.createElement("input");
-        inp.type = c.type || "text";
-        inp.className = "grid-input";
-        inp.value = row[c.key] == null ? "" : row[c.key];
-        if (c.placeholder) inp.placeholder = c.placeholder;
-        inp.addEventListener("change", async () => {
-          const value = inp.value.trim() === "" ? null : inp.value.trim();
-          inp.disabled = true;
+        let control;
+        if (c.type === "select") {
+          // Dropdown cell — options come from the column config. Any value not
+          // in the list (e.g. imported) is kept as an extra option so it shows.
+          control = document.createElement("select");
+          control.className = "grid-input grid-select";
+          control.appendChild(new Option("—", ""));
+          const opts = (c.options || []).slice();
+          const cur = row[c.key];
+          if (cur != null && cur !== "" && !opts.includes(cur)) opts.unshift(cur);
+          opts.forEach((o) => control.appendChild(new Option(o, o)));
+          control.value = cur == null ? "" : cur;
+        } else {
+          control = document.createElement("input");
+          control.type = c.type || "text";
+          control.className = "grid-input";
+          control.value = row[c.key] == null ? "" : row[c.key];
+          if (c.placeholder) control.placeholder = c.placeholder;
+        }
+        control.addEventListener("change", async () => {
+          const value = String(control.value).trim() === "" ? null : String(control.value).trim();
+          control.disabled = true;
           const { error } = await sb.from(table).update({ [c.key]: value }).eq("id", row.id);
-          inp.disabled = false;
+          control.disabled = false;
           if (error) {
             message(`Could not save: ${error.message}`, true);
-            inp.focus();
+            control.focus();
             return;
           }
           row[c.key] = value;
           message("Saved.");
         });
-        td.appendChild(inp);
+        td.appendChild(control);
         tr.appendChild(td);
       });
 
@@ -194,7 +208,10 @@
       const idxToKey = {};
       headers.forEach((h, i) => {
         const col = columns.find(
-          (c) => normalizeHeader(c.label) === h || normalizeHeader(c.key) === h
+          (c) =>
+            normalizeHeader(c.label) === h ||
+            normalizeHeader(c.key) === h ||
+            (c.aliases || []).some((a) => normalizeHeader(a) === h)
         );
         if (col) idxToKey[i] = col.key;
       });
@@ -274,8 +291,102 @@
     return wrap;
   }
 
+  async function loadCategories() {
+    const { data, error } = await sb
+      .from("turnkey_product_categories")
+      .select("id, name")
+      .order("name", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+
+  // The add/delete manager for the Product category dropdown options.
+  function renderCategoryManager(cats) {
+    const box = el("div", "tk-cat-manager");
+    box.appendChild(el("span", "admin-field-label", "Product categories"));
+
+    const chips = el("div", "tk-chips");
+    if (!cats.length) chips.appendChild(el("span", "dash-note", "No categories yet — add one below."));
+    cats.forEach((cat) => {
+      const chip = el("span", "tk-cat-chip");
+      chip.appendChild(el("span", null, cat.name));
+      const x = el("button", "tk-cat-x", "✕");
+      x.type = "button";
+      x.title = "Delete category";
+      x.addEventListener("click", async () => {
+        if (!window.confirm(`Delete the category “${cat.name}”? Products already using it keep the value.`)) return;
+        const { error } = await sb.from("turnkey_product_categories").delete().eq("id", cat.id);
+        if (error) return void message(`Could not delete: ${error.message}`, true);
+        show("products");
+      });
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+    box.appendChild(chips);
+
+    const addWrap = el("div", "tk-space-add");
+    const addI = document.createElement("input");
+    addI.type = "text";
+    addI.placeholder = "Add a category (e.g. Plywood)";
+    const addBtn = el("button", "admin-primary-small", "Add category");
+    addBtn.type = "button";
+    const add = async () => {
+      const name = addI.value.trim();
+      if (!name) return;
+      addBtn.disabled = true;
+      const { error } = await sb.from("turnkey_product_categories").insert({ name });
+      addBtn.disabled = false;
+      if (error)
+        return void message(
+          /duplicate|unique/i.test(error.message) ? "That category already exists." : `Could not add: ${error.message}`,
+          true
+        );
+      show("products");
+    };
+    addBtn.addEventListener("click", add);
+    addI.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); add(); }
+    });
+    addWrap.append(addI, addBtn);
+    box.appendChild(addWrap);
+    return box;
+  }
+
+  async function productsPanel() {
+    const cats = await loadCategories();
+    const catNames = cats.map((c) => c.name);
+
+    const grid = editableGrid({
+      table: "turnkey_products",
+      orderBy: "created_at",
+      columns: [
+        { key: "supplier", label: "Supplier" },
+        { key: "product_name", label: "Product name", aliases: ["brand name"] },
+        { key: "category", label: "Product category", type: "select", options: catNames },
+        { key: "std_width", label: "Standard width", type: "number", aliases: ["std width"] },
+        { key: "std_height", label: "Standard height", type: "number", aliases: ["std height"] },
+        { key: "thickness", label: "Thickness" },
+        { key: "price_per_sqft", label: "Price/sqft", type: "number", aliases: ["cost/sqft", "cost per sqft", "price per sqft"] },
+      ],
+    });
+
+    const wrap = document.createDocumentFragment();
+    wrap.appendChild(
+      el(
+        "p",
+        "dash-note",
+        "Your product specs and pricing. Manage the categories below (they fill the Product category dropdown), then add rows, edit cells, or import a CSV."
+      )
+    );
+    wrap.appendChild(renderCategoryManager(cats));
+    wrap.appendChild(grid.frag);
+    await grid.load();
+    return wrap;
+  }
+
   const PANELS = {
     suppliers: suppliersPanel,
+    products: productsPanel,
   };
 
   async function show(tab) {
