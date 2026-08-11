@@ -441,14 +441,19 @@
   }
 
   async function labourPanel() {
-    const cats = await loadCategoryList("turnkey_labour_categories");
+    const [cats, tasks] = await Promise.all([
+      loadCategoryList("turnkey_labour_categories"),
+      loadCategoryList("turnkey_labour_tasks"),
+    ]);
     const catNames = cats.map((c) => c.name);
+    const taskNames = tasks.map((t) => t.name);
 
     const grid = editableGrid({
       table: "turnkey_labour",
       orderBy: "created_at",
       columns: [
         { key: "category", label: "Labour category", type: "select", options: catNames },
+        { key: "task", label: "Task", type: "select", options: taskNames },
         { key: "name", label: "Name" },
         { key: "contact_number", label: "Contact number", aliases: ["contact", "phone", "spoc contact"] },
         { key: "cost_per_day", label: "Cost per day", type: "number", aliases: ["cost/day", "cost per day"] },
@@ -461,7 +466,7 @@
       el(
         "p",
         "dash-note",
-        "Your labourers/contractors and their rates. Manage the labour categories below (they fill the Labour category dropdown), then add rows, edit cells, or import a CSV."
+        "Your labourers/contractors and their rates. Manage the labour categories and tasks below (they fill the dropdowns), then add rows, edit cells, or import a CSV."
       )
     );
     wrap.appendChild(
@@ -470,6 +475,14 @@
         tab: "labour",
         label: "Labour categories",
         placeholder: "Add a category (e.g. Carpenter)",
+      })
+    );
+    wrap.appendChild(
+      renderCategoryManager(tasks, {
+        table: "turnkey_labour_tasks",
+        tab: "labour",
+        label: "Tasks",
+        placeholder: "Add a task",
       })
     );
     wrap.appendChild(grid.frag);
