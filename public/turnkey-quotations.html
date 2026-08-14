@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="./ASSET/SC_Logo_Logomark_Secondary.png" />
+    <title>Turnkey Quotations | Safe Creatives</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body data-requires-auth="true" data-no-menu="true">
+    <header class="site-header admin-header">
+      <a class="brand" href="index.html"><img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" /><span>SAFE CREATIVES</span></a>
+      <div class="admin-header-mid"><span class="admin-badge">TURNKEY QUOTATIONS</span><a class="catalog-back" href="turnkey-dashboard.html">Turnkey dashboard ↗︎</a><a class="catalog-back" href="turnkey-database.html">Database ↗︎</a></div>
+    </header>
+
+    <main class="admin-page">
+
+      <section id="denied" class="admin-denied" hidden>
+        <p class="eyebrow">NOT AVAILABLE</p>
+        <h1>Admin only.</h1>
+        <p>The quotation builder is limited to staff accounts.</p>
+        <p><a href="index.html">Back to the site</a></p>
+      </section>
+
+      <div id="qt-body" hidden>
+        <section class="admin-intro">
+          <p class="eyebrow">TURNKEY QUOTATIONS</p>
+          <h1>Quotation builder<span>.</span></h1>
+          <p>
+            Build a project's quotation category by category, export it for the
+            customer, and derive the vendor BOQ. Pick a project to begin — every
+            save keeps the previous version for comparison.
+          </p>
+        </section>
+
+        <div class="admin-inline" id="qt-project-row"></div>
+
+        <nav class="tab-bar" role="tablist" id="qt-tabs" hidden>
+          <button type="button" class="tab is-active" data-tab="box-shutters" role="tab">Box &amp; Shutters</button>
+          <button type="button" class="tab" data-tab="wall-panels" role="tab">Wall Panels</button>
+          <button type="button" class="tab" data-tab="furniture" role="tab">Furniture</button>
+          <button type="button" class="tab" data-tab="civil" role="tab">Civil Work</button>
+          <button type="button" class="tab" data-tab="electrical" role="tab">Electrical work</button>
+          <button type="button" class="tab" data-tab="paint" role="tab">Paint work</button>
+          <button type="button" class="tab" data-tab="accessories" role="tab">Accessories</button>
+          <button type="button" class="tab" data-tab="export" role="tab">Quotation export</button>
+          <button type="button" class="tab" data-tab="vendor-boq" role="tab">Vendor BOQ</button>
+        </nav>
+
+        <p id="qt-message" class="admin-message" role="status"></p>
+
+        <section id="qt-panel" class="dash-panel"></section>
+      </div>
+
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="auth.js"></script>
+    <script src="turnkey-quotations.js"></script>
+  </body>
+</html>
