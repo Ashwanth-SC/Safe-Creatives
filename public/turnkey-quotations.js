@@ -116,25 +116,54 @@
   }
   const money = (n) => (n == null ? "—" : "₹" + Math.round(Number(n)).toLocaleString("en-IN"));
 
-  // A wrapping checkbox group for choosing several categories. Returns the DOM
-  // box and a live Set of the ticked values.
+  // A compact multi-select dropdown: a trigger showing the picks, opening a
+  // scrollable checkbox panel (so a long category list stays tidy). Returns the
+  // DOM box and a live Set of the ticked values.
   function categoryMultiSelect(options, preselected, onChange) {
     const selected = new Set((preselected || []).filter(Boolean));
-    const box = el("div", "tk-cat-multi");
-    if (!options.length) box.appendChild(el("span", "dash-note", "No categories — add them in the database."));
+    const box = el("div", "tk-msel");
+    const trigger = el("button", "tk-msel-trigger");
+    trigger.type = "button";
+    const panel = el("div", "tk-msel-panel");
+    panel.hidden = true;
+
+    function summary() {
+      trigger.textContent = selected.size ? [...selected].join(", ") : "Select…";
+      trigger.classList.toggle("is-empty", selected.size === 0);
+    }
+    summary();
+
+    if (!options.length) panel.appendChild(el("span", "dash-note", "No categories — add them in the database."));
     options.forEach((name) => {
-      const lab = el("label", "tk-cat-check");
+      const opt = el("label", "tk-msel-opt");
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = selected.has(name);
       cb.addEventListener("change", () => {
         if (cb.checked) selected.add(name);
         else selected.delete(name);
+        summary();
         onChange();
       });
-      lab.append(cb, el("span", null, name));
-      box.appendChild(lab);
+      opt.append(cb, el("span", null, name));
+      panel.appendChild(opt);
     });
+
+    trigger.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      panel.hidden = !panel.hidden;
+      box.classList.toggle("open", !panel.hidden);
+    });
+    // Close when clicking anywhere outside this dropdown.
+    document.addEventListener("click", (e) => {
+      if (!box.contains(e.target)) {
+        panel.hidden = true;
+        box.classList.remove("open");
+      }
+    });
+
+    box.append(trigger, panel);
     return { box, selected };
   }
   function labeledBlock(labelText, node) {
