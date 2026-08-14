@@ -309,16 +309,23 @@ Deno.serve(async (req) => {
 interface Panel { partCat: string; length: number; width: number; thickness: number; qty: number; }
 
 function parseCutlist(text: string): Panel[] {
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // strip UTF-8 BOM
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (!lines.length) throw new Error("empty file");
-  const header = lines[0].split(";").map((h) => h.trim().toLowerCase());
+  // Auto-detect delimiter from the header row (semicolon or comma).
+  const semis = (lines[0].match(/;/g) || []).length;
+  const commas = (lines[0].match(/,/g) || []).length;
+  const delim = semis >= commas ? ";" : ",";
+  const header = lines[0].split(delim).map((h) => h.trim().toLowerCase());
   const col = (name: string) => header.findIndex((h) => h === name);
   const iDes = col("designation"), iLen = col("length"), iWid = col("width"), iThk = col("thickness"), iQty = col("quantity");
-  if (iDes < 0 || iLen < 0 || iWid < 0 || iThk < 0) throw new Error("expected Designation, Length, Width, Thickness");
+  if (iLen < 0 || iWid < 0 || iThk < 0) {
+    throw new Error(`need columns Length, Width, Thickness — found: ${header.join(", ") || "none"}`);
+  }
   const panels: Panel[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const cells = lines[i].split(";");
-    const des = String(cells[iDes] ?? "");
+    const cells = lines[i].split(delim);
+    const des = iDes >= 0 ? String(cells[iDes] ?? "") : "";
     const hy = des.indexOf("-");
     const partCat = normPart(hy >= 0 ? des.slice(0, hy) : des);
     const L = num(cells[iLen]), W = num(cells[iWid]), T = num(cells[iThk]);

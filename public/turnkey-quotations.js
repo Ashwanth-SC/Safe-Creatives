@@ -215,7 +215,15 @@
   }
   async function computeUnit(payload) {
     const { data, error } = await sb.functions.invoke("compute-box-unit", { body: payload });
-    if (error) throw error;
+    if (error) {
+      // Surface the function's real message (it lives in the response body).
+      let detail = error.message;
+      try {
+        const body = await error.context.json();
+        if (body && body.error) detail = body.error;
+      } catch (_ignored) { /* no JSON body */ }
+      throw new Error(detail);
+    }
     if (data && data.error) throw new Error(data.error);
     return data;
   }
