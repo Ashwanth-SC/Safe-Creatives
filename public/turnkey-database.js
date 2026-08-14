@@ -85,6 +85,14 @@
       const tr = el("tr");
       columns.forEach((c) => {
         const td = el("td");
+        if (c.readonly) {
+          // Computed / non-editable cell (e.g. generated area). Shown as text.
+          const v = row[c.key];
+          td.className = "db-readonly";
+          td.textContent = v == null || v === "" ? "—" : v;
+          tr.appendChild(td);
+          return;
+        }
         let control;
         if (c.type === "select") {
           // Dropdown cell — options come from the column config. Any value not
@@ -214,9 +222,10 @@
       headers.forEach((h, i) => {
         const col = columns.find(
           (c) =>
-            normalizeHeader(c.label) === h ||
-            normalizeHeader(c.key) === h ||
-            (c.aliases || []).some((a) => normalizeHeader(a) === h)
+            !c.readonly &&
+            (normalizeHeader(c.label) === h ||
+              normalizeHeader(c.key) === h ||
+              (c.aliases || []).some((a) => normalizeHeader(a) === h))
         );
         if (col) idxToKey[i] = col.key;
       });
@@ -397,6 +406,7 @@
         { key: "category", label: "Product category", type: "select", options: catNames },
         { key: "std_width", label: "Standard width", type: "number", aliases: ["std width"] },
         { key: "std_height", label: "Standard height", type: "number", aliases: ["std height"] },
+        { key: "area_sqft", label: "Area (sqft)", readonly: true },
         { key: "thickness", label: "Thickness" },
         { key: "price_per_sqft", label: "Price/sqft", type: "number", aliases: ["cost/sqft", "cost per sqft", "price per sqft"] },
       ],

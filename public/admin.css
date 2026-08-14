@@ -243,6 +243,14 @@ button:disabled { opacity: .5; cursor: progress; }
 /* Grid filters (Turnkey database) */
 .tk-filter-row { display:flex; flex-wrap:wrap; gap:12px 20px; margin:0 0 12px; }
 .tk-filter-row .admin-field { min-width:200px; }
+.db-readonly { padding:8px; font:13px "DM Sans",sans-serif; color:#6f6f6a; background:rgba(23,23,23,.03); }
+
+/* Box & Shutters cutlist builder (quotations) */
+.tk-box-groups { display:flex; flex-direction:column; gap:10px; margin:12px 0; }
+.tk-box-group { padding:12px 14px; border:1px solid rgba(23,23,23,.12); border-radius:8px; background:#fff; }
+.tk-box-group-head { font:12px "DM Mono",monospace; letter-spacing:.04em; color:#6f222a; margin-bottom:8px; }
+.tk-box-out { display:flex; flex-wrap:wrap; gap:6px 24px; margin-top:8px; font-size:13px; color:#171717; }
+.tk-box-total { font-size:15px; font-weight:700; color:#0c4444; margin:6px 0; }
 
 /* Printable-document links inside an order's detail panel */
 .order-docs { grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:12px 16px; margin-top:2px; background:#fff; border:1px solid rgba(23,23,23,.12); }
