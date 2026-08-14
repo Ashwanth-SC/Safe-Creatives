@@ -116,6 +116,35 @@
   }
   const money = (n) => (n == null ? "—" : "₹" + Math.round(Number(n)).toLocaleString("en-IN"));
 
+  // A wrapping checkbox group for choosing several categories. Returns the DOM
+  // box and a live Set of the ticked values.
+  function categoryMultiSelect(options, preselected, onChange) {
+    const selected = new Set((preselected || []).filter(Boolean));
+    const box = el("div", "tk-cat-multi");
+    if (!options.length) box.appendChild(el("span", "dash-note", "No categories — add them in the database."));
+    options.forEach((name) => {
+      const lab = el("label", "tk-cat-check");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selected.has(name);
+      cb.addEventListener("change", () => {
+        if (cb.checked) selected.add(name);
+        else selected.delete(name);
+        onChange();
+      });
+      lab.append(cb, el("span", null, name));
+      box.appendChild(lab);
+    });
+    return { box, selected };
+  }
+  function labeledBlock(labelText, node) {
+    const d = el("div");
+    d.appendChild(el("span", "admin-field-label", labelText));
+    d.appendChild(node);
+    return d;
+  }
+  const splitCats = (s) => String(s || "").split(",").map((x) => x.trim()).filter(Boolean);
+
   // ------------------------------------------------------------------
   // Box & Shutters — cutlist unit builder (backend does the maths)
   // ------------------------------------------------------------------
@@ -214,8 +243,10 @@
     nameI.placeholder = "Unit name (e.g. Aurem wardrobe)";
     if (existing?.unit.unit_name) nameI.value = existing.unit.unit_name;
 
-    const matCatS = selectEl(ref.categories, existing?.unit.material_category || "", "Material category…");
-    const lamCatS = selectEl(ref.categories, existing?.unit.laminate_category || "", "Laminate category…");
+    // Multiple material / laminate categories may be ticked; the per-group
+    // product dropdowns then list products from any of them.
+    const matCat = categoryMultiSelect(ref.categories, splitCats(existing?.unit.material_category), () => renderGroups());
+    const lamCat = categoryMultiSelect(ref.categories, splitCats(existing?.unit.laminate_category), () => renderGroups());
 
     const fileInput = document.createElement("input");
     fileInput.type = "file";
@@ -226,17 +257,20 @@
     importBtn.addEventListener("click", () => fileInput.click());
 
     const grid = el("div", "admin-inline");
-    grid.append(field("Area", spaceS), field("Unit name", nameI), field("Material category", matCatS), field("Laminate category", lamCatS), field("Cutlist", importBtn));
+    grid.append(field("Area", spaceS), field("Unit name", nameI), field("Cutlist", importBtn));
     grid.appendChild(fileInput);
+
+    const catRow = el("div", "tk-cat-row");
+    catRow.append(labeledBlock("Material categories", matCat.box), labeledBlock("Laminate categories", lamCat.box));
 
     const groupsWrap = el("div", "tk-box-groups");
     const totalEl = el("p", "tk-box-total");
     const msg = el("p", "admin-hint", "");
 
-    // Products filtered by chosen category, as [id, label] options.
-    const productOptions = (category) =>
+    // Products in any of the ticked categories, as [id, label] options.
+    const productOptions = (categorySet) =>
       ref.products
-        .filter((p) => p.category === category)
+        .filter((p) => categorySet.has(p.category))
         .map((p) => [p.id, `${p.product_name || "unnamed"}${p.price_per_sqft != null ? ` — ₹${p.price_per_sqft}/sqft` : ""}`]);
 
     function renderGroups() {
@@ -245,8 +279,8 @@
         groupsWrap.appendChild(el("p", "dash-note", "Import a cutlist CSV to see the thickness groups."));
         return;
       }
-      const matOpts = productOptions(matCatS.value);
-      const lamOpts = productOptions(lamCatS.value);
+      const matOpts = productOptions(matCat.selected);
+      const lamOpts = productOptions(lamCat.selected);
       groups.forEach((g) => {
         const t = g.thickness;
         if (!sel[t]) sel[t] = { material_id: "", laminate_id: "" };
@@ -272,9 +306,6 @@
         groupsWrap.appendChild(rowEl);
       });
     }
-
-    matCatS.addEventListener("change", renderGroups);
-    lamCatS.addEventListener("change", renderGroups);
 
     async function firstCompute() {
       msg.textContent = "Reading cutlist…";
@@ -338,8 +369,8 @@
           space: spaceS.value || null,
           unit_name: nameI.value.trim() || null,
           csv_text: csvText,
-          material_category: matCatS.value || null,
-          laminate_category: lamCatS.value || null,
+          material_category: [...matCat.selected].join(", ") || null,
+          laminate_category: [...lamCat.selected].join(", ") || null,
           groups: selectionsPayload(),
         });
         unitId = res.unit_id;
@@ -356,7 +387,7 @@
 
     const actions = el("div", "admin-row-actions");
     actions.append(computeBtn, saveBtn);
-    block.append(grid, groupsWrap, totalEl, actions, msg);
+    block.append(grid, catRow, groupsWrap, totalEl, actions, msg);
 
     // If editing, load the CSV-derived groups immediately.
     if (existing && csvText) firstCompute().then(renderGroups);
