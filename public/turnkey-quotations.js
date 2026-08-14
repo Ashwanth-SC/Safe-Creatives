@@ -195,27 +195,23 @@
   async function loadProducts() {
     const { data, error } = await sb
       .from("turnkey_products")
-      .select("id, product_name, category, area_sqft, price_per_sqft");
+      .select("id, product_name, category, brand, sub_category, area_sqft, price_per_sqft, thickness");
     if (error) throw error;
     return data || [];
   }
   async function loadBoxUnits(projectId) {
     const { data, error } = await sb
       .from("turnkey_quote_box_units")
-      .select("id, space, unit_name, total_material_price, created_at")
+      .select("id, space, unit_name, material_spec, design_spec, total_price, margin_price, discount_price, gst_price, created_at")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
     if (error) throw error;
     return data || [];
   }
   async function loadBoxUnit(unitId) {
-    const [{ data: unit, error: e1 }, { data: groups, error: e2 }] = await Promise.all([
-      sb.from("turnkey_quote_box_units").select("*").eq("id", unitId).single(),
-      sb.from("turnkey_quote_box_groups").select("*").eq("unit_id", unitId),
-    ]);
-    if (e1) throw e1;
-    if (e2) throw e2;
-    return { unit, groups: groups || [] };
+    const { data: unit, error } = await sb.from("turnkey_quote_box_units").select("*").eq("id", unitId).single();
+    if (error) throw error;
+    return { unit };
   }
   async function computeUnit(payload) {
     const { data, error } = await sb.functions.invoke("compute-box-unit", { body: payload });
@@ -227,55 +223,62 @@
   async function renderBoxShutters(container) {
     container.textContent = "";
     container.appendChild(el("p", "dash-note", "Loading…"));
-    let spaces, categories, products, units;
+    let spaces, products, units;
     try {
-      [spaces, categories, products, units] = await Promise.all([
+      [spaces, products, units] = await Promise.all([
         loadSelectedSpaces(currentProject),
-        loadProductCategories(),
         loadProducts(),
         loadBoxUnits(currentProject),
       ]);
     } catch (error) {
       container.textContent = "";
       container.appendChild(
-        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table, run migration 027.`)
+        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migrations 027–029.`)
       );
       return;
     }
-    const ref = { spaces, categories, products };
+    const ref = { spaces, products };
     container.textContent = "";
     container.appendChild(unitEditor(ref, null, () => renderBoxShutters(container)));
     container.appendChild(unitsList(units, () => renderBoxShutters(container)));
   }
 
-  // The add / edit form for one unit. `existing` = a loaded unit to edit.
+  const distinctVals = (arr) => [...new Set(arr.filter((x) => x != null && x !== ""))];
+  const normCat = (s) => String(s || "").trim().toLowerCase();
+  function replaceOptions(select, options, value, blankLabel) {
+    select.textContent = "";
+    if (blankLabel != null) select.appendChild(new Option(blankLabel, ""));
+    options.forEach((o) => {
+      const [val, lab] = Array.isArray(o) ? o : [o, o];
+      select.appendChild(new Option(lab, val));
+    });
+    select.value = value || "";
+  }
+
+  // The add / edit form for one unit. `existing` = { unit } to edit.
   function unitEditor(ref, existing, onSaved) {
+    const u = existing?.unit || {};
     const block = el("details", "admin-package tk-add");
     block.open = !existing;
-    block.appendChild(el("summary", null, existing ? `Edit unit — ${existing.unit.unit_name || "unnamed"}` : "Add a unit"));
+    block.appendChild(el("summary", null, existing ? `Edit unit — ${u.unit_name || "unnamed"}` : "Add a unit"));
 
-    // State
-    let csvText = existing?.unit.csv_text || "";
-    let groups = []; // [{thickness, panel_count, group_area_sqft, ...computed}]
-    let unitId = existing?.unit.id || null;
-    const sel = {}; // thickness -> { material_id, laminate_id }
-    if (existing) {
-      existing.groups.forEach((g) => {
-        sel[g.thickness] = { material_id: g.material_product_id || "", laminate_id: g.laminate_product_id || "" };
-      });
-    }
+    let csvText = u.csv_text || "";
+    let unitId = u.id || null;
+
+    // Reference sets derived from the products database.
+    const plywood = ref.products.filter((p) => normCat(p.category) === "plywood");
+    const laminate = ref.products.filter((p) => normCat(p.category) === "laminate");
+    const materialBrands = distinctVals(plywood.map((p) => p.brand)).sort();
+    const laminateBrands = distinctVals(laminate.map((p) => p.brand)).sort();
+    const subsForBrand = (brand) => distinctVals(plywood.filter((p) => p.brand === brand).map((p) => p.sub_category)).sort();
+    const lamsForBrand = (brand) => laminate.filter((p) => p.brand === brand).map((p) => [p.id, p.product_name || "unnamed"]);
 
     // Top inputs
-    const spaceS = selectEl(ref.spaces, existing?.unit.space || "", ref.spaces.length ? "Select area…" : "No spaces — set them up first");
+    const spaceS = selectEl(ref.spaces, u.space || "", ref.spaces.length ? "Select area…" : "No spaces — set them up first");
     const nameI = document.createElement("input");
     nameI.type = "text";
     nameI.placeholder = "Unit name (e.g. Aurem wardrobe)";
-    if (existing?.unit.unit_name) nameI.value = existing.unit.unit_name;
-
-    // Multiple material / laminate categories may be ticked; the per-group
-    // product dropdowns then list products from any of them.
-    const matCat = categoryMultiSelect(ref.categories, splitCats(existing?.unit.material_category), () => renderGroups());
-    const lamCat = categoryMultiSelect(ref.categories, splitCats(existing?.unit.laminate_category), () => renderGroups());
+    if (u.unit_name) nameI.value = u.unit_name;
 
     const fileInput = document.createElement("input");
     fileInput.type = "file";
@@ -289,63 +292,60 @@
     grid.append(field("Area", spaceS), field("Unit name", nameI), field("Cutlist", importBtn));
     grid.appendChild(fileInput);
 
-    const catRow = el("div", "tk-cat-row");
-    catRow.append(labeledBlock("Material categories", matCat.box), labeledBlock("Laminate categories", lamCat.box));
+    // Material / laminate selectors (single-select).
+    const matBrandS = selectEl(materialBrands, u.material_brand || "", "Material brand…");
+    const subS = selectEl(subsForBrand(u.material_brand || ""), u.material_sub_category || "", "Sub category…");
+    const lamBrandS = selectEl(laminateBrands, u.laminate_brand || "", "Laminate brand…");
+    const outerS = selectEl(lamsForBrand(u.laminate_brand || ""), u.outer_laminate_id || "", "Outer laminate…");
+    const innerS = selectEl(lamsForBrand(u.laminate_brand || ""), u.inner_laminate_id || "", "Inner laminate…");
 
-    const groupsWrap = el("div", "tk-box-groups");
-    const totalEl = el("p", "tk-box-total");
+    matBrandS.addEventListener("change", () => replaceOptions(subS, subsForBrand(matBrandS.value), "", "Sub category…"));
+    lamBrandS.addEventListener("change", () => {
+      const lams = lamsForBrand(lamBrandS.value);
+      replaceOptions(outerS, lams, "", "Outer laminate…");
+      replaceOptions(innerS, lams, "", "Inner laminate…");
+    });
+
+    const selRow = el("div", "admin-inline");
+    selRow.append(
+      field("Material brand", matBrandS),
+      field("Sub category", subS),
+      field("Laminate brand", lamBrandS),
+      field("Outer laminate", outerS),
+      field("Inner laminate", innerS)
+    );
+
+    const sectionsWrap = el("div", "tk-box-sections");
     const msg = el("p", "admin-hint", "");
 
-    // Products in any of the ticked categories, as [id, label] options.
-    const productOptions = (categorySet) =>
-      ref.products
-        .filter((p) => categorySet.has(p.category))
-        .map((p) => [p.id, `${p.product_name || "unnamed"}${p.price_per_sqft != null ? ` — ₹${p.price_per_sqft}/sqft` : ""}`]);
+    const inputs = (save) => ({
+      save,
+      unit_id: unitId,
+      project_id: currentProject,
+      space: spaceS.value || null,
+      unit_name: nameI.value.trim() || null,
+      csv_text: csvText,
+      material_brand: matBrandS.value || null,
+      material_sub_category: subS.value || null,
+      laminate_brand: lamBrandS.value || null,
+      outer_laminate_id: outerS.value || null,
+      inner_laminate_id: innerS.value || null,
+    });
 
-    function renderGroups() {
-      groupsWrap.textContent = "";
-      if (!groups.length) {
-        groupsWrap.appendChild(el("p", "dash-note", "Import a cutlist CSV to see the thickness groups."));
-        return;
-      }
-      const matOpts = productOptions(matCat.selected);
-      const lamOpts = productOptions(lamCat.selected);
-      groups.forEach((g) => {
-        const t = g.thickness;
-        if (!sel[t]) sel[t] = { material_id: "", laminate_id: "" };
-        const rowEl = el("div", "tk-box-group");
-        rowEl.appendChild(
-          el("div", "tk-box-group-head", `${t} mm · ${g.panel_count} panel(s) · ${g.group_area_sqft} sqft`)
-        );
-
-        const matS = selectEl(matOpts, sel[t].material_id, "Select material…");
-        matS.addEventListener("change", () => { sel[t].material_id = matS.value; });
-        const lamS = selectEl(lamOpts, sel[t].laminate_id, "Select laminate…");
-        lamS.addEventListener("change", () => { sel[t].laminate_id = lamS.value; });
-        const pick = el("div", "admin-inline");
-        pick.append(field("Material", matS), field("Laminate", lamS));
-        rowEl.appendChild(pick);
-
-        if (g.plywood_qty != null || g.laminate_qty != null) {
-          const out = el("div", "tk-box-out");
-          out.appendChild(el("span", null, `Plywood: ${g.plywood_qty ?? "—"} sheet(s) → ${money(g.plywood_price)}`));
-          out.appendChild(el("span", null, `Laminate: ${g.laminate_qty ?? "—"} sheet(s) → ${money(g.laminate_price)}`));
-          rowEl.appendChild(out);
-        }
-        groupsWrap.appendChild(rowEl);
-      });
-    }
-
-    async function firstCompute() {
-      msg.textContent = "Reading cutlist…";
+    async function compute(save) {
+      if (!csvText) return void (msg.textContent = "Import a cutlist CSV first.");
+      msg.textContent = save ? "Saving…" : "Computing…";
       try {
-        const res = await computeUnit({ csv_text: csvText });
-        groups = res.groups;
-        totalEl.textContent = "";
-        renderGroups();
+        const res = await computeUnit(inputs(save));
+        if (save) unitId = res.unit_id;
+        renderSections(sectionsWrap, res.computed);
         msg.textContent = "";
+        if (save) {
+          message(`Saved ${nameI.value.trim() || "unit"} — ${money(res.computed.totals.gst_price)} (with GST).`);
+          onSaved();
+        }
       } catch (error) {
-        msg.textContent = `Could not read the cutlist: ${error.message}`;
+        msg.textContent = `${save ? "Save" : "Compute"} failed: ${error.message}`;
       }
     }
 
@@ -354,90 +354,103 @@
       fileInput.value = "";
       if (!file) return;
       csvText = await file.text();
-      await firstCompute();
+      await compute(false);
     });
 
-    function selectionsPayload() {
-      const out = {};
-      groups.forEach((g) => {
-        const s = sel[g.thickness] || {};
-        out[g.thickness] = { material_id: s.material_id || null, laminate_id: s.laminate_id || null };
-      });
-      return out;
-    }
-
-    const computeBtn = el("button", "admin-primary-small", "Compute material");
+    const computeBtn = el("button", "admin-primary-small", "Compute");
     computeBtn.type = "button";
-    computeBtn.addEventListener("click", async () => {
-      if (!groups.length) return void (msg.textContent = "Import a cutlist first.");
-      computeBtn.disabled = true;
-      msg.textContent = "Computing…";
-      try {
-        const res = await computeUnit({ csv_text: csvText, groups: selectionsPayload() });
-        groups = res.groups;
-        renderGroups();
-        totalEl.textContent = `Total material price: ${money(res.total_material_price)}`;
-        msg.textContent = "";
-      } catch (error) {
-        msg.textContent = `Compute failed: ${error.message}`;
-      }
-      computeBtn.disabled = false;
-    });
-
+    computeBtn.addEventListener("click", () => compute(false));
     const saveBtn = el("button", "admin-primary", existing ? "Save changes" : "Save unit");
     saveBtn.type = "button";
-    saveBtn.addEventListener("click", async () => {
-      if (!groups.length) return void (msg.textContent = "Import a cutlist first.");
-      saveBtn.disabled = true;
-      msg.textContent = "Saving…";
-      try {
-        const res = await computeUnit({
-          save: true,
-          unit_id: unitId,
-          project_id: currentProject,
-          space: spaceS.value || null,
-          unit_name: nameI.value.trim() || null,
-          csv_text: csvText,
-          material_category: [...matCat.selected].join(", ") || null,
-          laminate_category: [...lamCat.selected].join(", ") || null,
-          groups: selectionsPayload(),
-        });
-        unitId = res.unit_id;
-        groups = res.groups;
-        renderGroups();
-        totalEl.textContent = `Total material price: ${money(res.total_material_price)}`;
-        message(`Saved ${nameI.value.trim() || "unit"} — ${money(res.total_material_price)}.`);
-        onSaved();
-      } catch (error) {
-        msg.textContent = `Save failed: ${error.message}`;
-      }
-      saveBtn.disabled = false;
-    });
+    saveBtn.addEventListener("click", () => compute(true));
 
     const actions = el("div", "admin-row-actions");
     actions.append(computeBtn, saveBtn);
-    block.append(grid, catRow, groupsWrap, totalEl, actions, msg);
+    block.append(grid, selRow, sectionsWrap, actions, msg);
 
-    // If editing, load the CSV-derived groups immediately.
-    if (existing && csvText) firstCompute().then(renderGroups);
-    else renderGroups();
+    if (existing && csvText) compute(false);
+    else renderSections(sectionsWrap, null);
     return block;
+  }
+
+  // Renders the 3 bifurcations + totals from the computed breakdown.
+  function renderSections(container, computed) {
+    container.textContent = "";
+    if (!computed) {
+      container.appendChild(el("p", "dash-note", "Import a cutlist and choose materials, then Compute."));
+      return;
+    }
+
+    // 1 — Cutlist grouped by thickness (+ laminate summary)
+    const s1 = el("div", "tk-box-section");
+    s1.appendChild(el("div", "tk-box-section-head", "1 · Cutlist by thickness"));
+    const t1 = el("table", "dash-table");
+    const h1 = el("tr");
+    ["Thickness", "Panels", "Area (sqft)", "Board", "Sheets", "Plywood ₹"].forEach((h) => h1.appendChild(el("th", null, h)));
+    t1.appendChild(h1);
+    (computed.groups || []).forEach((g) => {
+      const tr = el("tr");
+      [
+        `${g.thickness} mm`, String(g.panel_count), String(g.area_sqft),
+        g.missing ? "⚠ no board found" : g.product_name || "—",
+        g.ply_qty ?? "—", money(g.ply_price),
+      ].forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+      t1.appendChild(tr);
+    });
+    const sc1 = el("div", "table-scroll"); sc1.appendChild(t1); s1.appendChild(sc1);
+    const lam = computed.laminate;
+    s1.appendChild(el("p", "tk-box-line",
+      `Laminate — outer: ${lam.outer.qty ?? "—"} sheet(s) ${money(lam.outer.price)} · inner: ${lam.inner.qty ?? "—"} sheet(s) ${money(lam.inner.price)}`));
+    container.appendChild(s1);
+
+    // 2 — Accessories & hardware
+    const s2 = el("div", "tk-box-section");
+    s2.appendChild(el("div", "tk-box-section-head", "2 · Accessories & hardware"));
+    const hw = computed.hardware;
+    const lines = [];
+    if (hw.edge_hinge.qty) lines.push(`Edge hinges (${hw.edge_hinge.name || "—"}): ${hw.edge_hinge.qty} → ${money(hw.edge_hinge.price)}`);
+    if (hw.inner_hinge.qty) lines.push(`Inner hinges (${hw.inner_hinge.name || "—"}): ${hw.inner_hinge.qty} → ${money(hw.inner_hinge.price)}`);
+    if (hw.channels.qty) lines.push(`Channels (${hw.channels.names.join(", ") || "—"}): ${hw.channels.qty} → ${money(hw.channels.price)}`);
+    if (!lines.length) lines.push("No hinges or channels for this unit.");
+    lines.forEach((l) => s2.appendChild(el("p", "tk-box-line", l)));
+    container.appendChild(s2);
+
+    // 3 — Special additions (placeholder)
+    const s3 = el("div", "tk-box-section");
+    s3.appendChild(el("div", "tk-box-section-head", "3 · Special additions"));
+    s3.appendChild(el("p", "dash-note", "To be added later."));
+    container.appendChild(s3);
+
+    // Totals
+    const tot = computed.totals;
+    const totBox = el("div", "tk-box-totals");
+    [["Total", tot.total], ["With margin", tot.margin_price], ["With discount", tot.discount_price], ["With GST", tot.gst_price]].forEach(
+      ([label, val]) => {
+        const d = el("div", "tk-box-total-cell");
+        d.appendChild(el("span", "tk-box-total-label", label));
+        d.appendChild(el("span", "tk-box-total-val", money(val)));
+        totBox.appendChild(d);
+      }
+    );
+    container.appendChild(totBox);
   }
 
   function unitsList(units, onChanged) {
     const wrap = document.createDocumentFragment();
-    wrap.appendChild(el("p", "dash-note", "Box & Shutters units in this project. Open to edit, or delete."));
+    wrap.appendChild(el("p", "dash-note", "Saved Box & Shutters units. Open to edit, or delete."));
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
     const thead = el("thead");
     const hr = el("tr");
-    ["Area", "Unit", "Material total", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    ["Space", "Unit", "Material specifications", "Design specifications", "Total", "With margin", "With discount", "With GST", ""].forEach(
+      (h) => hr.appendChild(el("th", null, h))
+    );
     thead.appendChild(hr);
     const tbody = el("tbody");
     if (!units.length) {
       const tr = el("tr");
       const td = el("td", "dash-empty", "No units yet.");
-      td.colSpan = 4;
+      td.colSpan = 9;
       tr.appendChild(td);
       tbody.appendChild(tr);
     }
@@ -447,11 +460,7 @@
       open.addEventListener("click", async () => {
         try {
           const existing = await loadBoxUnit(u.id);
-          const ref = {
-            spaces: await loadSelectedSpaces(currentProject),
-            categories: await loadProductCategories(),
-            products: await loadProducts(),
-          };
+          const ref = { spaces: await loadSelectedSpaces(currentProject), products: await loadProducts() };
           panel.textContent = "";
           panel.appendChild(unitEditor(ref, existing, () => renderBoxShutters(panel)));
           panel.appendChild(unitsList(await loadBoxUnits(currentProject), () => renderBoxShutters(panel)));
@@ -471,7 +480,10 @@
       const actions = el("div", "tk-cell-actions");
       actions.append(open, del);
 
-      const cells = [u.space || "—", u.unit_name || "—", money(u.total_material_price), actions];
+      const cells = [
+        u.space || "—", u.unit_name || "—", u.material_spec || "—", u.design_spec || "—",
+        money(u.total_price), money(u.margin_price), money(u.discount_price), money(u.gst_price), actions,
+      ];
       const tr = el("tr");
       cells.forEach((c) => {
         const td = el("td");

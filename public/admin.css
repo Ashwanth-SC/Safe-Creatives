@@ -252,6 +252,14 @@ button:disabled { opacity: .5; cursor: progress; }
 .tk-box-group-head { font:12px "DM Mono",monospace; letter-spacing:.04em; color:#6f222a; margin-bottom:8px; }
 .tk-box-out { display:flex; flex-wrap:wrap; gap:6px 24px; margin-top:8px; font-size:13px; color:#171717; }
 .tk-box-total { font-size:15px; font-weight:700; color:#0c4444; margin:6px 0; }
+.tk-box-sections { display:flex; flex-direction:column; gap:14px; margin:14px 0; }
+.tk-box-section { padding:12px 14px; border:1px solid rgba(23,23,23,.12); border-radius:8px; background:#fff; }
+.tk-box-section-head { font:12px "DM Mono",monospace; letter-spacing:.06em; text-transform:uppercase; color:#6f222a; margin-bottom:8px; }
+.tk-box-line { font-size:13px; margin:4px 0; }
+.tk-box-totals { display:flex; flex-wrap:wrap; gap:10px 14px; margin:8px 0; }
+.tk-box-total-cell { flex:1; min-width:120px; padding:10px 14px; background:#f4f6f3; border:1px solid rgba(12,68,68,.2); border-radius:8px; }
+.tk-box-total-label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#777; }
+.tk-box-total-val { display:block; font-size:17px; font-weight:700; color:#0c4444; margin-top:2px; }
 .tk-cat-row { display:flex; flex-wrap:wrap; gap:14px 32px; margin:4px 0 14px; }
 
 /* Compact multi-select dropdown */
