@@ -244,6 +244,7 @@ button:disabled { opacity: .5; cursor: progress; }
 .tk-filter-row { display:flex; flex-wrap:wrap; gap:12px 20px; margin:0 0 12px; }
 .tk-filter-row .admin-field { min-width:200px; }
 .db-readonly { padding:8px; font:13px "DM Sans",sans-serif; color:#6f6f6a; background:rgba(23,23,23,.03); }
+.db-dirty { align-self:center; color:#6f222a; font-size:12px; font-style:italic; }
 
 /* Box & Shutters cutlist builder (quotations) */
 .tk-box-groups { display:flex; flex-direction:column; gap:10px; margin:12px 0; }

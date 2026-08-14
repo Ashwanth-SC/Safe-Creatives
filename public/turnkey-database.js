@@ -67,7 +67,11 @@
   // row has a delete control. Built generically so the next reference tables
   // (labour, rate databases) can reuse it.
 
-  function editableGrid({ table, columns, orderBy }) {
+  function editableGrid({ table, columns, orderBy, deferSave }) {
+    const defer = !!deferSave;
+    const liveRows = [];   // defer mode: row objects currently shown
+    const deletedIds = []; // defer mode: existing ids removed, committed on save
+
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table db-grid");
 
@@ -80,6 +84,19 @@
     const tbody = el("tbody");
     t.append(thead, tbody);
     scroll.appendChild(t);
+
+    const dirtyNote = el("span", "db-dirty", "");
+    function markDirty() { if (defer) dirtyNote.textContent = "Unsaved changes"; }
+    function markClean() { dirtyNote.textContent = ""; }
+    function rowPayload(r) {
+      const p = {};
+      columns.forEach((c) => {
+        if (c.readonly) return;
+        const v = r[c.key];
+        p[c.key] = v == null || v === "" ? null : v;
+      });
+      return p;
+    }
 
     function makeRow(row) {
       const tr = el("tr");
@@ -114,6 +131,12 @@
         }
         control.addEventListener("change", async () => {
           const value = String(control.value).trim() === "" ? null : String(control.value).trim();
+          if (defer) {
+            row[c.key] = value;
+            if (!row.__new) row.__dirty = true;
+            markDirty();
+            return;
+          }
           control.disabled = true;
           const { error } = await sb.from(table).update({ [c.key]: value }).eq("id", row.id);
           control.disabled = false;
@@ -134,7 +157,16 @@
       del.type = "button";
       del.title = "Delete this row";
       del.addEventListener("click", async () => {
-        if (!window.confirm("Delete this row? This cannot be undone.")) return;
+        if (!window.confirm("Delete this row?" + (defer ? "" : " This cannot be undone."))) return;
+        if (defer) {
+          if (row.id && !row.__new) deletedIds.push(row.id);
+          const idx = liveRows.indexOf(row);
+          if (idx >= 0) liveRows.splice(idx, 1);
+          tr.remove();
+          if (!tbody.children.length) tbody.appendChild(emptyRow());
+          markDirty();
+          return;
+        }
         del.disabled = true;
         const { error } = await sb.from(table).delete().eq("id", row.id);
         if (error) {
@@ -171,13 +203,26 @@
       if (error) throw error;
       tbody.textContent = "";
       const rows = data || [];
+      if (defer) { liveRows.length = 0; deletedIds.length = 0; markClean(); }
       if (!rows.length) tbody.appendChild(emptyRow());
-      else rows.forEach((row) => tbody.appendChild(makeRow(row)));
+      else rows.forEach((row) => { if (defer) liveRows.push(row); tbody.appendChild(makeRow(row)); });
     }
 
     const addBtn = el("button", "admin-primary", "+ Add row");
     addBtn.type = "button";
     addBtn.addEventListener("click", async () => {
+      if (defer) {
+        const row = { __new: true };
+        liveRows.push(row);
+        const empty = tbody.querySelector(".db-empty-row");
+        if (empty) empty.remove();
+        const tr = makeRow(row);
+        tbody.appendChild(tr);
+        const first = tr.querySelector("input,select");
+        if (first) first.focus();
+        markDirty();
+        return;
+      }
       addBtn.disabled = true;
       const { data, error } = await sb.from(table).insert({}).select("*").single();
       addBtn.disabled = false;
@@ -186,7 +231,7 @@
       if (empty) empty.remove();
       const tr = makeRow(data);
       tbody.appendChild(tr);
-      const first = tr.querySelector("input");
+      const first = tr.querySelector("input,select");
       if (first) first.focus();
       message("Row added — fill it in.");
     });
@@ -255,24 +300,66 @@
       if (!payloads.length) return void message("No filled-in rows found in the CSV.", true);
       if (
         !window.confirm(
-          `Append ${payloads.length} row(s) from “${file.name}”? Existing rows won't be changed.`
+          `Add ${payloads.length} row(s) from “${file.name}”?` +
+            (defer ? " They save when you click Save changes." : " Existing rows won't be changed.")
         )
       )
         return;
+
+      const empty = tbody.querySelector(".db-empty-row");
+      if (empty) empty.remove();
+
+      if (defer) {
+        payloads.forEach((p) => {
+          const row = { __new: true, ...p };
+          liveRows.push(row);
+          tbody.appendChild(makeRow(row));
+        });
+        markDirty();
+        message(`Added ${payloads.length} row(s) from ${file.name} — not saved yet.`);
+        return;
+      }
 
       importBtn.disabled = true;
       const { data, error } = await sb.from(table).insert(payloads).select("*");
       importBtn.disabled = false;
       if (error) return void message(`Import failed: ${error.message}`, true);
-
-      const empty = tbody.querySelector(".db-empty-row");
-      if (empty) empty.remove();
       (data || []).forEach((row) => tbody.appendChild(makeRow(row)));
       message(`Appended ${data ? data.length : payloads.length} row(s) from ${file.name}.`);
     });
 
     const actions = el("div", "admin-row-actions");
     actions.append(addBtn, importBtn, importInput);
+
+    if (defer) {
+      const saveBtn = el("button", "admin-primary", "Save changes");
+      saveBtn.type = "button";
+      saveBtn.addEventListener("click", async () => {
+        saveBtn.disabled = true;
+        try {
+          const inserts = liveRows.filter((r) => r.__new).map(rowPayload);
+          if (inserts.length) {
+            const { error } = await sb.from(table).insert(inserts);
+            if (error) throw error;
+          }
+          const updates = liveRows.filter((r) => r.id && r.__dirty);
+          for (const r of updates) {
+            const { error } = await sb.from(table).update(rowPayload(r)).eq("id", r.id);
+            if (error) throw error;
+          }
+          if (deletedIds.length) {
+            const { error } = await sb.from(table).delete().in("id", deletedIds);
+            if (error) throw error;
+          }
+          await load();
+          message("Changes saved.");
+        } catch (saveError) {
+          message(`Save failed: ${saveError.message}`, true);
+        }
+        saveBtn.disabled = false;
+      });
+      actions.append(saveBtn, dirtyNote);
+    }
 
     const frag = document.createDocumentFragment();
     frag.append(scroll, actions);
@@ -400,10 +487,13 @@
     const grid = editableGrid({
       table: "turnkey_products",
       orderBy: "created_at",
+      deferSave: true, // products save in a batch on "Save changes"
       columns: [
         { key: "supplier", label: "Supplier", type: "select", options: supplierNames, aliases: ["supplier company name"] },
-        { key: "product_name", label: "Product name", aliases: ["brand name"] },
+        { key: "product_name", label: "Product name" },
+        { key: "brand", label: "Brand" },
         { key: "category", label: "Product category", type: "select", options: catNames },
+        { key: "sub_category", label: "Sub category", aliases: ["subcategory"] },
         { key: "std_width", label: "Standard width", type: "number", aliases: ["std width"] },
         { key: "std_height", label: "Standard height", type: "number", aliases: ["std height"] },
         { key: "area_sqft", label: "Area (sqft)", readonly: true },
@@ -487,10 +577,48 @@
     return wrap;
   }
 
+  async function hardwaresPanel() {
+    const cats = await loadCategoryList("turnkey_hardware_categories");
+    const catNames = cats.map((c) => c.name);
+
+    const grid = editableGrid({
+      table: "turnkey_hardwares",
+      orderBy: "created_at",
+      columns: [
+        { key: "supplier", label: "Supplier" },
+        { key: "product_name", label: "Product name" },
+        { key: "category", label: "Product category", type: "select", options: catNames },
+        { key: "size", label: "Size" },
+        { key: "price", label: "Price", type: "number" },
+      ],
+    });
+
+    const wrap = document.createDocumentFragment();
+    wrap.appendChild(
+      el(
+        "p",
+        "dash-note",
+        "Handles, hinges, drawer channels and other hardware. Manage the categories below (they fill the Product category dropdown), then add rows, edit cells, or import a CSV."
+      )
+    );
+    wrap.appendChild(
+      renderCategoryManager(cats, {
+        table: "turnkey_hardware_categories",
+        tab: "hardwares",
+        label: "Hardware categories",
+        placeholder: "Add a category (e.g. Edge hinges)",
+      })
+    );
+    wrap.appendChild(grid.frag);
+    await grid.load();
+    return wrap;
+  }
+
   const PANELS = {
     suppliers: suppliersPanel,
     products: productsPanel,
     labour: labourPanel,
+    hardwares: hardwaresPanel,
   };
 
   async function show(tab) {
