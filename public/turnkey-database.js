@@ -578,14 +578,17 @@
   }
 
   async function hardwaresPanel() {
-    const cats = await loadCategoryList("turnkey_hardware_categories");
+    const [cats, supplierNames] = await Promise.all([
+      loadCategoryList("turnkey_hardware_categories"),
+      loadSupplierNames(),
+    ]);
     const catNames = cats.map((c) => c.name);
 
     const grid = editableGrid({
       table: "turnkey_hardwares",
       orderBy: "created_at",
       columns: [
-        { key: "supplier", label: "Supplier" },
+        { key: "supplier", label: "Supplier", type: "select", options: supplierNames, aliases: ["supplier company name"] },
         { key: "product_name", label: "Product name" },
         { key: "category", label: "Product category", type: "select", options: catNames },
         { key: "size", label: "Size" },
