@@ -326,7 +326,9 @@
     const hwOptions = (cat) => (ref.hardware || []).filter((h) => normCat(h.category) === cat).map((h) => [h.id, h.product_name || "unnamed"]);
     const edgeHingeS = selectEl(hwOptions("edge hinges"), u.edge_hinge_id || "", "Edge hinge…");
     const innerHingeS = selectEl(hwOptions("inner hinges"), u.inner_hinge_id || "", "Inner hinge…");
-    const handleS = selectEl(hwOptions("handle"), u.handle_id || "", "Handle…");
+    // Handles are chosen per part-category row in the handles table below.
+    const handleOptions = hwOptions("handle");
+    const handleSel = u.handle_ids && typeof u.handle_ids === "object" ? { ...u.handle_ids } : {};
 
     const selRow = el("div", "admin-inline tk-sel-grid");
     selRow.append(
@@ -336,12 +338,19 @@
       field("Outer laminate", outerS),
       field("Inner laminate", innerS),
       field("Edge hinge", edgeHingeS),
-      field("Inner hinge", innerHingeS),
-      field("Handle", handleS)
+      field("Inner hinge", innerHingeS)
     );
 
     const sectionsWrap = el("div", "tk-box-sections");
     const msg = el("p", "admin-hint", "");
+
+    // Passed to renderSections so the handles table can offer a handle dropdown
+    // per part category; changing one recomputes the unit.
+    const ctx = {
+      handleOptions,
+      handleSel,
+      onHandleChange: (cat, id) => { if (id) handleSel[cat] = id; else delete handleSel[cat]; compute(false); },
+    };
 
     const inputs = (save) => ({
       save,
@@ -357,7 +366,7 @@
       inner_laminate_id: innerS.value || null,
       edge_hinge_id: edgeHingeS.value || null,
       inner_hinge_id: innerHingeS.value || null,
-      handle_id: handleS.value || null,
+      handle_ids: handleSel,
     });
 
     async function compute(save) {
@@ -366,7 +375,7 @@
       try {
         const res = await computeUnit(inputs(save));
         if (save) unitId = res.unit_id;
-        renderSections(sectionsWrap, res.computed);
+        renderSections(sectionsWrap, res.computed, ctx);
         msg.textContent = "";
         if (save) {
           message(`Saved ${nameI.value.trim() || "unit"} — ${money(res.computed.totals.with_gst)} (with GST).`);
@@ -397,12 +406,13 @@
     block.append(grid, selRow, sectionsWrap, actions, msg);
 
     if (existing && csvText) compute(false);
-    else renderSections(sectionsWrap, null);
+    else renderSections(sectionsWrap, null, ctx);
     return block;
   }
 
-  // Renders the 3 bifurcations + totals from the computed breakdown.
-  function renderSections(container, computed) {
+  // Renders the material tables, hardware sections + totals. `ctx` (optional)
+  // makes the handles table interactive (a handle dropdown per part category).
+  function renderSections(container, computed, ctx) {
     container.textContent = "";
     if (!computed) {
       container.appendChild(el("p", "dash-note", "Import a cutlist and choose materials, then Compute."));
@@ -457,12 +467,34 @@
     s3.appendChild(el("p", "tk-box-line", `Channels (${ch.names.join(", ") || "—"}): ${ch.qty} → ${money(ch.price)}`));
     container.appendChild(s3);
 
-    // --- Handles ---
+    // --- Handles (a handle dropdown per part category) ---
     const ha = computed.handles;
     const s4 = el("div", "tk-box-section");
     s4.appendChild(el("div", "tk-box-section-head", "Handles"));
-    s4.appendChild(miniTable(["Part", "Handles"], (ha.table || []).map((r) => [r.category, r.qty])));
-    s4.appendChild(el("p", "tk-box-line", `Handle (${ha.name || "—"}): ${ha.qty} → ${money(ha.price)}`));
+    const hScroll = el("div", "table-scroll");
+    const hT = el("table", "dash-table");
+    const hHr = el("tr");
+    ["Part", "Handles", "Handle", "Total"].forEach((h) => hHr.appendChild(el("th", null, h)));
+    hT.appendChild(hHr);
+    (ha.table || []).forEach((r) => {
+      const tr = el("tr");
+      const c1 = el("td"); c1.textContent = r.category; tr.appendChild(c1);
+      const c2 = el("td"); c2.textContent = r.qty; tr.appendChild(c2);
+      const c3 = el("td");
+      if (ctx) {
+        const sel = selectEl(ctx.handleOptions, ctx.handleSel[r.category] || "", "Select handle…");
+        sel.addEventListener("change", () => ctx.onHandleChange(r.category, sel.value));
+        c3.appendChild(sel);
+      } else {
+        c3.textContent = r.handle_name || "—";
+      }
+      tr.appendChild(c3);
+      const c4 = el("td"); c4.textContent = money(r.price); tr.appendChild(c4);
+      hT.appendChild(tr);
+    });
+    hScroll.appendChild(hT);
+    s4.appendChild(hScroll);
+    s4.appendChild(el("p", "tk-box-line", `Handles total: ${ha.qty} → ${money(ha.price)}`));
     container.appendChild(s4);
 
     // --- Special additions ---

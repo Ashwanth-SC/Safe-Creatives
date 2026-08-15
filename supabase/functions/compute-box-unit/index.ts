@@ -188,15 +188,15 @@ Deno.serve(async (req) => {
   const materialTotal = round2(plywoodPrice + laminatePrice);
 
   // ---- Hardware: hinges, handles, channels --------------------------------
-  const hwIds = [body.edge_hinge_id, body.inner_hinge_id, body.handle_id].filter(Boolean).map(String);
+  const handleIds: Record<string, string> = (body.handle_ids && typeof body.handle_ids === "object") ? (body.handle_ids as Any) : {};
+  const hwIds = [body.edge_hinge_id, body.inner_hinge_id, ...Object.values(handleIds)].filter(Boolean).map(String);
   const hwById = new Map<string, Any>();
   if (hwIds.length) {
-    const { data } = await admin.from("turnkey_hardwares").select("id, product_name, price").in("id", hwIds);
+    const { data } = await admin.from("turnkey_hardwares").select("id, product_name, price").in("id", [...new Set(hwIds)]);
     (data ?? []).forEach((h) => hwById.set(String(h.id), h));
   }
   const edgeHinge = body.edge_hinge_id ? hwById.get(String(body.edge_hinge_id)) : undefined;
   const innerHinge = body.inner_hinge_id ? hwById.get(String(body.inner_hinge_id)) : undefined;
-  const handle = body.handle_id ? hwById.get(String(body.handle_id)) : undefined;
 
   const { data: chData } = await admin.from("turnkey_hardwares").select("product_name, category, size, price");
   const channels = (chData ?? [])
@@ -214,14 +214,13 @@ Deno.serve(async (req) => {
   let edgeQty = 0, innerQty = 0, channelQty = 0, channelPrice = 0;
   const channelUse = new Map<string, number>();
   const handleByCat = new Map<string, number>();
-  let handleQty = 0;
   for (const p of panels) {
     const L = lg(p.partCat);
     const size = Math.max(p.length, p.width);
     if (normPart(L.hinge_type) === "edge") edgeQty += hingeCount(size);
     else if (normPart(L.hinge_type) === "inner") innerQty += hingeCount(size);
     const h = Number(L.handles) || 0;
-    if (h > 0) { handleQty += h * p.qty; handleByCat.set(p.partCat, (handleByCat.get(p.partCat) || 0) + h * p.qty); }
+    if (h > 0) { const cat = String(L.part_category ?? p.partCat); handleByCat.set(cat, (handleByCat.get(cat) || 0) + h * p.qty); }
     if (String(L.channel).toLowerCase() === "yes") {
       const c = pickChannel(size);
       if (c) { channelQty += p.qty; channelPrice += c.price * p.qty; channelUse.set(c.name, (channelUse.get(c.name) || 0) + p.qty); }
@@ -229,11 +228,23 @@ Deno.serve(async (req) => {
   }
   const edgePrice = round2(edgeQty * (edgeHinge ? Number(edgeHinge.price) || 0 : 0));
   const innerHingePrice = round2(innerQty * (innerHinge ? Number(innerHinge.price) || 0 : 0));
-  const handlePrice = round2(handleQty * (handle ? Number(handle.price) || 0 : 0));
   channelPrice = round2(channelPrice);
+
+  // Handles: one selectable handle per part category.
+  let handlePrice = 0, handleQty = 0;
+  const handleTable = [...handleByCat.entries()].map(([cat, qty]) => {
+    const id = handleIds[cat];
+    const prod = id ? hwById.get(String(id)) : undefined;
+    const price = round2(qty * (prod ? Number(prod.price) || 0 : 0));
+    handlePrice += price;
+    handleQty += qty;
+    if (prod && qty > 0) boqLines.push({ product_name: String(prod.product_name ?? ""), category: "Handle", quantity: qty });
+    return { category: cat, qty, handle_id: id ?? null, handle_name: prod ? String(prod.product_name ?? "") : null, price };
+  });
+  handlePrice = round2(handlePrice);
+
   if (edgeHinge && edgeQty > 0) boqLines.push({ product_name: String(edgeHinge.product_name ?? ""), category: "Edge hinges", quantity: edgeQty });
   if (innerHinge && innerQty > 0) boqLines.push({ product_name: String(innerHinge.product_name ?? ""), category: "Inner hinges", quantity: innerQty });
-  if (handle && handleQty > 0) boqLines.push({ product_name: String(handle.product_name ?? ""), category: "Handle", quantity: handleQty });
   for (const [name, q] of channelUse) boqLines.push({ product_name: name, category: "Channel", quantity: q });
 
   const hardwareTotal = round2(edgePrice + innerHingePrice + handlePrice + channelPrice);
@@ -255,10 +266,9 @@ Deno.serve(async (req) => {
   // ---- Spec strings --------------------------------------------------------
   const clean = (arr: (string | null | undefined)[]) => arr.map((s) => (s ?? "").trim()).filter(Boolean);
   const hingeNames = clean([edgeQty > 0 ? edgeHinge?.product_name : null, innerQty > 0 ? innerHinge?.product_name : null]);
-  const materialSpec = clean([materialBrand, ...hingeNames, handleQty > 0 ? handle?.product_name : null, ...channelUse.keys(), laminateBrand, outer.name, inner.name]).join(", ");
+  const handleNames = [...new Set(handleTable.filter((r) => r.handle_name).map((r) => r.handle_name as string))];
+  const materialSpec = clean([materialBrand, ...hingeNames, ...handleNames, ...channelUse.keys(), laminateBrand, outer.name, inner.name]).join(", ");
   const designSpec = clean([laminateBrand, outer.name, inner.name]).join(", ");
-
-  const handleTable = ["Drawer Shutter", "Edge Shutter", "Inner Shutter", "Special shutter"].map((c) => ({ category: c, qty: handleByCat.get(normPart(c)) || 0 }));
 
   const computed = {
     groups,
@@ -268,7 +278,7 @@ Deno.serve(async (req) => {
       inner: { name: innerHinge ? String(innerHinge.product_name ?? "") : null, qty: innerQty, price: innerHingePrice },
     },
     channels: { qty: channelQty, price: channelPrice, names: [...channelUse.keys()] },
-    handles: { name: handle ? String(handle.product_name ?? "") : null, qty: handleQty, price: handlePrice, table: handleTable },
+    handles: { qty: handleQty, price: handlePrice, table: handleTable },
     totals: {
       material: materialTotal,
       hardware: hardwareTotal,
@@ -299,7 +309,8 @@ Deno.serve(async (req) => {
       edge_hinge_id: body.edge_hinge_id ? String(body.edge_hinge_id) : null,
       inner_hinge_id: body.inner_hinge_id ? String(body.inner_hinge_id) : null,
       channel_id: null,
-      handle_id: body.handle_id ? String(body.handle_id) : null,
+      handle_id: null,
+      handle_ids: handleIds,
       total_material_price: materialTotal,
       hardware_price: hardwareTotal,
       total_price: total,
