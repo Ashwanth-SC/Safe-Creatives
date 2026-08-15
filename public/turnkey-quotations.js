@@ -199,10 +199,17 @@
     if (error) throw error;
     return data || [];
   }
+  async function loadHardware() {
+    const { data, error } = await sb
+      .from("turnkey_hardwares")
+      .select("id, product_name, category, size, price");
+    if (error) throw error;
+    return data || [];
+  }
   async function loadBoxUnits(projectId) {
     const { data, error } = await sb
       .from("turnkey_quote_box_units")
-      .select("id, space, unit_name, material_spec, design_spec, total_price, margin_price, discount_price, gst_price, created_at")
+      .select("id, space, unit_name, material_spec, design_spec, total_price, margin_price, margin_amount, discount_price, gst_price, created_at")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
     if (error) throw error;
@@ -231,21 +238,22 @@
   async function renderBoxShutters(container) {
     container.textContent = "";
     container.appendChild(el("p", "dash-note", "Loading…"));
-    let spaces, products, units;
+    let spaces, products, hardware, units;
     try {
-      [spaces, products, units] = await Promise.all([
+      [spaces, products, hardware, units] = await Promise.all([
         loadSelectedSpaces(currentProject),
         loadProducts(),
+        loadHardware(),
         loadBoxUnits(currentProject),
       ]);
     } catch (error) {
       container.textContent = "";
       container.appendChild(
-        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migrations 027–029.`)
+        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migrations 027–030.`)
       );
       return;
     }
-    const ref = { spaces, products };
+    const ref = { spaces, products, hardware };
     container.textContent = "";
     container.appendChild(unitEditor(ref, null, () => renderBoxShutters(container)));
     container.appendChild(unitsList(units, () => renderBoxShutters(container)));
@@ -297,30 +305,39 @@
     importBtn.addEventListener("click", () => fileInput.click());
 
     const grid = el("div", "admin-inline");
-    grid.append(field("Area", spaceS), field("Unit name", nameI), field("Cutlist", importBtn));
+    grid.append(field("Space", spaceS), field("Unit name", nameI), field("Cutlist", importBtn));
     grid.appendChild(fileInput);
 
-    // Material / laminate selectors (single-select).
-    const matBrandS = selectEl(materialBrands, u.material_brand || "", "Material brand…");
-    const subS = selectEl(subsForBrand(u.material_brand || ""), u.material_sub_category || "", "Sub category…");
+    // Plywood / laminate selectors (single-select).
+    const matBrandS = selectEl(materialBrands, u.material_brand || "", "Plywood brand…");
+    const subS = selectEl(subsForBrand(u.material_brand || ""), u.material_sub_category || "", "Plywood type…");
     const lamBrandS = selectEl(laminateBrands, u.laminate_brand || "", "Laminate brand…");
     const outerS = selectEl(lamsForBrand(u.laminate_brand || ""), u.outer_laminate_id || "", "Outer laminate…");
     const innerS = selectEl(lamsForBrand(u.laminate_brand || ""), u.inner_laminate_id || "", "Inner laminate…");
 
-    matBrandS.addEventListener("change", () => replaceOptions(subS, subsForBrand(matBrandS.value), "", "Sub category…"));
+    matBrandS.addEventListener("change", () => replaceOptions(subS, subsForBrand(matBrandS.value), "", "Plywood type…"));
     lamBrandS.addEventListener("change", () => {
       const lams = lamsForBrand(lamBrandS.value);
       replaceOptions(outerS, lams, "", "Outer laminate…");
       replaceOptions(innerS, lams, "", "Inner laminate…");
     });
 
-    const selRow = el("div", "admin-inline");
+    // Hardware selectors (from the free-text hardware categories).
+    const hwOptions = (cat) => (ref.hardware || []).filter((h) => normCat(h.category) === cat).map((h) => [h.id, h.product_name || "unnamed"]);
+    const edgeHingeS = selectEl(hwOptions("edge hinges"), u.edge_hinge_id || "", "Edge hinge…");
+    const innerHingeS = selectEl(hwOptions("inner hinges"), u.inner_hinge_id || "", "Inner hinge…");
+    const handleS = selectEl(hwOptions("handle"), u.handle_id || "", "Handle…");
+
+    const selRow = el("div", "admin-inline tk-sel-grid");
     selRow.append(
-      field("Material brand", matBrandS),
-      field("Sub category", subS),
+      field("Plywood brand", matBrandS),
+      field("Plywood type", subS),
       field("Laminate brand", lamBrandS),
       field("Outer laminate", outerS),
-      field("Inner laminate", innerS)
+      field("Inner laminate", innerS),
+      field("Edge hinge", edgeHingeS),
+      field("Inner hinge", innerHingeS),
+      field("Handle", handleS)
     );
 
     const sectionsWrap = el("div", "tk-box-sections");
@@ -338,6 +355,9 @@
       laminate_brand: lamBrandS.value || null,
       outer_laminate_id: outerS.value || null,
       inner_laminate_id: innerS.value || null,
+      edge_hinge_id: edgeHingeS.value || null,
+      inner_hinge_id: innerHingeS.value || null,
+      handle_id: handleS.value || null,
     });
 
     async function compute(save) {
@@ -349,7 +369,7 @@
         renderSections(sectionsWrap, res.computed);
         msg.textContent = "";
         if (save) {
-          message(`Saved ${nameI.value.trim() || "unit"} — ${money(res.computed.totals.gst_price)} (with GST).`);
+          message(`Saved ${nameI.value.trim() || "unit"} — ${money(res.computed.totals.with_gst)} (with GST).`);
           onSaved();
         }
       } catch (error) {
@@ -389,57 +409,80 @@
       return;
     }
 
-    // 1 — Cutlist grouped by thickness (+ laminate summary)
+    const miniTable = (headers, rows) => {
+      const scroll = el("div", "table-scroll");
+      const t = el("table", "dash-table");
+      const hr = el("tr");
+      headers.forEach((h) => hr.appendChild(el("th", null, h)));
+      t.appendChild(hr);
+      rows.forEach((r) => {
+        const tr = el("tr");
+        r.forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+        t.appendChild(tr);
+      });
+      scroll.appendChild(t);
+      return scroll;
+    };
+    const thk = (v) => (v != null ? `${v} mm` : "—");
+
+    // --- Materials: plywood + outer + inner laminate ---
     const s1 = el("div", "tk-box-section");
-    s1.appendChild(el("div", "tk-box-section-head", "1 · Cutlist by thickness"));
-    const t1 = el("table", "dash-table");
-    const h1 = el("tr");
-    ["Thickness", "Panels", "Area (sqft)", "Board", "Sheets", "Plywood ₹"].forEach((h) => h1.appendChild(el("th", null, h)));
-    t1.appendChild(h1);
-    (computed.groups || []).forEach((g) => {
-      const tr = el("tr");
-      [
-        `${g.thickness} mm`, String(g.panel_count), String(g.area_sqft),
-        g.missing ? "⚠ no board found" : g.product_name || "—",
-        g.ply_qty ?? "—", money(g.ply_price),
-      ].forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
-      t1.appendChild(tr);
-    });
-    const sc1 = el("div", "table-scroll"); sc1.appendChild(t1); s1.appendChild(sc1);
+    s1.appendChild(el("div", "tk-box-section-head", "Materials"));
+    const plyRows = (computed.groups || []).map((g) => [
+      g.missing ? "⚠ no board found" : g.product_name || "—", g.qty ?? "—", thk(g.thickness), money(g.price),
+    ]);
+    if (!plyRows.length) plyRows.push(["—", "—", "—", money(0)]);
+    s1.appendChild(el("p", "tk-box-line", "Plywood"));
+    s1.appendChild(miniTable(["Board", "Qty", "Thickness", "Total"], plyRows));
     const lam = computed.laminate;
-    s1.appendChild(el("p", "tk-box-line",
-      `Laminate — outer: ${lam.outer.qty ?? "—"} sheet(s) ${money(lam.outer.price)} · inner: ${lam.inner.qty ?? "—"} sheet(s) ${money(lam.inner.price)}`));
+    s1.appendChild(el("p", "tk-box-line", "Outer laminate"));
+    s1.appendChild(miniTable(["Laminate", "Qty", "Thickness", "Total"], [[lam.outer.name || "—", lam.outer.qty ?? "—", thk(lam.outer.thickness), money(lam.outer.price)]]));
+    s1.appendChild(el("p", "tk-box-line", "Inner laminate"));
+    s1.appendChild(miniTable(["Laminate", "Qty", "Thickness", "Total"], [[lam.inner.name || "—", lam.inner.qty ?? "—", thk(lam.inner.thickness), money(lam.inner.price)]]));
+    s1.appendChild(el("p", "tk-box-total", `Material total: ${money(computed.totals.material)}`));
     container.appendChild(s1);
 
-    // 2 — Accessories & hardware
+    // --- Hinges ---
+    const hg = computed.hinges;
     const s2 = el("div", "tk-box-section");
-    s2.appendChild(el("div", "tk-box-section-head", "2 · Accessories & hardware"));
-    const hw = computed.hardware;
-    const lines = [];
-    if (hw.edge_hinge.qty) lines.push(`Edge hinges (${hw.edge_hinge.name || "—"}): ${hw.edge_hinge.qty} → ${money(hw.edge_hinge.price)}`);
-    if (hw.inner_hinge.qty) lines.push(`Inner hinges (${hw.inner_hinge.name || "—"}): ${hw.inner_hinge.qty} → ${money(hw.inner_hinge.price)}`);
-    if (hw.channels.qty) lines.push(`Channels (${hw.channels.names.join(", ") || "—"}): ${hw.channels.qty} → ${money(hw.channels.price)}`);
-    if (!lines.length) lines.push("No hinges or channels for this unit.");
-    lines.forEach((l) => s2.appendChild(el("p", "tk-box-line", l)));
+    s2.appendChild(el("div", "tk-box-section-head", "Hinges"));
+    s2.appendChild(el("p", "tk-box-line", `Edge hinges (${hg.edge.name || "—"}): ${hg.edge.qty} → ${money(hg.edge.price)}`));
+    s2.appendChild(el("p", "tk-box-line", `Inner hinges (${hg.inner.name || "—"}): ${hg.inner.qty} → ${money(hg.inner.price)}`));
     container.appendChild(s2);
 
-    // 3 — Special additions (placeholder)
+    // --- Channels ---
+    const ch = computed.channels;
     const s3 = el("div", "tk-box-section");
-    s3.appendChild(el("div", "tk-box-section-head", "3 · Special additions"));
-    s3.appendChild(el("p", "dash-note", "To be added later."));
+    s3.appendChild(el("div", "tk-box-section-head", "Channels"));
+    s3.appendChild(el("p", "tk-box-line", `Channels (${ch.names.join(", ") || "—"}): ${ch.qty} → ${money(ch.price)}`));
     container.appendChild(s3);
 
-    // Totals
+    // --- Handles ---
+    const ha = computed.handles;
+    const s4 = el("div", "tk-box-section");
+    s4.appendChild(el("div", "tk-box-section-head", "Handles"));
+    s4.appendChild(miniTable(["Part", "Handles"], (ha.table || []).map((r) => [r.category, r.qty])));
+    s4.appendChild(el("p", "tk-box-line", `Handle (${ha.name || "—"}): ${ha.qty} → ${money(ha.price)}`));
+    container.appendChild(s4);
+
+    // --- Special additions ---
+    const s5 = el("div", "tk-box-section");
+    s5.appendChild(el("div", "tk-box-section-head", "Special additions"));
+    s5.appendChild(el("p", "dash-note", "To be added later."));
+    container.appendChild(s5);
+
+    // --- Totals ---
     const tot = computed.totals;
     const totBox = el("div", "tk-box-totals");
-    [["Total", tot.total], ["With margin", tot.margin_price], ["With discount", tot.discount_price], ["With GST", tot.gst_price]].forEach(
-      ([label, val]) => {
-        const d = el("div", "tk-box-total-cell");
-        d.appendChild(el("span", "tk-box-total-label", label));
-        d.appendChild(el("span", "tk-box-total-val", money(val)));
-        totBox.appendChild(d);
-      }
-    );
+    [
+      ["Total", tot.total], ["With margin", tot.with_margin], ["Margin", tot.margin_amount],
+      ["With discount", tot.with_discount], ["With GST", tot.with_gst],
+    ].forEach(([label, val]) => {
+      const d = el("div", "tk-box-total-cell");
+      d.appendChild(el("span", "tk-box-total-label", label));
+      d.appendChild(el("span", "tk-box-total-val", money(val)));
+      totBox.appendChild(d);
+    });
     container.appendChild(totBox);
   }
 
@@ -450,7 +493,7 @@
     const t = el("table", "dash-table");
     const thead = el("thead");
     const hr = el("tr");
-    ["Space", "Unit", "Material specifications", "Design specifications", "Total", "With margin", "With discount", "With GST", ""].forEach(
+    ["Space", "Unit", "Material specifications", "Design specifications", "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach(
       (h) => hr.appendChild(el("th", null, h))
     );
     thead.appendChild(hr);
@@ -458,7 +501,7 @@
     if (!units.length) {
       const tr = el("tr");
       const td = el("td", "dash-empty", "No units yet.");
-      td.colSpan = 9;
+      td.colSpan = 10;
       tr.appendChild(td);
       tbody.appendChild(tr);
     }
@@ -468,7 +511,7 @@
       open.addEventListener("click", async () => {
         try {
           const existing = await loadBoxUnit(u.id);
-          const ref = { spaces: await loadSelectedSpaces(currentProject), products: await loadProducts() };
+          const ref = { spaces: await loadSelectedSpaces(currentProject), products: await loadProducts(), hardware: await loadHardware() };
           panel.textContent = "";
           panel.appendChild(unitEditor(ref, existing, () => renderBoxShutters(panel)));
           panel.appendChild(unitsList(await loadBoxUnits(currentProject), () => renderBoxShutters(panel)));
@@ -482,6 +525,7 @@
         if (!window.confirm(`Delete unit "${u.unit_name || "unnamed"}"? This cannot be undone.`)) return;
         const { error } = await sb.from("turnkey_quote_box_units").delete().eq("id", u.id);
         if (error) return void message(`Could not delete: ${error.message}`, true);
+        try { await computeUnit({ recompute_boq: true, project_id: currentProject }); } catch (_e) { /* BOQ rebuild best-effort */ }
         message("Unit deleted.");
         onChanged();
       });
@@ -490,7 +534,7 @@
 
       const cells = [
         u.space || "—", u.unit_name || "—", u.material_spec || "—", u.design_spec || "—",
-        money(u.total_price), money(u.margin_price), money(u.discount_price), money(u.gst_price), actions,
+        money(u.total_price), money(u.margin_price), money(u.margin_amount), money(u.discount_price), money(u.gst_price), actions,
       ];
       const tr = el("tr");
       cells.forEach((c) => {

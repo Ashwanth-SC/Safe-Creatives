@@ -260,6 +260,9 @@ button:disabled { opacity: .5; cursor: progress; }
 .tk-box-total-cell { flex:1; min-width:120px; padding:10px 14px; background:#f4f6f3; border:1px solid rgba(12,68,68,.2); border-radius:8px; }
 .tk-box-total-label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#777; }
 .tk-box-total-val { display:block; font-size:17px; font-weight:700; color:#0c4444; margin-top:2px; }
+/* Equal-width selector dropdowns in the builder */
+.tk-sel-grid .admin-field { width:210px; }
+.tk-sel-grid .admin-field select { width:100%; }
 .tk-cat-row { display:flex; flex-wrap:wrap; gap:14px 32px; margin:4px 0 14px; }
 
 /* Compact multi-select dropdown */

@@ -2,44 +2,39 @@
 // compute-box-unit — price a Box & Shutters cutlist unit (backend maths)
 // ============================================================================
 //
-// The builder posts a unit's inputs; this function does ALL the parsing +
-// arithmetic and returns the computed breakdown. With { save:true } it also
-// stores the inputs + computed values so a unit can be reopened & compared.
+// Inputs: csv_text (mm cutlist), material_brand + material_sub_category
+// (plywood), laminate_brand + outer_laminate_id + inner_laminate_id,
+// edge_hinge_id + inner_hinge_id + handle_id (hardware), project_id.
 //
-// Inputs: csv_text, material_brand, material_sub_category, laminate_brand,
-// outer_laminate_id, inner_laminate_id, project_id (for margin/GST/discount).
+// Units: the products / hardware database is in FEET (sheet area = W*H sqft);
+// the cutlist is in mm and converted internally. Prices are PER PIECE.
 //
-// Logic:
-//   * CSV Designation = "PartCategory-Name" -> part category (before 1st '-').
-//   * +2mm clearance on each L & W; panel area = (L+2)(W+2)*qty, mm^2 -> sqft.
-//   * Plywood: group by thickness; board = product with the selected brand +
-//     sub-category and that thickness; sheets = ceil(area / sheetArea);
-//     price = sheets * (sheetArea * price/sqft).
-//   * Laminate faces by part category:
-//       one outer + one inner: carcass outer, skirting, partition, shelf,
-//         drawer side, drawer shutter, special shutter, edge shutter, inner shutter
-//       inner on both sides: back ply, drawer outer
-//     outerArea = sum(one-plus-one areas); innerArea = one-plus-one + 2x inner-both.
-//     qty = ceil(area / sheetArea); price = qty * (sheetArea * price/sqft).
-//   * Hinges: edge shutter -> Edge-hinges product; inner shutter -> Inner-hinges.
-//       count(size)= size<=600?2 : 2+ceil((size-600)/300); size = max(L,W).
-//   * Channels: each drawer-side panel -> 1 channel, largest Channel size <=
-//       max(L,W) (smallest if under all).
-//   * total = plywood + laminate + hardware; withMargin = total*(1+m/100);
-//     withDiscount = withMargin*(1-d/100); withGst = withDiscount*(1+g/100).
+// Logic (driven by the editable turnkey_box_part_logic table):
+//   * Designation "PartCategory-Name" -> part category.
+//   * per panel: area = (L+2)(W+2)*qty mm^2 -> sqft.
+//   * plywood: group by thickness; board = product with the selected brand +
+//     sub-category at that thickness; sheets = ceil(coverArea / sheetArea),
+//     price = sheets * price(piece). coverArea uses the part's ply_qty.
+//   * outer/inner laminate: coverArea = sum(area * outer_lam | inner_lam);
+//     sheets = ceil(cover / lamSheetArea); price = sheets * price(piece).
+//   * hinges: per panel with hinge_type Edge/Inner -> count = 2 up to 600mm
+//     then +1 per 300mm (size = max(L,W)); price = qty * hinge price.
+//   * handles: per panel handles count -> total; price = qty * handle price.
+//   * channels: each part with channel=Yes -> the Channel hardware whose size
+//     (ft->mm) is the largest <= max(L,W) (smallest if under all); one each.
+//   * total = plywood + laminate + hardware; withMargin, margin amount,
+//     withDiscount, withGst from the project percentages.
 //
-// Needs migrations 027-029. Deploy: supabase functions deploy compute-box-unit
+// On save: stores the unit + rebuilds turnkey_project_boq from ALL the
+// project's units. { recompute_boq:true, project_id } just rebuilds the BOQ.
+//
+// Needs migrations 027-030. Deploy: supabase functions deploy compute-box-unit
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SQFT_PER_MM2 = 92903.04;
-
-const ONE_PLUS_ONE = new Set([
-  "carcass outer", "skirting", "partition", "shelf", "drawer side",
-  "drawer shutter", "special shutter", "edge shutter", "inner shutter",
-]);
-const INNER_BOTH = new Set(["back ply", "drawer outer"]);
+const MM_PER_FT = 304.8;
 
 function corsHeadersFor(req: Request): Record<string, string> {
   const configured = (Deno.env.get("SITE_ORIGIN") ?? "*").split(",").map((v) => v.trim()).filter(Boolean);
@@ -58,6 +53,9 @@ const num = (v: unknown) => Number(String(v ?? "").replace(/[^\d.\-]/g, ""));
 const normPart = (s: unknown) => String(s ?? "").toLowerCase().replace(/[_\s]+/g, " ").trim();
 const ceilDiv = (a: number, b: number) => (b > 0 && a > 0 ? Math.ceil(a / b) : 0);
 const hingeCount = (size: number) => (size <= 600 ? 2 : 2 + Math.ceil((size - 600) / 300));
+
+// deno-lint-ignore no-explicit-any
+type Any = any;
 
 Deno.serve(async (req) => {
   const cors = corsHeadersFor(req);
@@ -85,6 +83,13 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid request." }, 400);
   }
 
+  // BOQ-only rebuild (called after a delete).
+  if (body.recompute_boq) {
+    if (!body.project_id) return json({ error: "Missing project." }, 400);
+    await rebuildBoq(admin, String(body.project_id));
+    return json({ ok: true });
+  }
+
   const csvText = String(body.csv_text ?? "");
   if (!csvText.trim()) return json({ error: "No cutlist CSV provided." }, 400);
 
@@ -95,180 +100,189 @@ Deno.serve(async (req) => {
     return json({ error: `Could not read the CSV: ${(e as Error).message}` }, 400);
   }
 
+  // ---- Logic table -> per-part multipliers --------------------------------
+  const { data: logicRows } = await admin.from("turnkey_box_part_logic").select("*");
+  const logic = new Map<string, Any>();
+  (logicRows ?? []).forEach((r: Any) => logic.set(normPart(r.part_category), r));
+  const lg = (partCat: string) => logic.get(partCat) ?? { ply_qty: 1, outer_lam: 0, inner_lam: 0, hinge_type: "None", handles: 0, channel: "No" };
+
   const materialBrand = body.material_brand ? String(body.material_brand) : null;
   const materialSub = body.material_sub_category ? String(body.material_sub_category) : null;
   const laminateBrand = body.laminate_brand ? String(body.laminate_brand) : null;
-  const outerLamId = body.outer_laminate_id ? String(body.outer_laminate_id) : null;
-  const innerLamId = body.inner_laminate_id ? String(body.inner_laminate_id) : null;
 
-  // ---- Plywood: group by thickness, look up the board per thickness --------
-  const byThickness = new Map<string, { count: number; areaMm2: number }>();
+  // ---- Plywood: group by thickness ----------------------------------------
+  const byThickness = new Map<string, { count: number; coverMm2: number }>();
   for (const p of panels) {
+    const mult = Number(lg(p.partCat).ply_qty) || 0;
+    if (mult <= 0) continue;
     const key = String(p.thickness);
-    const g = byThickness.get(key) ?? { count: 0, areaMm2: 0 };
+    const g = byThickness.get(key) ?? { count: 0, coverMm2: 0 };
     g.count += p.qty;
-    g.areaMm2 += (p.length + 2) * (p.width + 2) * p.qty;
+    g.coverMm2 += (p.length + 2) * (p.width + 2) * p.qty * mult;
     byThickness.set(key, g);
   }
 
-  let plyProducts: Record<string, unknown>[] = [];
+  let plyProducts: Any[] = [];
   if (materialBrand) {
-    let q = admin
-      .from("turnkey_products")
-      .select("id, product_name, thickness, area_sqft, price_per_sqft")
-      .eq("brand", materialBrand);
+    let q = admin.from("turnkey_products").select("id, product_name, thickness, area_sqft, price_per_sqft").eq("brand", materialBrand);
     if (materialSub) q = q.eq("sub_category", materialSub);
     const { data } = await q;
     plyProducts = data ?? [];
   }
-  const plyByThickness = new Map<number, Record<string, unknown>>();
+  const plyByThickness = new Map<number, Any>();
   plyProducts.forEach((p) => plyByThickness.set(num(p.thickness), p));
 
   let plywoodPrice = 0;
+  const boqLines: { product_name: string; category: string; quantity: number }[] = [];
   const groups = [...byThickness.entries()]
     .sort((a, b) => num(b[0]) - num(a[0]))
     .map(([t, g]) => {
-      const areaSqft = g.areaMm2 / SQFT_PER_MM2;
+      const coverSqft = g.coverMm2 / SQFT_PER_MM2;
       const prod = plyByThickness.get(num(t));
-      let qty: number | null = null, price: number | null = null;
       const sheetArea = prod ? Number(prod.area_sqft) || 0 : 0;
-      const rate = prod ? Number(prod.price_per_sqft) || 0 : 0;
+      const price = prod ? Number(prod.price_per_sqft) || 0 : 0;
+      let qty: number | null = null, lineTotal: number | null = null;
       if (prod && sheetArea > 0) {
-        qty = ceilDiv(areaSqft, sheetArea);
-        price = round2(qty * (sheetArea * rate));
-        plywoodPrice += price;
+        qty = ceilDiv(coverSqft, sheetArea);
+        lineTotal = round2(qty * price);
+        plywoodPrice += lineTotal;
+        boqLines.push({ product_name: String(prod.product_name ?? ""), category: "Plywood", quantity: qty });
       }
       return {
         thickness: num(t),
         panel_count: g.count,
-        area_sqft: round2(areaSqft),
-        product_id: prod ? String(prod.id) : null,
+        cover_sqft: round2(coverSqft),
         product_name: prod ? String(prod.product_name ?? "") : null,
-        ply_qty: qty,
-        ply_price: price,
+        qty,
+        price: lineTotal,
         missing: !prod,
       };
     });
 
-  // ---- Laminate: outer + inner areas by part category ----------------------
+  // ---- Laminate: outer + inner by logic multipliers -----------------------
   let outerMm2 = 0, innerMm2 = 0;
   for (const p of panels) {
     const a = (p.length + 2) * (p.width + 2) * p.qty;
-    if (ONE_PLUS_ONE.has(p.partCat)) { outerMm2 += a; innerMm2 += a; }
-    else if (INNER_BOTH.has(p.partCat)) { innerMm2 += a * 2; }
+    outerMm2 += a * (Number(lg(p.partCat).outer_lam) || 0);
+    innerMm2 += a * (Number(lg(p.partCat).inner_lam) || 0);
   }
-  const outerArea = outerMm2 / SQFT_PER_MM2;
-  const innerArea = innerMm2 / SQFT_PER_MM2;
-
-  const lamIds = [outerLamId, innerLamId].filter(Boolean) as string[];
-  const lamById = new Map<string, Record<string, unknown>>();
+  const lamIds = [body.outer_laminate_id, body.inner_laminate_id].filter(Boolean).map(String);
+  const lamById = new Map<string, Any>();
   if (lamIds.length) {
-    const { data } = await admin
-      .from("turnkey_products")
-      .select("id, product_name, area_sqft, price_per_sqft")
-      .in("id", lamIds);
+    const { data } = await admin.from("turnkey_products").select("id, product_name, thickness, area_sqft, price_per_sqft").in("id", lamIds);
     (data ?? []).forEach((p) => lamById.set(String(p.id), p));
   }
-  const lamCalc = (id: string | null, area: number) => {
-    const prod = id ? lamById.get(id) : undefined;
+  const lamCalc = (id: unknown, coverMm2: number, cat: string) => {
+    const prod = id ? lamById.get(String(id)) : undefined;
+    const cover = coverMm2 / SQFT_PER_MM2;
     const sheetArea = prod ? Number(prod.area_sqft) || 0 : 0;
-    const rate = prod ? Number(prod.price_per_sqft) || 0 : 0;
-    const qty = prod && sheetArea > 0 ? ceilDiv(area, sheetArea) : null;
-    const price = qty != null ? round2(qty * (sheetArea * rate)) : null;
-    return { name: prod ? String(prod.product_name ?? "") : null, area_sqft: round2(area), qty, price };
+    const price = prod ? Number(prod.price_per_sqft) || 0 : 0;
+    const qty = prod && sheetArea > 0 ? ceilDiv(cover, sheetArea) : null;
+    const total = qty != null ? round2(qty * price) : null;
+    if (qty != null && qty > 0) boqLines.push({ product_name: String(prod.product_name ?? ""), category: cat, quantity: qty });
+    return { name: prod ? String(prod.product_name ?? "") : null, thickness: prod ? num(prod.thickness) : null, cover_sqft: round2(cover), qty, price: total };
   };
-  const outer = lamCalc(outerLamId, outerArea);
-  const inner = lamCalc(innerLamId, innerArea);
+  const outer = lamCalc(body.outer_laminate_id, outerMm2, "Outer laminate");
+  const inner = lamCalc(body.inner_laminate_id, innerMm2, "Inner laminate");
   const laminatePrice = (outer.price ?? 0) + (inner.price ?? 0);
+  const materialTotal = round2(plywoodPrice + laminatePrice);
 
-  // ---- Hardware: hinges + channels -----------------------------------------
-  const { data: hw } = await admin.from("turnkey_hardwares").select("product_name, category, size, price");
-  const hardware = hw ?? [];
-  const inCat = (c: unknown, name: string) => normPart(c) === normPart(name);
-  const edgeHinge = hardware.find((h) => inCat(h.category, "edge hinges"));
-  const innerHinge = hardware.find((h) => inCat(h.category, "inner hinges"));
-  const channels = hardware
-    .filter((h) => inCat(h.category, "channel"))
-    .map((h) => ({ name: String(h.product_name ?? ""), size: num(h.size), price: Number(h.price) || 0 }))
-    .filter((c) => Number.isFinite(c.size));
+  // ---- Hardware: hinges, handles, channels --------------------------------
+  const hwIds = [body.edge_hinge_id, body.inner_hinge_id, body.handle_id].filter(Boolean).map(String);
+  const hwById = new Map<string, Any>();
+  if (hwIds.length) {
+    const { data } = await admin.from("turnkey_hardwares").select("id, product_name, price").in("id", hwIds);
+    (data ?? []).forEach((h) => hwById.set(String(h.id), h));
+  }
+  const edgeHinge = body.edge_hinge_id ? hwById.get(String(body.edge_hinge_id)) : undefined;
+  const innerHinge = body.inner_hinge_id ? hwById.get(String(body.inner_hinge_id)) : undefined;
+  const handle = body.handle_id ? hwById.get(String(body.handle_id)) : undefined;
 
+  const { data: chData } = await admin.from("turnkey_hardwares").select("product_name, category, size, price");
+  const channels = (chData ?? [])
+    .filter((h: Any) => normPart(h.category) === "channel")
+    .map((h: Any) => ({ name: String(h.product_name ?? ""), sizeMm: num(h.size) * MM_PER_FT, price: Number(h.price) || 0 }))
+    .filter((c: Any) => Number.isFinite(c.sizeMm));
   const pickChannel = (panelMax: number) => {
     if (!channels.length) return null;
-    const sorted = channels.slice().sort((a, b) => a.size - b.size);
-    let chosen = null as (typeof sorted)[number] | null;
-    for (const c of sorted) if (c.size <= panelMax) chosen = c;
+    const sorted = channels.slice().sort((a, b) => a.sizeMm - b.sizeMm);
+    let chosen: Any = null;
+    for (const c of sorted) if (c.sizeMm <= panelMax) chosen = c;
     return chosen ?? sorted[0];
   };
 
-  let edgeHingeQty = 0, innerHingeQty = 0, channelQty = 0, channelPrice = 0;
-  const channelNames = new Set<string>();
+  let edgeQty = 0, innerQty = 0, channelQty = 0, channelPrice = 0;
+  const channelUse = new Map<string, number>();
+  const handleByCat = new Map<string, number>();
+  let handleQty = 0;
   for (const p of panels) {
+    const L = lg(p.partCat);
     const size = Math.max(p.length, p.width);
-    if (p.partCat === "edge shutter") edgeHingeQty += hingeCount(size);
-    else if (p.partCat === "inner shutter") innerHingeQty += hingeCount(size);
-    else if (p.partCat === "drawer side") {
+    if (normPart(L.hinge_type) === "edge") edgeQty += hingeCount(size);
+    else if (normPart(L.hinge_type) === "inner") innerQty += hingeCount(size);
+    const h = Number(L.handles) || 0;
+    if (h > 0) { handleQty += h * p.qty; handleByCat.set(p.partCat, (handleByCat.get(p.partCat) || 0) + h * p.qty); }
+    if (String(L.channel).toLowerCase() === "yes") {
       const c = pickChannel(size);
-      if (c) { channelQty += 1; channelPrice += c.price; channelNames.add(c.name); }
+      if (c) { channelQty += p.qty; channelPrice += c.price * p.qty; channelUse.set(c.name, (channelUse.get(c.name) || 0) + p.qty); }
     }
   }
-  const edgeUnit = edgeHinge ? Number(edgeHinge.price) || 0 : 0;
-  const innerUnit = innerHinge ? Number(innerHinge.price) || 0 : 0;
-  const edgeHingePrice = round2(edgeHingeQty * edgeUnit);
-  const innerHingePrice = round2(innerHingeQty * innerUnit);
+  const edgePrice = round2(edgeQty * (edgeHinge ? Number(edgeHinge.price) || 0 : 0));
+  const innerHingePrice = round2(innerQty * (innerHinge ? Number(innerHinge.price) || 0 : 0));
+  const handlePrice = round2(handleQty * (handle ? Number(handle.price) || 0 : 0));
   channelPrice = round2(channelPrice);
-  const hardwarePrice = round2(edgeHingePrice + innerHingePrice + channelPrice);
+  if (edgeHinge && edgeQty > 0) boqLines.push({ product_name: String(edgeHinge.product_name ?? ""), category: "Edge hinges", quantity: edgeQty });
+  if (innerHinge && innerQty > 0) boqLines.push({ product_name: String(innerHinge.product_name ?? ""), category: "Inner hinges", quantity: innerQty });
+  if (handle && handleQty > 0) boqLines.push({ product_name: String(handle.product_name ?? ""), category: "Handle", quantity: handleQty });
+  for (const [name, q] of channelUse) boqLines.push({ product_name: name, category: "Channel", quantity: q });
 
-  // ---- Totals through margin / discount / GST ------------------------------
+  const hardwareTotal = round2(edgePrice + innerHingePrice + handlePrice + channelPrice);
+
+  // ---- Totals --------------------------------------------------------------
   let margin = 0, gst = 0, discount = 0;
   if (body.project_id) {
-    const { data: proj } = await admin
-      .from("turnkey_projects")
-      .select("margin_percent, gst_percent, discount_percent")
-      .eq("id", String(body.project_id))
-      .maybeSingle();
+    const { data: proj } = await admin.from("turnkey_projects").select("margin_percent, gst_percent, discount_percent").eq("id", String(body.project_id)).maybeSingle();
     margin = Number(proj?.margin_percent) || 0;
     gst = Number(proj?.gst_percent) || 0;
     discount = Number(proj?.discount_percent) || 0;
   }
-  const total = round2(plywoodPrice + laminatePrice + hardwarePrice);
-  const marginPrice = round2(total * (1 + margin / 100));
-  const discountPrice = round2(marginPrice * (1 - discount / 100));
-  const gstPrice = round2(discountPrice * (1 + gst / 100));
+  const total = round2(materialTotal + hardwareTotal);
+  const withMargin = round2(total * (1 + margin / 100));
+  const marginAmount = round2(withMargin - total);
+  const withDiscount = round2(withMargin * (1 - discount / 100));
+  const withGst = round2(withDiscount * (1 + gst / 100));
 
   // ---- Spec strings --------------------------------------------------------
-  const hingeNames: string[] = [];
-  if (edgeHingeQty > 0 && edgeHinge) hingeNames.push(String(edgeHinge.product_name ?? ""));
-  if (innerHingeQty > 0 && innerHinge) hingeNames.push(String(innerHinge.product_name ?? ""));
-  const clean = (arr: (string | null)[]) => arr.map((s) => (s ?? "").trim()).filter(Boolean);
-  const materialSpec = clean([
-    materialBrand, ...hingeNames, ...channelNames, laminateBrand, outer.name, inner.name,
-  ]).join(", ");
+  const clean = (arr: (string | null | undefined)[]) => arr.map((s) => (s ?? "").trim()).filter(Boolean);
+  const hingeNames = clean([edgeQty > 0 ? edgeHinge?.product_name : null, innerQty > 0 ? innerHinge?.product_name : null]);
+  const materialSpec = clean([materialBrand, ...hingeNames, handleQty > 0 ? handle?.product_name : null, ...channelUse.keys(), laminateBrand, outer.name, inner.name]).join(", ");
   const designSpec = clean([laminateBrand, outer.name, inner.name]).join(", ");
+
+  const handleTable = ["Drawer Shutter", "Edge Shutter", "Inner Shutter", "Special shutter"].map((c) => ({ category: c, qty: handleByCat.get(normPart(c)) || 0 }));
 
   const computed = {
     groups,
-    laminate: { outer, inner, price: round2(laminatePrice) },
-    hardware: {
-      edge_hinge: { name: edgeHinge ? String(edgeHinge.product_name ?? "") : null, qty: edgeHingeQty, unit: edgeUnit, price: edgeHingePrice },
-      inner_hinge: { name: innerHinge ? String(innerHinge.product_name ?? "") : null, qty: innerHingeQty, unit: innerUnit, price: innerHingePrice },
-      channels: { qty: channelQty, price: channelPrice, names: [...channelNames] },
-      price: hardwarePrice,
+    laminate: { outer, inner },
+    hinges: {
+      edge: { name: edgeHinge ? String(edgeHinge.product_name ?? "") : null, qty: edgeQty, price: edgePrice },
+      inner: { name: innerHinge ? String(innerHinge.product_name ?? "") : null, qty: innerQty, price: innerHingePrice },
     },
+    channels: { qty: channelQty, price: channelPrice, names: [...channelUse.keys()] },
+    handles: { name: handle ? String(handle.product_name ?? "") : null, qty: handleQty, price: handlePrice, table: handleTable },
     totals: {
-      plywood: round2(plywoodPrice),
-      laminate: round2(laminatePrice),
-      hardware: hardwarePrice,
+      material: materialTotal,
+      hardware: hardwareTotal,
       total,
-      margin_price: marginPrice,
-      discount_price: discountPrice,
-      gst_price: gstPrice,
+      with_margin: withMargin,
+      margin_amount: marginAmount,
+      with_discount: withDiscount,
+      with_gst: withGst,
     },
-    margin_percent: margin,
-    discount_percent: discount,
-    gst_percent: gst,
+    boq_lines: boqLines,
+    margin_percent: margin, discount_percent: discount, gst_percent: gst,
   };
 
-  // ---- Save ----------------------------------------------------------------
+  // ---- Save + rebuild BOQ --------------------------------------------------
   let unitId = body.unit_id ? String(body.unit_id) : null;
   if (body.save) {
     if (!body.project_id) return json({ error: "Missing project." }, 400);
@@ -280,14 +294,19 @@ Deno.serve(async (req) => {
       material_brand: materialBrand,
       material_sub_category: materialSub,
       laminate_brand: laminateBrand,
-      outer_laminate_id: outerLamId,
-      inner_laminate_id: innerLamId,
-      total_material_price: round2(plywoodPrice + laminatePrice),
-      hardware_price: hardwarePrice,
+      outer_laminate_id: body.outer_laminate_id ? String(body.outer_laminate_id) : null,
+      inner_laminate_id: body.inner_laminate_id ? String(body.inner_laminate_id) : null,
+      edge_hinge_id: body.edge_hinge_id ? String(body.edge_hinge_id) : null,
+      inner_hinge_id: body.inner_hinge_id ? String(body.inner_hinge_id) : null,
+      channel_id: null,
+      handle_id: body.handle_id ? String(body.handle_id) : null,
+      total_material_price: materialTotal,
+      hardware_price: hardwareTotal,
       total_price: total,
-      margin_price: marginPrice,
-      discount_price: discountPrice,
-      gst_price: gstPrice,
+      margin_price: withMargin,
+      margin_amount: marginAmount,
+      discount_price: withDiscount,
+      gst_price: withGst,
       material_spec: materialSpec,
       design_spec: designSpec,
       computed,
@@ -300,28 +319,44 @@ Deno.serve(async (req) => {
       if (error) return json({ error: `Save failed: ${error.message}` }, 500);
       unitId = data.id;
     }
+    await rebuildBoq(admin, String(body.project_id));
   }
 
   return json({ ok: true, computed, material_spec: materialSpec, design_spec: designSpec, unit_id: unitId, saved: Boolean(body.save) });
 });
 
+// Rebuilds the project BOQ from every unit's stored boq_lines.
+async function rebuildBoq(admin: Any, projectId: string) {
+  const { data: units } = await admin.from("turnkey_quote_box_units").select("computed").eq("project_id", projectId);
+  const agg = new Map<string, { product_name: string; category: string; quantity: number }>();
+  (units ?? []).forEach((u: Any) => {
+    const lines = (u.computed && u.computed.boq_lines) || [];
+    lines.forEach((l: Any) => {
+      const key = `${l.category}||${l.product_name}`;
+      const cur = agg.get(key) ?? { product_name: l.product_name, category: l.category, quantity: 0 };
+      cur.quantity += Number(l.quantity) || 0;
+      agg.set(key, cur);
+    });
+  });
+  await admin.from("turnkey_project_boq").delete().eq("project_id", projectId);
+  const rows = [...agg.values()].map((r) => ({ project_id: projectId, ...r }));
+  if (rows.length) await admin.from("turnkey_project_boq").insert(rows);
+}
+
 // ---------------------------------------------------------------------------
 interface Panel { partCat: string; length: number; width: number; thickness: number; qty: number; }
 
 function parseCutlist(text: string): Panel[] {
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // strip UTF-8 BOM
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (!lines.length) throw new Error("empty file");
-  // Auto-detect delimiter from the header row (semicolon or comma).
   const semis = (lines[0].match(/;/g) || []).length;
   const commas = (lines[0].match(/,/g) || []).length;
   const delim = semis >= commas ? ";" : ",";
   const header = lines[0].split(delim).map((h) => h.trim().toLowerCase());
   const col = (name: string) => header.findIndex((h) => h === name);
   const iDes = col("designation"), iLen = col("length"), iWid = col("width"), iThk = col("thickness"), iQty = col("quantity");
-  if (iLen < 0 || iWid < 0 || iThk < 0) {
-    throw new Error(`need columns Length, Width, Thickness — found: ${header.join(", ") || "none"}`);
-  }
+  if (iLen < 0 || iWid < 0 || iThk < 0) throw new Error(`need columns Length, Width, Thickness — found: ${header.join(", ") || "none"}`);
   const panels: Panel[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cells = lines[i].split(delim);
