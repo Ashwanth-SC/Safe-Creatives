@@ -494,11 +494,11 @@
         { key: "brand", label: "Brand" },
         { key: "category", label: "Product category", type: "select", options: catNames },
         { key: "sub_category", label: "Sub category", aliases: ["subcategory"] },
-        { key: "std_width", label: "Standard width", type: "number", aliases: ["std width"] },
-        { key: "std_height", label: "Standard height", type: "number", aliases: ["std height"] },
-        { key: "area_sqft", label: "Area (sqft)", readonly: true },
-        { key: "thickness", label: "Thickness" },
-        { key: "price_per_sqft", label: "Price/sqft", type: "number", aliases: ["cost/sqft", "cost per sqft", "price per sqft"] },
+        { key: "std_width", label: "Standard width (mm)", type: "number", aliases: ["std width"] },
+        { key: "std_height", label: "Standard height (mm)", type: "number", aliases: ["std height"] },
+        { key: "area_sqft", label: "Area (mm²)", readonly: true },
+        { key: "thickness", label: "Thickness (mm)" },
+        { key: "price_per_sqft", label: "Price (per piece)", type: "number", aliases: ["price", "cost", "cost/sqft", "cost per sqft", "price per sqft"] },
       ],
     });
 
@@ -578,11 +578,7 @@
   }
 
   async function hardwaresPanel() {
-    const [cats, supplierNames] = await Promise.all([
-      loadCategoryList("turnkey_hardware_categories"),
-      loadSupplierNames(),
-    ]);
-    const catNames = cats.map((c) => c.name);
+    const supplierNames = await loadSupplierNames();
 
     const grid = editableGrid({
       table: "turnkey_hardwares",
@@ -590,9 +586,9 @@
       columns: [
         { key: "supplier", label: "Supplier", type: "select", options: supplierNames, aliases: ["supplier company name"] },
         { key: "product_name", label: "Product name" },
-        { key: "category", label: "Product category", type: "select", options: catNames },
-        { key: "size", label: "Size" },
-        { key: "price", label: "Price", type: "number" },
+        { key: "category", label: "Product category" },
+        { key: "size", label: "Size (mm)" },
+        { key: "price", label: "Price (per piece)", type: "number", aliases: ["price"] },
       ],
     });
 
@@ -601,16 +597,35 @@
       el(
         "p",
         "dash-note",
-        "Handles, hinges, drawer channels and other hardware. Manage the categories below (they fill the Product category dropdown), then add rows, edit cells, or import a CSV."
+        "Handles, hinges, drawer channels and other hardware. Add rows, edit cells, or import a CSV. Product category is free text — reuse the same category (e.g. Edge hinges) across as many rows as you like."
       )
     );
+    wrap.appendChild(grid.frag);
+    await grid.load();
+    return wrap;
+  }
+
+  async function boxLogicPanel() {
+    const grid = editableGrid({
+      table: "turnkey_box_part_logic",
+      orderBy: "sort_order",
+      columns: [
+        { key: "part_category", label: "Part category" },
+        { key: "ply_qty", label: "Plywood qty", type: "number" },
+        { key: "outer_lam", label: "Outer laminate", type: "number" },
+        { key: "inner_lam", label: "Inner laminate", type: "number" },
+        { key: "hinge_type", label: "Hinge", type: "select", options: ["None", "Edge", "Inner"] },
+        { key: "handles", label: "Handles", type: "number" },
+        { key: "channel", label: "Channel", type: "select", options: ["No", "Yes"] },
+      ],
+    });
+    const wrap = document.createDocumentFragment();
     wrap.appendChild(
-      renderCategoryManager(cats, {
-        table: "turnkey_hardware_categories",
-        tab: "hardwares",
-        label: "Hardware categories",
-        placeholder: "Add a category (e.g. Edge hinges)",
-      })
+      el(
+        "p",
+        "dash-note",
+        "The per-part-category quantity logic for Box & Shutters. Edit the plywood / laminate multipliers, hinge type, handle count and whether a channel applies. The hinge count formula and channel selection are applied by the calculator."
+      )
     );
     wrap.appendChild(grid.frag);
     await grid.load();
@@ -622,6 +637,7 @@
     products: productsPanel,
     labour: labourPanel,
     hardwares: hardwaresPanel,
+    "box-logic": boxLogicPanel,
   };
 
   async function show(tab) {
