@@ -550,6 +550,7 @@
       columns: [
         { key: "category", label: "Labour category", type: "select", options: catNames },
         { key: "name", label: "Name" },
+        { key: "task", label: "Task", aliases: ["task"] },
         { key: "contact_number", label: "Contact number", aliases: ["contact", "phone", "spoc contact"] },
         { key: "cost_per_day", label: "Cost per day", type: "number", aliases: ["cost/day", "cost per day"] },
         { key: "cost_per_sqft", label: "Cost per sqft", type: "number", aliases: ["cost/sqft", "cost per sqft"] },

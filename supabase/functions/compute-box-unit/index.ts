@@ -22,8 +22,14 @@
 //   * handles: per panel handles count -> total; price = qty * handle price.
 //   * channels: each part with channel=Yes -> the Channel hardware whose size
 //     (ft->mm) is the largest <= max(L,W) (smallest if under all); one each.
-//   * total = plywood + laminate + hardware; withMargin, margin amount,
-//     withDiscount, withGst from the project percentages.
+//   * special additions: per-unit [{name, cost}] — names appended to the design
+//     spec, costs summed into the base total.
+//   * labour: per-unit [{labour_id, total_days, total_sqft}] — cost per line =
+//     days*cost_per_day + sqft*cost_per_sqft (rates from the labour row);
+//     summed into the base total. category_sqft (sqft per part category from the
+//     cutlist) is returned to guide the sqft entry.
+//   * total = plywood + laminate + hardware + special + labour; withMargin,
+//     margin amount, withDiscount, withGst from the project percentages.
 //
 // On save: stores the unit + rebuilds turnkey_project_boq from ALL the
 // project's units. { recompute_boq:true, project_id } just rebuilds the BOQ.
@@ -249,6 +255,56 @@ Deno.serve(async (req) => {
 
   const hardwareTotal = round2(edgePrice + innerHingePrice + handlePrice + channelPrice);
 
+  // ---- Special additions (name + cost, entered per unit) ------------------
+  const specialIn = Array.isArray(body.special_additions) ? (body.special_additions as Any[]) : [];
+  const specialTable = specialIn
+    .map((s: Any) => ({ name: String(s?.name ?? "").trim(), cost: round2(num(s?.cost)) }))
+    .filter((s) => s.name || s.cost > 0);
+  const specialTotal = round2(specialTable.reduce((sum, s) => sum + (s.cost || 0), 0));
+
+  // ---- Labour (category -> name -> task, days + sqft) ----------------------
+  // Each line references a turnkey_labour row; cost = days*cost_per_day +
+  // sqft*cost_per_sqft for that row.
+  const labourIn = Array.isArray(body.labour_lines) ? (body.labour_lines as Any[]) : [];
+  const labourIds = labourIn.map((l: Any) => l?.labour_id).filter(Boolean).map(String);
+  const labourById = new Map<string, Any>();
+  if (labourIds.length) {
+    const { data } = await admin.from("turnkey_labour").select("id, category, name, task, cost_per_day, cost_per_sqft").in("id", [...new Set(labourIds)]);
+    (data ?? []).forEach((r: Any) => labourById.set(String(r.id), r));
+  }
+  const labourTable = labourIn.map((l: Any) => {
+    const row = l?.labour_id ? labourById.get(String(l.labour_id)) : undefined;
+    const days = num(l?.total_days);
+    const sqft = num(l?.total_sqft);
+    const perDay = row ? Number(row.cost_per_day) || 0 : 0;
+    const perSqft = row ? Number(row.cost_per_sqft) || 0 : 0;
+    const cost = round2(days * perDay + sqft * perSqft);
+    return {
+      labour_id: l?.labour_id ? String(l.labour_id) : null,
+      category: row ? String(row.category ?? "") : (l?.category ? String(l.category) : null),
+      name: row ? String(row.name ?? "") : (l?.name ? String(l.name) : null),
+      task: row ? String(row.task ?? "") : (l?.task ? String(l.task) : null),
+      total_days: days,
+      total_sqft: sqft,
+      cost,
+    };
+  });
+  const labourTotal = round2(labourTable.reduce((sum, l) => sum + (l.cost || 0), 0));
+
+  // ---- Sqft of every box & shutters part category (from the cutlist) -------
+  // Reference for filling in labour sqft; keyed by the logic table's display
+  // name where the part is known, else the raw designation.
+  const catSqftMap = new Map<string, number>();
+  for (const p of panels) {
+    const a = ((p.length + 2) * (p.width + 2) * p.qty) / SQFT_PER_MM2;
+    const known = logic.get(normPart(p.partCat));
+    const label = known ? String(known.part_category ?? p.partCat) : p.partCat;
+    catSqftMap.set(label, (catSqftMap.get(label) || 0) + a);
+  }
+  const categorySqft = [...catSqftMap.entries()]
+    .map(([category, sqft]) => ({ category, sqft: round2(sqft) }))
+    .sort((a, b) => b.sqft - a.sqft);
+
   // ---- Totals --------------------------------------------------------------
   let margin = 0, gst = 0, discount = 0;
   if (body.project_id) {
@@ -257,7 +313,9 @@ Deno.serve(async (req) => {
     gst = Number(proj?.gst_percent) || 0;
     discount = Number(proj?.discount_percent) || 0;
   }
-  const total = round2(materialTotal + hardwareTotal);
+  // Special additions + labour land in the base Total, so margin, discount and
+  // GST cascade over them just like materials and hardware.
+  const total = round2(materialTotal + hardwareTotal + specialTotal + labourTotal);
   const withMargin = round2(total * (1 + margin / 100));
   const marginAmount = round2(withMargin - total);
   const withDiscount = round2(withMargin * (1 - discount / 100));
@@ -268,7 +326,9 @@ Deno.serve(async (req) => {
   const hingeNames = clean([edgeQty > 0 ? edgeHinge?.product_name : null, innerQty > 0 ? innerHinge?.product_name : null]);
   const handleNames = [...new Set(handleTable.filter((r) => r.handle_name).map((r) => r.handle_name as string))];
   const materialSpec = clean([materialBrand, ...hingeNames, ...handleNames, ...channelUse.keys(), laminateBrand, outer.name, inner.name]).join(", ");
-  const designSpec = clean([laminateBrand, outer.name, inner.name]).join(", ");
+  // Special addition names are appended to the design spec, after a comma.
+  const specialNames = specialTable.map((s) => s.name);
+  const designSpec = clean([laminateBrand, outer.name, inner.name, ...specialNames]).join(", ");
 
   const computed = {
     groups,
@@ -279,9 +339,14 @@ Deno.serve(async (req) => {
     },
     channels: { qty: channelQty, price: channelPrice, names: [...channelUse.keys()] },
     handles: { qty: handleQty, price: handlePrice, table: handleTable },
+    special: { total: specialTotal, table: specialTable },
+    labour: { total: labourTotal, table: labourTable },
+    category_sqft: categorySqft,
     totals: {
       material: materialTotal,
       hardware: hardwareTotal,
+      special: specialTotal,
+      labour: labourTotal,
       total,
       with_margin: withMargin,
       margin_amount: marginAmount,
@@ -311,6 +376,10 @@ Deno.serve(async (req) => {
       channel_id: null,
       handle_id: null,
       handle_ids: handleIds,
+      special_additions: specialTable,
+      labour_lines: labourTable,
+      special_price: specialTotal,
+      labour_price: labourTotal,
       total_material_price: materialTotal,
       hardware_price: hardwareTotal,
       total_price: total,

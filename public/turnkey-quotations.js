@@ -206,6 +206,14 @@
     if (error) throw error;
     return data || [];
   }
+  async function loadLabour() {
+    const { data, error } = await sb
+      .from("turnkey_labour")
+      .select("id, category, name, task, cost_per_day, cost_per_sqft")
+      .order("category", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
   async function loadBoxUnits(projectId) {
     const { data, error } = await sb
       .from("turnkey_quote_box_units")
@@ -238,22 +246,23 @@
   async function renderBoxShutters(container) {
     container.textContent = "";
     container.appendChild(el("p", "dash-note", "Loading…"));
-    let spaces, products, hardware, units;
+    let spaces, products, hardware, labour, units;
     try {
-      [spaces, products, hardware, units] = await Promise.all([
+      [spaces, products, hardware, labour, units] = await Promise.all([
         loadSelectedSpaces(currentProject),
         loadProducts(),
         loadHardware(),
+        loadLabour(),
         loadBoxUnits(currentProject),
       ]);
     } catch (error) {
       container.textContent = "";
       container.appendChild(
-        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migrations 027–030.`)
+        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migrations 027–032.`)
       );
       return;
     }
-    const ref = { spaces, products, hardware };
+    const ref = { spaces, products, hardware, labour };
     container.textContent = "";
     container.appendChild(unitEditor(ref, null, () => renderBoxShutters(container)));
     container.appendChild(unitsList(units, () => renderBoxShutters(container)));
@@ -330,6 +339,25 @@
     const handleOptions = hwOptions("handle");
     const handleSel = u.handle_ids && typeof u.handle_ids === "object" ? { ...u.handle_ids } : {};
 
+    // Special additions (name + cost) and Labour (category -> name -> task +
+    // days/sqft) — both editable below, both fold into the base total on save.
+    const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ name: s.name || "", cost: s.cost ?? "" }));
+    const labour = (Array.isArray(u.labour_lines) ? u.labour_lines : []).map((l) => ({
+      labour_id: l.labour_id || "", category: l.category || "", name: l.name || "",
+      task: l.task || "", total_days: l.total_days ?? "", total_sqft: l.total_sqft ?? "",
+    }));
+    const labourRows = ref.labour || [];
+    const labourById = new Map(labourRows.map((r) => [r.id, r]));
+    const labourCategories = distinctVals(labourRows.map((r) => r.category)).sort();
+    const namesForCat = (cat) => distinctVals(labourRows.filter((r) => r.category === cat).map((r) => r.name)).sort();
+    const tasksForCatName = (cat, name) =>
+      labourRows.filter((r) => r.category === cat && r.name === name).map((r) => [r.id, r.task || "(no task)"]);
+    const labourCost = (row) => {
+      const lr = row.labour_id ? labourById.get(row.labour_id) : null;
+      if (!lr) return 0;
+      return (Number(row.total_days) || 0) * (Number(lr.cost_per_day) || 0) + (Number(row.total_sqft) || 0) * (Number(lr.cost_per_sqft) || 0);
+    };
+
     const selRow = el("div", "admin-inline tk-sel-grid");
     selRow.append(
       field("Plywood brand", matBrandS),
@@ -342,6 +370,7 @@
     );
 
     const sectionsWrap = el("div", "tk-box-sections");
+    const totalsWrap = el("div");
     const msg = el("p", "admin-hint", "");
 
     // Passed to renderSections so the handles table can offer a handle dropdown
@@ -367,7 +396,23 @@
       edge_hinge_id: edgeHingeS.value || null,
       inner_hinge_id: innerHingeS.value || null,
       handle_ids: handleSel,
+      special_additions: special
+        .map((s) => ({ name: (s.name || "").trim(), cost: Number(s.cost) || 0 }))
+        .filter((s) => s.name || s.cost),
+      labour_lines: labour
+        .map((l) => ({ labour_id: l.labour_id || null, total_days: Number(l.total_days) || 0, total_sqft: Number(l.total_sqft) || 0 }))
+        .filter((l) => l.labour_id || l.total_days || l.total_sqft),
     });
+
+    // ---- Special additions (interactive; persists across recomputes) -------
+    const specialSection = buildSpecialSection(special, () => compute(false));
+
+    // ---- Labour (interactive) + per-category sqft reference ----------------
+    const catSqftBox = el("div", "tk-cat-sqft");
+    const labourSection = buildLabourSection(
+      { labour, labourCategories, namesForCat, tasksForCatName, labourCost, hasLabour: labourRows.length > 0, catSqftBox },
+      () => compute(false)
+    );
 
     async function compute(save) {
       if (!csvText) return void (msg.textContent = "Import a cutlist CSV first.");
@@ -376,6 +421,8 @@
         const res = await computeUnit(inputs(save));
         if (save) unitId = res.unit_id;
         renderSections(sectionsWrap, res.computed, ctx);
+        renderTotals(totalsWrap, res.computed);
+        renderCatSqft(catSqftBox, res.computed);
         msg.textContent = "";
         if (save) {
           message(`Saved ${nameI.value.trim() || "unit"} — ${money(res.computed.totals.with_gst)} (with GST).`);
@@ -403,11 +450,240 @@
 
     const actions = el("div", "admin-row-actions");
     actions.append(computeBtn, saveBtn);
-    block.append(grid, selRow, sectionsWrap, actions, msg);
+    const extrasWrap = el("div", "tk-box-sections");
+    extrasWrap.append(specialSection, labourSection);
+    block.append(grid, selRow, sectionsWrap, extrasWrap, totalsWrap, actions, msg);
 
+    renderCatSqft(catSqftBox, null);
+    renderTotals(totalsWrap, null);
     if (existing && csvText) compute(false);
     else renderSections(sectionsWrap, null, ctx);
     return block;
+  }
+
+  // The Special additions table: rows of { name, cost }, add / remove. Mutates
+  // the shared `special` array in place; `onChange` recomputes the unit total.
+  function buildSpecialSection(special, onChange) {
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", "Special additions"));
+    wrap.appendChild(el("p", "dash-note", "Extra line items. Each name is appended to the Design specifications; the cost adds into the total (margin, discount & GST apply)."));
+
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Addition", "Cost", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tbody = el("tbody");
+    t.append(thead, tbody);
+    scroll.appendChild(t);
+
+    const subtotal = el("p", "tk-box-total", "");
+    const refreshSubtotal = () => {
+      const sum = special.reduce((s, r) => s + (Number(r.cost) || 0), 0);
+      subtotal.textContent = `Special additions total: ${money(sum)}`;
+    };
+
+    function addRowDom(row) {
+      const tr = el("tr");
+      const nameTd = el("td");
+      const nameI = document.createElement("input");
+      nameI.type = "text";
+      nameI.className = "grid-input";
+      nameI.placeholder = "e.g. LED strip";
+      nameI.value = row.name || "";
+      nameI.addEventListener("input", () => { row.name = nameI.value; });
+      nameI.addEventListener("change", onChange);
+      nameTd.appendChild(nameI);
+
+      const costTd = el("td");
+      const costI = document.createElement("input");
+      costI.type = "number";
+      costI.min = "0";
+      costI.className = "grid-input";
+      costI.placeholder = "0";
+      costI.value = row.cost === "" || row.cost == null ? "" : row.cost;
+      costI.addEventListener("input", () => { row.cost = costI.value; refreshSubtotal(); });
+      costI.addEventListener("change", onChange);
+      costTd.appendChild(costI);
+
+      const delTd = el("td", "db-grid-del");
+      const del = el("button", "tk-delete-link", "✕");
+      del.type = "button";
+      del.title = "Remove";
+      del.addEventListener("click", () => {
+        const idx = special.indexOf(row);
+        if (idx >= 0) special.splice(idx, 1);
+        tr.remove();
+        refreshSubtotal();
+        onChange();
+      });
+      delTd.appendChild(del);
+
+      tr.append(nameTd, costTd, delTd);
+      tbody.appendChild(tr);
+      return nameI;
+    }
+    special.forEach(addRowDom);
+
+    const addBtn = el("button", "admin-primary-small", "+ Add addition");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", () => {
+      const row = { name: "", cost: "" };
+      special.push(row);
+      addRowDom(row).focus();
+    });
+
+    wrap.append(scroll, addBtn, subtotal);
+    refreshSubtotal();
+    return wrap;
+  }
+
+  // The Labour table: category -> name -> task cascade + days/sqft, with a live
+  // computed cost per row, plus the per-part-category sqft reference below it.
+  function buildLabourSection(cfg, onChange) {
+    const { labour, labourCategories, namesForCat, tasksForCatName, labourCost, hasLabour, catSqftBox } = cfg;
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", "Labour"));
+    if (!hasLabour) {
+      wrap.appendChild(el("p", "dash-note", "No labour in the database yet — add labourers (with their task and rates) in the Turnkey database first."));
+      wrap.appendChild(catSqftBox);
+      return wrap;
+    }
+    wrap.appendChild(el("p", "dash-note", "Pick a labourer by category → name → task, then enter days and/or sqft. Cost = days × cost/day + sqft × cost/sqft; it adds into the total (margin, discount & GST apply)."));
+
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Labour category", "Name", "Task", "Total days", "Total sqft", "Cost", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tbody = el("tbody");
+    t.append(thead, tbody);
+    scroll.appendChild(t);
+
+    const subtotal = el("p", "tk-box-total", "");
+    const refreshSubtotal = () => {
+      const sum = labour.reduce((s, r) => s + labourCost(r), 0);
+      subtotal.textContent = `Labour total: ${money(sum)}`;
+    };
+
+    function addRowDom(row) {
+      const tr = el("tr");
+      const catSel = selectEl(labourCategories, row.category || "", "Category…");
+      const nameSel = selectEl(namesForCat(row.category || ""), row.name || "", "Name…");
+      const taskSel = selectEl(tasksForCatName(row.category || "", row.name || ""), row.labour_id || "", "Task…");
+      const daysI = document.createElement("input");
+      daysI.type = "number"; daysI.min = "0"; daysI.className = "grid-input"; daysI.placeholder = "0";
+      daysI.value = row.total_days === "" || row.total_days == null ? "" : row.total_days;
+      const sqftI = document.createElement("input");
+      sqftI.type = "number"; sqftI.min = "0"; sqftI.className = "grid-input"; sqftI.placeholder = "0";
+      sqftI.value = row.total_sqft === "" || row.total_sqft == null ? "" : row.total_sqft;
+      const costCell = el("td");
+      const updateCost = () => { costCell.textContent = money(labourCost(row)); refreshSubtotal(); };
+
+      catSel.addEventListener("change", () => {
+        row.category = catSel.value; row.name = ""; row.labour_id = ""; row.task = "";
+        replaceOptions(nameSel, namesForCat(row.category), "", "Name…");
+        replaceOptions(taskSel, [], "", "Task…");
+        updateCost(); onChange();
+      });
+      nameSel.addEventListener("change", () => {
+        row.name = nameSel.value; row.labour_id = ""; row.task = "";
+        replaceOptions(taskSel, tasksForCatName(row.category, row.name), "", "Task…");
+        updateCost(); onChange();
+      });
+      taskSel.addEventListener("change", () => {
+        row.labour_id = taskSel.value;
+        row.task = taskSel.options[taskSel.selectedIndex]?.textContent || "";
+        updateCost(); onChange();
+      });
+      daysI.addEventListener("input", () => { row.total_days = daysI.value; updateCost(); });
+      daysI.addEventListener("change", onChange);
+      sqftI.addEventListener("input", () => { row.total_sqft = sqftI.value; updateCost(); });
+      sqftI.addEventListener("change", onChange);
+
+      const cell = (control) => { const td = el("td"); td.appendChild(control); return td; };
+      const delTd = el("td", "db-grid-del");
+      const del = el("button", "tk-delete-link", "✕");
+      del.type = "button"; del.title = "Remove";
+      del.addEventListener("click", () => {
+        const idx = labour.indexOf(row);
+        if (idx >= 0) labour.splice(idx, 1);
+        tr.remove();
+        refreshSubtotal();
+        onChange();
+      });
+      delTd.appendChild(del);
+
+      tr.append(cell(catSel), cell(nameSel), cell(taskSel), cell(daysI), cell(sqftI), costCell, delTd);
+      costCell.textContent = money(labourCost(row));
+      tbody.appendChild(tr);
+      return catSel;
+    }
+    labour.forEach(addRowDom);
+
+    const addBtn = el("button", "admin-primary-small", "+ Add labour");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", () => {
+      const row = { labour_id: "", category: "", name: "", task: "", total_days: "", total_sqft: "" };
+      labour.push(row);
+      addRowDom(row).focus();
+    });
+
+    wrap.append(scroll, addBtn, subtotal, catSqftBox);
+    refreshSubtotal();
+    return wrap;
+  }
+
+  // The per-part-category sqft reference (from the cutlist) shown under Labour.
+  function renderCatSqft(container, computed) {
+    container.textContent = "";
+    container.appendChild(el("p", "tk-box-line tk-cat-sqft-head", "Sqft by box & shutters category (from the cutlist):"));
+    const rows = (computed && computed.category_sqft) || [];
+    if (!rows.length) {
+      container.appendChild(el("p", "dash-note", "Import a cutlist and Compute to see the per-category sqft."));
+      return;
+    }
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const hr = el("tr");
+    ["Category", "Total sqft"].forEach((h) => hr.appendChild(el("th", null, h)));
+    t.appendChild(hr);
+    let total = 0;
+    rows.forEach((r) => {
+      total += Number(r.sqft) || 0;
+      const tr = el("tr");
+      const c1 = el("td"); c1.textContent = r.category;
+      const c2 = el("td"); c2.textContent = r.sqft;
+      tr.append(c1, c2);
+      t.appendChild(tr);
+    });
+    const trT = el("tr", "tk-cat-sqft-total");
+    const cT1 = el("td"); cT1.textContent = "All categories";
+    const cT2 = el("td"); cT2.textContent = Math.round(total * 100) / 100;
+    trT.append(cT1, cT2);
+    t.appendChild(trT);
+    scroll.appendChild(t);
+    container.appendChild(scroll);
+  }
+
+  // The totals box (Total → With margin → Margin → With discount → With GST).
+  function renderTotals(container, computed) {
+    container.textContent = "";
+    if (!computed) return;
+    const tot = computed.totals;
+    const totBox = el("div", "tk-box-totals");
+    [
+      ["Total", tot.total], ["With margin", tot.with_margin], ["Margin", tot.margin_amount],
+      ["With discount", tot.with_discount], ["With GST", tot.with_gst],
+    ].forEach(([label, val]) => {
+      const d = el("div", "tk-box-total-cell");
+      d.appendChild(el("span", "tk-box-total-label", label));
+      d.appendChild(el("span", "tk-box-total-val", money(val)));
+      totBox.appendChild(d);
+    });
+    container.appendChild(totBox);
   }
 
   // Renders the material tables, hardware sections + totals. `ctx` (optional)
@@ -497,25 +773,8 @@
     s4.appendChild(el("p", "tk-box-line", `Handles total: ${ha.qty} → ${money(ha.price)}`));
     container.appendChild(s4);
 
-    // --- Special additions ---
-    const s5 = el("div", "tk-box-section");
-    s5.appendChild(el("div", "tk-box-section-head", "Special additions"));
-    s5.appendChild(el("p", "dash-note", "To be added later."));
-    container.appendChild(s5);
-
-    // --- Totals ---
-    const tot = computed.totals;
-    const totBox = el("div", "tk-box-totals");
-    [
-      ["Total", tot.total], ["With margin", tot.with_margin], ["Margin", tot.margin_amount],
-      ["With discount", tot.with_discount], ["With GST", tot.with_gst],
-    ].forEach(([label, val]) => {
-      const d = el("div", "tk-box-total-cell");
-      d.appendChild(el("span", "tk-box-total-label", label));
-      d.appendChild(el("span", "tk-box-total-val", money(val)));
-      totBox.appendChild(d);
-    });
-    container.appendChild(totBox);
+    // Special additions, Labour and the totals box render after this, in their
+    // own persistent sections (they stay editable across recomputes).
   }
 
   function unitsList(units, onChanged) {
@@ -543,7 +802,7 @@
       open.addEventListener("click", async () => {
         try {
           const existing = await loadBoxUnit(u.id);
-          const ref = { spaces: await loadSelectedSpaces(currentProject), products: await loadProducts(), hardware: await loadHardware() };
+          const ref = { spaces: await loadSelectedSpaces(currentProject), products: await loadProducts(), hardware: await loadHardware(), labour: await loadLabour() };
           panel.textContent = "";
           panel.appendChild(unitEditor(ref, existing, () => renderBoxShutters(panel)));
           panel.appendChild(unitsList(await loadBoxUnits(currentProject), () => renderBoxShutters(panel)));

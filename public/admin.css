@@ -260,6 +260,14 @@ button:disabled { opacity: .5; cursor: progress; }
 .tk-box-total-cell { flex:1; min-width:120px; padding:10px 14px; background:#f4f6f3; border:1px solid rgba(12,68,68,.2); border-radius:8px; }
 .tk-box-total-label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#777; }
 .tk-box-total-val { display:block; font-size:17px; font-weight:700; color:#0c4444; margin-top:2px; }
+/* Per-part-category sqft reference under the Labour table */
+.tk-cat-sqft { margin-top:12px; padding-top:12px; border-top:1px dashed rgba(23,23,23,.16); }
+.tk-cat-sqft-head { font-weight:600; color:#171717; }
+.tk-cat-sqft-total td { font-weight:700; color:#0c4444; background:#f4f6f3; }
+/* Editable inputs inside the quotation mini-tables sit tighter than the grid */
+.tk-box-section .dash-table .grid-input { min-width:90px; }
+.tk-box-section .dash-table td { vertical-align:middle; }
+
 /* Equal-width selector dropdowns in the builder */
 .tk-sel-grid .admin-field { width:210px; }
 .tk-sel-grid .admin-field select { width:100%; }
