@@ -267,6 +267,8 @@ button:disabled { opacity: .5; cursor: progress; }
 /* Editable inputs inside the quotation mini-tables sit tighter than the grid */
 .tk-box-section .dash-table .grid-input { min-width:90px; }
 .tk-box-section .dash-table td { vertical-align:middle; }
+/* Per-row sqft category picker (narrower than the default multi-select) */
+.tk-sqft-pick { min-width:170px; max-width:240px; margin-top:0; }
 
 /* Equal-width selector dropdowns in the builder */
 .tk-sel-grid .admin-field { width:210px; }

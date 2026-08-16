@@ -24,10 +24,11 @@
 //     (ft->mm) is the largest <= max(L,W) (smallest if under all); one each.
 //   * special additions: per-unit [{name, cost}] — names appended to the design
 //     spec, costs summed into the base total.
-//   * labour: per-unit [{labour_id, total_days, total_sqft}] — cost per line =
-//     days*cost_per_day + sqft*cost_per_sqft (rates from the labour row);
-//     summed into the base total. category_sqft (sqft per part category from the
-//     cutlist) is returned to guide the sqft entry.
+//   * labour: per-unit [{labour_id, total_days, sqft_categories[], total_sqft}]
+//     — sqft is the sum of the picked category_sqft rows (or manual total_sqft);
+//     cost per line = days*cost_per_day + sqft*cost_per_sqft (rates from the
+//     labour row); summed into the base total. category_sqft (sqft per part
+//     category from the cutlist) is returned to drive the picker.
 //   * total = plywood + laminate + hardware + special + labour; withMargin,
 //     margin amount, withDiscount, withGst from the project percentages.
 //
@@ -262,38 +263,9 @@ Deno.serve(async (req) => {
     .filter((s) => s.name || s.cost > 0);
   const specialTotal = round2(specialTable.reduce((sum, s) => sum + (s.cost || 0), 0));
 
-  // ---- Labour (category -> name -> task, days + sqft) ----------------------
-  // Each line references a turnkey_labour row; cost = days*cost_per_day +
-  // sqft*cost_per_sqft for that row.
-  const labourIn = Array.isArray(body.labour_lines) ? (body.labour_lines as Any[]) : [];
-  const labourIds = labourIn.map((l: Any) => l?.labour_id).filter(Boolean).map(String);
-  const labourById = new Map<string, Any>();
-  if (labourIds.length) {
-    const { data } = await admin.from("turnkey_labour").select("id, category, name, task, cost_per_day, cost_per_sqft").in("id", [...new Set(labourIds)]);
-    (data ?? []).forEach((r: Any) => labourById.set(String(r.id), r));
-  }
-  const labourTable = labourIn.map((l: Any) => {
-    const row = l?.labour_id ? labourById.get(String(l.labour_id)) : undefined;
-    const days = num(l?.total_days);
-    const sqft = num(l?.total_sqft);
-    const perDay = row ? Number(row.cost_per_day) || 0 : 0;
-    const perSqft = row ? Number(row.cost_per_sqft) || 0 : 0;
-    const cost = round2(days * perDay + sqft * perSqft);
-    return {
-      labour_id: l?.labour_id ? String(l.labour_id) : null,
-      category: row ? String(row.category ?? "") : (l?.category ? String(l.category) : null),
-      name: row ? String(row.name ?? "") : (l?.name ? String(l.name) : null),
-      task: row ? String(row.task ?? "") : (l?.task ? String(l.task) : null),
-      total_days: days,
-      total_sqft: sqft,
-      cost,
-    };
-  });
-  const labourTotal = round2(labourTable.reduce((sum, l) => sum + (l.cost || 0), 0));
-
   // ---- Sqft of every box & shutters part category (from the cutlist) -------
-  // Reference for filling in labour sqft; keyed by the logic table's display
-  // name where the part is known, else the raw designation.
+  // Reference for the labour sqft; keyed by the logic table's display name
+  // where the part is known, else the raw designation.
   const catSqftMap = new Map<string, number>();
   for (const p of panels) {
     const a = ((p.length + 2) * (p.width + 2) * p.qty) / SQFT_PER_MM2;
@@ -304,6 +276,41 @@ Deno.serve(async (req) => {
   const categorySqft = [...catSqftMap.entries()]
     .map(([category, sqft]) => ({ category, sqft: round2(sqft) }))
     .sort((a, b) => b.sqft - a.sqft);
+  const catSqftLookup = new Map(categorySqft.map((r) => [r.category, r.sqft]));
+
+  // ---- Labour (category -> name -> task, days + sqft) ----------------------
+  // Each line references a turnkey_labour row. Sqft is auto-summed from the
+  // selected box & shutters categories (sqft_categories) when any are picked,
+  // else the manual total_sqft; cost = days*cost_per_day + sqft*cost_per_sqft.
+  const labourIn = Array.isArray(body.labour_lines) ? (body.labour_lines as Any[]) : [];
+  const labourIds = labourIn.map((l: Any) => l?.labour_id).filter(Boolean).map(String);
+  const labourById = new Map<string, Any>();
+  if (labourIds.length) {
+    const { data } = await admin.from("turnkey_labour").select("id, category, name, task, cost_per_day, cost_per_sqft").in("id", [...new Set(labourIds)]);
+    (data ?? []).forEach((r: Any) => labourById.set(String(r.id), r));
+  }
+  const labourTable = labourIn.map((l: Any) => {
+    const row = l?.labour_id ? labourById.get(String(l.labour_id)) : undefined;
+    const days = num(l?.total_days);
+    const cats = Array.isArray(l?.sqft_categories) ? (l.sqft_categories as Any[]).map(String) : [];
+    const sqft = cats.length
+      ? round2(cats.reduce((s: number, c: string) => s + (catSqftLookup.get(c) || 0), 0))
+      : num(l?.total_sqft);
+    const perDay = row ? Number(row.cost_per_day) || 0 : 0;
+    const perSqft = row ? Number(row.cost_per_sqft) || 0 : 0;
+    const cost = round2(days * perDay + sqft * perSqft);
+    return {
+      labour_id: l?.labour_id ? String(l.labour_id) : null,
+      category: row ? String(row.category ?? "") : (l?.category ? String(l.category) : null),
+      name: row ? String(row.name ?? "") : (l?.name ? String(l.name) : null),
+      task: row ? String(row.task ?? "") : (l?.task ? String(l.task) : null),
+      total_days: days,
+      sqft_categories: cats,
+      total_sqft: sqft,
+      cost,
+    };
+  });
+  const labourTotal = round2(labourTable.reduce((sum, l) => sum + (l.cost || 0), 0));
 
   // ---- Totals --------------------------------------------------------------
   let margin = 0, gst = 0, discount = 0;

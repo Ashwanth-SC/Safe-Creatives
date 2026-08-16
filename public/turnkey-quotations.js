@@ -340,11 +340,13 @@
     const handleSel = u.handle_ids && typeof u.handle_ids === "object" ? { ...u.handle_ids } : {};
 
     // Special additions (name + cost) and Labour (category -> name -> task +
-    // days/sqft) — both editable below, both fold into the base total on save.
+    // days + sqft) — both editable below, both fold into the base total on save.
     const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ name: s.name || "", cost: s.cost ?? "" }));
     const labour = (Array.isArray(u.labour_lines) ? u.labour_lines : []).map((l) => ({
       labour_id: l.labour_id || "", category: l.category || "", name: l.name || "",
-      task: l.task || "", total_days: l.total_days ?? "", total_sqft: l.total_sqft ?? "",
+      task: l.task || "", total_days: l.total_days ?? "",
+      sqft_categories: Array.isArray(l.sqft_categories) ? [...l.sqft_categories] : [],
+      total_sqft: l.total_sqft ?? "",
     }));
     const labourRows = ref.labour || [];
     const labourById = new Map(labourRows.map((r) => [r.id, r]));
@@ -352,10 +354,23 @@
     const namesForCat = (cat) => distinctVals(labourRows.filter((r) => r.category === cat).map((r) => r.name)).sort();
     const tasksForCatName = (cat, name) =>
       labourRows.filter((r) => r.category === cat && r.name === name).map((r) => [r.id, r.task || "(no task)"]);
+
+    // Latest per-part-category sqft (from the last compute); the labour sqft
+    // picker sums the selected categories from this. Seeded from a reopened
+    // unit's stored breakdown so the picker shows numbers before recomputing.
+    let catSqftList = (existing && u.computed && Array.isArray(u.computed.category_sqft)) ? u.computed.category_sqft : [];
+    const rowSqft = (row) => {
+      const cats = Array.isArray(row.sqft_categories) ? row.sqft_categories : [];
+      if (cats.length) {
+        const m = new Map(catSqftList.map((r) => [r.category, Number(r.sqft) || 0]));
+        return cats.reduce((s, c) => s + (m.get(c) || 0), 0);
+      }
+      return Number(row.total_sqft) || 0;
+    };
     const labourCost = (row) => {
       const lr = row.labour_id ? labourById.get(row.labour_id) : null;
       if (!lr) return 0;
-      return (Number(row.total_days) || 0) * (Number(lr.cost_per_day) || 0) + (Number(row.total_sqft) || 0) * (Number(lr.cost_per_sqft) || 0);
+      return (Number(row.total_days) || 0) * (Number(lr.cost_per_day) || 0) + rowSqft(row) * (Number(lr.cost_per_sqft) || 0);
     };
 
     const selRow = el("div", "admin-inline tk-sel-grid");
@@ -400,8 +415,13 @@
         .map((s) => ({ name: (s.name || "").trim(), cost: Number(s.cost) || 0 }))
         .filter((s) => s.name || s.cost),
       labour_lines: labour
-        .map((l) => ({ labour_id: l.labour_id || null, total_days: Number(l.total_days) || 0, total_sqft: Number(l.total_sqft) || 0 }))
-        .filter((l) => l.labour_id || l.total_days || l.total_sqft),
+        .map((l) => ({
+          labour_id: l.labour_id || null,
+          total_days: Number(l.total_days) || 0,
+          sqft_categories: Array.isArray(l.sqft_categories) ? l.sqft_categories : [],
+          total_sqft: Number(l.total_sqft) || 0,
+        }))
+        .filter((l) => l.labour_id || l.total_days || l.sqft_categories.length || l.total_sqft),
     });
 
     // ---- Special additions (interactive; persists across recomputes) -------
@@ -409,8 +429,11 @@
 
     // ---- Labour (interactive) + per-category sqft reference ----------------
     const catSqftBox = el("div", "tk-cat-sqft");
-    const labourSection = buildLabourSection(
-      { labour, labourCategories, namesForCat, tasksForCatName, labourCost, hasLabour: labourRows.length > 0, catSqftBox },
+    const labourUI = buildLabourSection(
+      {
+        labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft,
+        hasLabour: labourRows.length > 0, catSqftBox, getCatSqft: () => catSqftList,
+      },
       () => compute(false)
     );
 
@@ -420,9 +443,11 @@
       try {
         const res = await computeUnit(inputs(save));
         if (save) unitId = res.unit_id;
+        catSqftList = (res.computed && res.computed.category_sqft) || [];
         renderSections(sectionsWrap, res.computed, ctx);
         renderTotals(totalsWrap, res.computed);
         renderCatSqft(catSqftBox, res.computed);
+        labourUI.refresh();
         msg.textContent = "";
         if (save) {
           message(`Saved ${nameI.value.trim() || "unit"} — ${money(res.computed.totals.with_gst)} (with GST).`);
@@ -451,7 +476,7 @@
     const actions = el("div", "admin-row-actions");
     actions.append(computeBtn, saveBtn);
     const extrasWrap = el("div", "tk-box-sections");
-    extrasWrap.append(specialSection, labourSection);
+    extrasWrap.append(specialSection, labourUI.node);
     block.append(grid, selRow, sectionsWrap, extrasWrap, totalsWrap, actions, msg);
 
     renderCatSqft(catSqftBox, null);
@@ -539,24 +564,27 @@
     return wrap;
   }
 
-  // The Labour table: category -> name -> task cascade + days/sqft, with a live
-  // computed cost per row, plus the per-part-category sqft reference below it.
+  // The Labour table: category -> name -> task cascade + days + a sqft picker
+  // (sqft = sum of the chosen box & shutters categories), a live computed cost
+  // per row, and the per-part-category sqft reference below. Returns
+  // { node, refresh }; refresh() re-syncs the sqft pickers + costs after a
+  // recompute changes the per-category sqft.
   function buildLabourSection(cfg, onChange) {
-    const { labour, labourCategories, namesForCat, tasksForCatName, labourCost, hasLabour, catSqftBox } = cfg;
+    const { labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft, hasLabour, catSqftBox, getCatSqft } = cfg;
     const wrap = el("div", "tk-box-section");
     wrap.appendChild(el("div", "tk-box-section-head", "Labour"));
     if (!hasLabour) {
       wrap.appendChild(el("p", "dash-note", "No labour in the database yet — add labourers (with their task and rates) in the Turnkey database first."));
       wrap.appendChild(catSqftBox);
-      return wrap;
+      return { node: wrap, refresh: () => {} };
     }
-    wrap.appendChild(el("p", "dash-note", "Pick a labourer by category → name → task, then enter days and/or sqft. Cost = days × cost/day + sqft × cost/sqft; it adds into the total (margin, discount & GST apply)."));
+    wrap.appendChild(el("p", "dash-note", "Pick a labourer by category → name → task, enter the days, then tick the box & shutters categories this task covers — their sqft is summed automatically. Cost = days × cost/day + sqft × cost/sqft; it adds into the total (margin, discount & GST apply)."));
 
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
     const thead = el("thead");
     const hr = el("tr");
-    ["Labour category", "Name", "Task", "Total days", "Total sqft", "Cost", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    ["Labour category", "Name", "Task", "Total days", "Total sqft (pick categories)", "Cost", ""].forEach((h) => hr.appendChild(el("th", null, h)));
     thead.appendChild(hr);
     const tbody = el("tbody");
     t.append(thead, tbody);
@@ -568,6 +596,9 @@
       subtotal.textContent = `Labour total: ${money(sum)}`;
     };
 
+    // Per-row re-sync hooks, so a recompute can refresh every row's picker + cost.
+    const rowRefreshers = [];
+
     function addRowDom(row) {
       const tr = el("tr");
       const catSel = selectEl(labourCategories, row.category || "", "Category…");
@@ -576,11 +607,9 @@
       const daysI = document.createElement("input");
       daysI.type = "number"; daysI.min = "0"; daysI.className = "grid-input"; daysI.placeholder = "0";
       daysI.value = row.total_days === "" || row.total_days == null ? "" : row.total_days;
-      const sqftI = document.createElement("input");
-      sqftI.type = "number"; sqftI.min = "0"; sqftI.className = "grid-input"; sqftI.placeholder = "0";
-      sqftI.value = row.total_sqft === "" || row.total_sqft == null ? "" : row.total_sqft;
       const costCell = el("td");
       const updateCost = () => { costCell.textContent = money(labourCost(row)); refreshSubtotal(); };
+      const sqftPick = buildSqftPicker(row, getCatSqft, () => rowSqft(row), () => { updateCost(); onChange(); });
 
       catSel.addEventListener("change", () => {
         row.category = catSel.value; row.name = ""; row.labour_id = ""; row.task = "";
@@ -600,24 +629,26 @@
       });
       daysI.addEventListener("input", () => { row.total_days = daysI.value; updateCost(); });
       daysI.addEventListener("change", onChange);
-      sqftI.addEventListener("input", () => { row.total_sqft = sqftI.value; updateCost(); });
-      sqftI.addEventListener("change", onChange);
 
       const cell = (control) => { const td = el("td"); td.appendChild(control); return td; };
       const delTd = el("td", "db-grid-del");
       const del = el("button", "tk-delete-link", "✕");
       del.type = "button"; del.title = "Remove";
+      const refresher = () => { sqftPick.refresh(); updateCost(); };
       del.addEventListener("click", () => {
-        const idx = labour.indexOf(row);
-        if (idx >= 0) labour.splice(idx, 1);
+        const li = labour.indexOf(row);
+        if (li >= 0) labour.splice(li, 1);
+        const ri = rowRefreshers.indexOf(refresher);
+        if (ri >= 0) rowRefreshers.splice(ri, 1);
         tr.remove();
         refreshSubtotal();
         onChange();
       });
       delTd.appendChild(del);
 
-      tr.append(cell(catSel), cell(nameSel), cell(taskSel), cell(daysI), cell(sqftI), costCell, delTd);
+      tr.append(cell(catSel), cell(nameSel), cell(taskSel), cell(daysI), cell(sqftPick.node), costCell, delTd);
       costCell.textContent = money(labourCost(row));
+      rowRefreshers.push(refresher);
       tbody.appendChild(tr);
       return catSel;
     }
@@ -626,14 +657,80 @@
     const addBtn = el("button", "admin-primary-small", "+ Add labour");
     addBtn.type = "button";
     addBtn.addEventListener("click", () => {
-      const row = { labour_id: "", category: "", name: "", task: "", total_days: "", total_sqft: "" };
+      const row = { labour_id: "", category: "", name: "", task: "", total_days: "", sqft_categories: [], total_sqft: "" };
       labour.push(row);
       addRowDom(row).focus();
     });
 
     wrap.append(scroll, addBtn, subtotal, catSqftBox);
     refreshSubtotal();
-    return wrap;
+    return {
+      node: wrap,
+      refresh: () => { rowRefreshers.forEach((fn) => fn()); refreshSubtotal(); },
+    };
+  }
+
+  // A per-row sqft control: a compact multi-select of the box & shutters
+  // categories (each labelled with its sqft). The row's sqft is the sum of the
+  // ticked categories. `getCatSqft()` returns the current [{category, sqft}];
+  // `getSum()` returns the row's summed sqft. Returns { node, refresh } — call
+  // refresh() when the per-category sqft changes.
+  function buildSqftPicker(row, getCatSqft, getSum, onChange) {
+    if (!Array.isArray(row.sqft_categories)) row.sqft_categories = [];
+    const selected = new Set(row.sqft_categories);
+    const box = el("div", "tk-msel tk-sqft-pick");
+    const trigger = el("button", "tk-msel-trigger");
+    trigger.type = "button";
+    const panel = el("div", "tk-msel-panel");
+    panel.hidden = true;
+
+    const summary = () => {
+      const n = selected.size;
+      trigger.textContent = n ? `${Math.round(getSum() * 100) / 100} sqft · ${n} categor${n > 1 ? "ies" : "y"}` : "Pick categories…";
+      trigger.classList.toggle("is-empty", n === 0);
+    };
+
+    const rebuild = () => {
+      panel.textContent = "";
+      const cats = getCatSqft() || [];
+      if (cats.length) {
+        // Drop selections no longer present in the current cutlist.
+        const names = new Set(cats.map((c) => c.category));
+        [...selected].forEach((c) => { if (!names.has(c)) selected.delete(c); });
+        row.sqft_categories = [...selected];
+        cats.forEach(({ category, sqft }) => {
+          const opt = el("label", "tk-msel-opt");
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = selected.has(category);
+          cb.addEventListener("change", () => {
+            if (cb.checked) selected.add(category); else selected.delete(category);
+            row.sqft_categories = [...selected];
+            summary();
+            onChange();
+          });
+          opt.append(cb, el("span", null, `${category} — ${sqft}`));
+          panel.appendChild(opt);
+        });
+      } else {
+        panel.appendChild(el("span", "dash-note", "Import a cutlist & Compute to list categories."));
+      }
+      summary();
+    };
+
+    trigger.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      panel.hidden = !panel.hidden;
+      box.classList.toggle("open", !panel.hidden);
+    });
+    document.addEventListener("click", (e) => {
+      if (!box.contains(e.target)) { panel.hidden = true; box.classList.remove("open"); }
+    });
+
+    box.append(trigger, panel);
+    rebuild();
+    return { node: box, refresh: rebuild };
   }
 
   // The per-part-category sqft reference (from the cutlist) shown under Labour.
