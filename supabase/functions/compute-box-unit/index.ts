@@ -39,6 +39,7 @@
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rebuildBoq } from "../_shared/rebuild-boq.ts";
 
 const SQFT_PER_MM2 = 92903.04;
 const MM_PER_FT = 304.8;
@@ -411,24 +412,6 @@ Deno.serve(async (req) => {
 
   return json({ ok: true, computed, material_spec: materialSpec, design_spec: designSpec, unit_id: unitId, saved: Boolean(body.save) });
 });
-
-// Rebuilds the project BOQ from every unit's stored boq_lines.
-async function rebuildBoq(admin: Any, projectId: string) {
-  const { data: units } = await admin.from("turnkey_quote_box_units").select("computed").eq("project_id", projectId);
-  const agg = new Map<string, { product_name: string; category: string; quantity: number }>();
-  (units ?? []).forEach((u: Any) => {
-    const lines = (u.computed && u.computed.boq_lines) || [];
-    lines.forEach((l: Any) => {
-      const key = `${l.category}||${l.product_name}`;
-      const cur = agg.get(key) ?? { product_name: l.product_name, category: l.category, quantity: 0 };
-      cur.quantity += Number(l.quantity) || 0;
-      agg.set(key, cur);
-    });
-  });
-  await admin.from("turnkey_project_boq").delete().eq("project_id", projectId);
-  const rows = [...agg.values()].map((r) => ({ project_id: projectId, ...r }));
-  if (rows.length) await admin.from("turnkey_project_boq").insert(rows);
-}
 
 // ---------------------------------------------------------------------------
 interface Panel { partCat: string; length: number; width: number; thickness: number; qty: number; }
