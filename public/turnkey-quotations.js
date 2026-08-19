@@ -108,6 +108,14 @@
       renderManualSegment(panel, PAINT_SEG);
       return;
     }
+    if (currentProject && currentTab === "civil") {
+      renderCompositeSegment(panel, CIVIL_SEG);
+      return;
+    }
+    if (currentProject && currentTab === "electrical") {
+      renderCompositeSegment(panel, ELECTRICAL_SEG);
+      return;
+    }
     if (currentProject && currentTab === "export") {
       renderExport(panel);
       return;
@@ -351,6 +359,11 @@
       .from("turnkey_project_boq")
       .select("product_name, category, quantity, supplier, unit_price")
       .eq("project_id", projectId);
+    if (error) throw error;
+    return data || [];
+  }
+  async function loadCompositeUnits(table, projectId) {
+    const { data, error } = await sb.from(table).select("*").eq("project_id", projectId).order("created_at", { ascending: false });
     if (error) throw error;
     return data || [];
   }
@@ -682,7 +695,7 @@
   // { node, refresh }; refresh() re-syncs the sqft pickers + costs after a
   // recompute changes the per-category sqft.
   function buildLabourSection(cfg, onChange) {
-    const { labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft, hasLabour, catSqftBox, getCatSqft, showCatSqft = true } = cfg;
+    const { labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft, hasLabour, catSqftBox, getCatSqft, showCatSqft = true, manualSqft = false } = cfg;
     const wrap = el("div", "tk-box-section");
     wrap.appendChild(el("div", "tk-box-section-head", "Labour"));
     if (!hasLabour) {
@@ -690,13 +703,15 @@
       if (showCatSqft) wrap.appendChild(catSqftBox);
       return { node: wrap, refresh: () => {} };
     }
-    wrap.appendChild(el("p", "dash-note", "Pick a labourer by category → name → task, enter the days, then tick the material categories this task covers — their sqft is summed automatically. Cost = days × cost/day + sqft × cost/sqft; it adds into the total (margin, discount & GST apply)."));
+    wrap.appendChild(el("p", "dash-note", manualSqft
+      ? "Pick a labourer by category → name → task, then enter the days and total sqft. Cost = days × cost/day + sqft × cost/sqft; it adds into the total (margin, discount & GST apply)."
+      : "Pick a labourer by category → name → task, enter the days, then tick the material categories this task covers — their sqft is summed automatically. Cost = days × cost/day + sqft × cost/sqft; it adds into the total (margin, discount & GST apply)."));
 
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
     const thead = el("thead");
     const hr = el("tr");
-    ["Labour category", "Name", "Task", "Total days", "Total sqft (pick categories)", "Cost", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    ["Labour category", "Name", "Task", "Total days", manualSqft ? "Total sqft" : "Total sqft (pick categories)", "Cost", ""].forEach((h) => hr.appendChild(el("th", null, h)));
     thead.appendChild(hr);
     const tbody = el("tbody");
     t.append(thead, tbody);
@@ -721,7 +736,18 @@
       daysI.value = row.total_days === "" || row.total_days == null ? "" : row.total_days;
       const costCell = el("td");
       const updateCost = () => { costCell.textContent = money(labourCost(row)); refreshSubtotal(); };
-      const sqftPick = buildSqftPicker(row, getCatSqft, () => rowSqft(row), () => { updateCost(); onChange(); });
+      let sqftControl, sqftRefresh = () => {};
+      if (manualSqft) {
+        const sqftI = document.createElement("input");
+        sqftI.type = "number"; sqftI.min = "0"; sqftI.className = "grid-input"; sqftI.placeholder = "0";
+        sqftI.value = row.total_sqft === "" || row.total_sqft == null ? "" : row.total_sqft;
+        sqftI.addEventListener("input", () => { row.total_sqft = sqftI.value; updateCost(); });
+        sqftI.addEventListener("change", onChange);
+        sqftControl = sqftI;
+      } else {
+        const sqftPick = buildSqftPicker(row, getCatSqft, () => rowSqft(row), () => { updateCost(); onChange(); });
+        sqftControl = sqftPick.node; sqftRefresh = sqftPick.refresh;
+      }
 
       catSel.addEventListener("change", () => {
         row.category = catSel.value; row.name = ""; row.labour_id = ""; row.task = "";
@@ -746,7 +772,7 @@
       const delTd = el("td", "db-grid-del");
       const del = el("button", "tk-delete-link", "✕");
       del.type = "button"; del.title = "Remove";
-      const refresher = () => { sqftPick.refresh(); updateCost(); };
+      const refresher = () => { sqftRefresh(); updateCost(); };
       del.addEventListener("click", () => {
         const li = labour.indexOf(row);
         if (li >= 0) labour.splice(li, 1);
@@ -758,7 +784,7 @@
       });
       delTd.appendChild(del);
 
-      tr.append(cell(catSel), cell(nameSel), cell(taskSel), cell(daysI), cell(sqftPick.node), costCell, delTd);
+      tr.append(cell(catSel), cell(nameSel), cell(taskSel), cell(daysI), cell(sqftControl), costCell, delTd);
       costCell.textContent = money(labourCost(row));
       rowRefreshers.push(refresher);
       tbody.appendChild(tr);
@@ -1648,6 +1674,14 @@
     { title: "Paint work", load: loadPaint, cols: [
       { label: "Description", get: (r) => r.description }, { label: "Sqft", get: (r) => r.sqft },
     ] },
+    { title: "Civil Work", load: (pid) => loadCompositeUnits("turnkey_quote_civil", pid), cols: [
+      { label: "Space", get: (r) => r.space }, { label: "Unit", get: (r) => r.unit_name },
+      { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
+    ] },
+    { title: "Electrical Work", load: (pid) => loadCompositeUnits("turnkey_quote_electrical", pid), cols: [
+      { label: "Space", get: (r) => r.space }, { label: "Unit", get: (r) => r.unit_name },
+      { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
+    ] },
   ];
 
   const escHtml = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -1827,18 +1861,20 @@
     // backfills supplier/price for older lines). Best-effort.
     try { await computeUnit({ recompute_boq: true, project_id: currentProject }); } catch (_e) { /* keep going */ }
 
-    let seller, boq, furniture, accessories, paint;
+    let seller, boq, furniture, accessories, paint, civil, electrical;
     try {
-      [seller, boq, furniture, accessories, paint] = await Promise.all([
+      [seller, boq, furniture, accessories, paint, civil, electrical] = await Promise.all([
         loadSellerSettings(),
         loadProjectBoq(currentProject),
         loadFurniture(currentProject),
         loadAccessories(currentProject),
         loadPaint(currentProject),
+        loadCompositeUnits("turnkey_quote_civil", currentProject),
+        loadCompositeUnits("turnkey_quote_electrical", currentProject),
       ]);
     } catch (error) {
       container.textContent = "";
-      container.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}. If a table/column is missing, run migrations 034–037.`));
+      container.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}. If a table/column is missing, run migrations 034–038.`));
       return;
     }
     container.textContent = "";
@@ -1866,6 +1902,12 @@
     paint.forEach((r) => {
       const qty = Number(r.sqft) || 0, up = Number(r.unit_price) || 0;
       lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.description || "—", detail: "Paint work (sqft)", qty, unit_price: up, total: round2(qty * up) });
+    });
+    [["Civil work", civil], ["Electrical work", electrical]].forEach(([label, units]) => {
+      units.forEach((u) => (u.material_lines || []).forEach((r) => {
+        const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
+        lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: `${label}${u.unit_name ? " · " + u.unit_name : ""}`, qty, unit_price: up, total: round2(qty * up) });
+      }));
     });
 
     // Group by supplier.
@@ -1985,6 +2027,245 @@
     w.document.write(vendorBoqHtml(s, seller, proj, gst));
     w.document.close();
     w.focus();
+  }
+
+  // ------------------------------------------------------------------
+  // Civil / Electrical — composite units (Material + Labour + Special)
+  // ------------------------------------------------------------------
+  const CIVIL_SEG = { table: "turnkey_quote_civil", category: "civil", title: "Civil Work", noun: "civil unit", addLabel: "Add a civil unit", migration: "038" };
+  const ELECTRICAL_SEG = { table: "turnkey_quote_electrical", category: "electrical", title: "Electrical Work", noun: "electrical unit", addLabel: "Add an electrical unit", migration: "038" };
+
+  async function renderCompositeSegment(container, seg) {
+    container.textContent = "";
+    container.appendChild(el("p", "dash-note", "Loading…"));
+    let spaces, suppliers, products, labour, units;
+    try {
+      [spaces, suppliers, products, labour, units] = await Promise.all([
+        loadSelectedSpaces(currentProject), loadSuppliers(), loadCatalogProducts(), loadLabour(), loadCompositeUnits(seg.table, currentProject),
+      ]);
+    } catch (error) {
+      container.textContent = "";
+      container.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}. If a table/column is missing, run migration ${seg.migration}.`));
+      return;
+    }
+    const ref = { spaces, suppliers, products, labour };
+    container.textContent = "";
+    container.appendChild(compositeEditor(seg, ref, null, () => renderCompositeSegment(container, seg)));
+    container.appendChild(compositeList(seg, units, () => renderCompositeSegment(container, seg)));
+  }
+
+  function compositeEditor(seg, ref, existing, onSaved) {
+    const u = existing?.unit || {};
+    const block = el("details", "admin-package tk-add");
+    block.open = !existing;
+    block.appendChild(el("summary", null, existing ? `Edit ${seg.noun} — ${u.unit_name || "unnamed"}` : seg.addLabel));
+    let unitId = u.id || null;
+
+    const spaceS = selectEl(ref.spaces, u.space || "", ref.spaces.length ? "Select area…" : "No spaces");
+    const nameI = document.createElement("input"); nameI.type = "text"; nameI.placeholder = "Unit name"; if (u.unit_name) nameI.value = u.unit_name;
+    const designI = document.createElement("input"); designI.type = "text"; designI.placeholder = "Design specification"; if (u.design_spec) designI.value = u.design_spec;
+    const grid = el("div", "admin-inline");
+    grid.append(field("Space", spaceS), field("Unit name", nameI), field("Design specification", designI));
+
+    const proj = projectsById.get(currentProject) || {};
+    const m = Number(proj.margin_percent) || 0, d = Number(proj.discount_percent) || 0, g = Number(proj.gst_percent) || 0;
+    const round2 = (n) => Math.round(n * 100) / 100;
+
+    // Sub-section state.
+    const materials = (Array.isArray(u.material_lines) ? u.material_lines : []).map((r) => ({ supplier: r.supplier || "", product_id: r.product_id || "", product_name: r.product_name || "", quantity: r.quantity ?? "", unit_price: r.unit_price ?? "" }));
+    const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ name: s.name || "", cost: s.cost ?? "" }));
+    const labour = (Array.isArray(u.labour_lines) ? u.labour_lines : []).map((l) => ({ labour_id: l.labour_id || "", category: l.category || "", name: l.name || "", task: l.task || "", total_days: l.total_days ?? "", total_sqft: l.total_sqft ?? "" }));
+
+    const labourRows = ref.labour || [];
+    const labourById = new Map(labourRows.map((r) => [r.id, r]));
+    const labourCategories = distinctVals(labourRows.map((r) => r.category)).sort();
+    const namesForCat = (cat) => distinctVals(labourRows.filter((r) => r.category === cat).map((r) => r.name)).sort();
+    const tasksForCatName = (cat, name) => labourRows.filter((r) => r.category === cat && r.name === name).map((r) => [r.id, r.task || "(no task)"]);
+    const rowSqft = (row) => Number(row.total_sqft) || 0;
+    const labourCost = (row) => { const lr = row.labour_id ? labourById.get(row.labour_id) : null; if (!lr) return 0; return (Number(row.total_days) || 0) * (Number(lr.cost_per_day) || 0) + rowSqft(row) * (Number(lr.cost_per_sqft) || 0); };
+    const materialCost = (r) => round2((Number(r.quantity) || 0) * (Number(r.unit_price) || 0));
+
+    const materialTotal = () => round2(materials.reduce((a, r) => a + materialCost(r), 0));
+    const labourTotal = () => round2(labour.reduce((a, r) => a + labourCost(r), 0));
+    const specialTotal = () => round2(special.reduce((a, r) => a + (Number(r.cost) || 0), 0));
+
+    const totalsWrap = el("div");
+    const refreshTotals = () => {
+      const total = round2(materialTotal() + labourTotal() + specialTotal());
+      const withMargin = round2(total * (1 + m / 100));
+      const marginAmount = round2(withMargin - total);
+      const withDiscount = round2(withMargin * (1 - d / 100));
+      const withGst = round2(withDiscount * (1 + g / 100));
+      renderTotals(totalsWrap, { totals: { total, with_margin: withMargin, margin_amount: marginAmount, with_discount: withDiscount, with_gst: withGst } });
+    };
+
+    const materialSection = buildMaterialSection({ materials, suppliers: ref.suppliers, products: ref.products, category: seg.category, materialCost }, refreshTotals);
+    const labourUI = buildLabourSection({ labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft, hasLabour: labourRows.length > 0, manualSqft: true, showCatSqft: false }, refreshTotals);
+    const specialSection = buildSpecialSection(special, refreshTotals);
+
+    const msg = el("p", "admin-hint", "");
+    const saveBtn = el("button", "admin-primary", existing ? "Save changes" : "Save unit");
+    saveBtn.type = "button";
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      msg.textContent = "Saving…";
+      const matLines = materials.filter((r) => r.product_id || r.product_name || Number(r.quantity)).map((r) => ({ supplier: r.supplier || null, product_id: r.product_id || null, product_name: (r.product_name || "").trim() || null, quantity: Number(r.quantity) || 0, unit_price: Number(r.unit_price) || 0, total: materialCost(r) }));
+      const labLines = labour.filter((l) => l.labour_id || l.total_days || l.total_sqft).map((l) => ({ labour_id: l.labour_id || null, category: l.category || null, name: l.name || null, task: l.task || null, total_days: Number(l.total_days) || 0, total_sqft: Number(l.total_sqft) || 0, cost: labourCost(l) }));
+      const specLines = special.filter((s) => (s.name || "").trim() || Number(s.cost)).map((s) => ({ name: (s.name || "").trim(), cost: Number(s.cost) || 0 }));
+      const materialSpec = [...matLines.map((r) => r.product_name).filter(Boolean), ...specLines.map((s) => s.name).filter(Boolean)].join(", ");
+      const total = round2(materialTotal() + labourTotal() + specialTotal());
+      const withMargin = round2(total * (1 + m / 100));
+      const record = {
+        id: unitId || crypto.randomUUID(), project_id: currentProject,
+        space: spaceS.value || null, unit_name: nameI.value.trim() || null, design_spec: designI.value.trim() || null,
+        material_lines: matLines, labour_lines: labLines, special_additions: specLines, material_spec: materialSpec || null,
+        total_material_price: materialTotal(), labour_price: labourTotal(), special_price: specialTotal(),
+        total_price: total, margin_price: withMargin, margin_amount: round2(withMargin - total),
+        discount_price: round2(withMargin * (1 - d / 100)), gst_price: round2(round2(withMargin * (1 - d / 100)) * (1 + g / 100)),
+      };
+      try {
+        const { error } = await sb.from(seg.table).upsert(record);
+        if (error) throw error;
+        unitId = record.id;
+        msg.textContent = "";
+        message(`Saved ${seg.noun} — ${money(record.gst_price)} (with GST).`);
+        onSaved();
+      } catch (error) {
+        msg.textContent = `Save failed: ${error.message}`;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    const actions = el("div", "admin-row-actions");
+    actions.append(saveBtn);
+    const extras = el("div", "tk-box-sections");
+    extras.append(materialSection, labourUI.node, specialSection);
+    block.append(grid, extras, totalsWrap, actions, msg);
+    refreshTotals();
+    return block;
+  }
+
+  // The Material sub-table: rows of supplier + product (filtered) + quantity,
+  // with a computed price. Mutates the shared `materials` array.
+  function buildMaterialSection(cfg, onChange) {
+    const { materials, suppliers, products, category, materialCost } = cfg;
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", "Material"));
+    wrap.appendChild(el("p", "dash-note", `Pick a supplier and a ${category} product from the database, then the quantity. Price = Quantity × the product's unit price.`));
+
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Supplier", "Product", "Quantity", "Price", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tbody = el("tbody");
+    t.append(thead, tbody);
+    scroll.appendChild(t);
+
+    const subtotal = el("p", "tk-box-total", "");
+    const refreshSubtotal = () => { subtotal.textContent = `Material total: ${money(materials.reduce((a, r) => a + materialCost(r), 0))}`; };
+
+    function addRowDom(row) {
+      const tr = el("tr");
+      const cell = (c) => { const td = el("td"); td.appendChild(c); return td; };
+      const supOpts = row.supplier && !suppliers.includes(row.supplier) ? [row.supplier, ...suppliers] : suppliers;
+      const supplierSel = selectEl(supOpts, row.supplier || "", suppliers.length ? "Supplier…" : "No suppliers");
+      supplierSel.className = "grid-input grid-select";
+      const productSel = document.createElement("select");
+      productSel.className = "grid-input grid-select";
+      const fillProducts = () => {
+        const sup = row.supplier;
+        const opts = products.filter((p) => normCat(p.category) === normCat(category) && (!sup || p.supplier === sup));
+        productSel.textContent = "";
+        productSel.appendChild(new Option(sup ? "Select…" : "Pick a supplier first", ""));
+        opts.forEach((p) => productSel.appendChild(new Option(p.product_name || "unnamed", p.id)));
+        productSel.value = row.product_id || "";
+      };
+      fillProducts();
+      const qtyI = document.createElement("input"); qtyI.type = "number"; qtyI.min = "0"; qtyI.className = "grid-input"; qtyI.placeholder = "0";
+      qtyI.value = (row.quantity === "" || row.quantity == null) ? "" : row.quantity;
+      const priceCell = el("td");
+      const updatePrice = () => { priceCell.textContent = money(materialCost(row)); refreshSubtotal(); onChange(); };
+
+      supplierSel.addEventListener("change", () => {
+        row.supplier = supplierSel.value; row.product_id = ""; row.product_name = ""; row.unit_price = "";
+        fillProducts(); updatePrice();
+      });
+      productSel.addEventListener("change", () => {
+        row.product_id = productSel.value;
+        const p = products.find((x) => String(x.id) === productSel.value);
+        row.product_name = p ? (p.product_name || "") : "";
+        row.unit_price = p ? (Number(p.price_per_sqft) || 0) : "";
+        updatePrice();
+      });
+      qtyI.addEventListener("input", () => { row.quantity = qtyI.value; updatePrice(); });
+
+      const delTd = el("td", "db-grid-del");
+      const del = el("button", "tk-delete-link", "✕"); del.type = "button"; del.title = "Remove";
+      del.addEventListener("click", () => { const i = materials.indexOf(row); if (i >= 0) materials.splice(i, 1); tr.remove(); refreshSubtotal(); onChange(); });
+      delTd.appendChild(del);
+
+      tr.append(cell(supplierSel), cell(productSel), cell(qtyI), priceCell, delTd);
+      priceCell.textContent = money(materialCost(row));
+      tbody.appendChild(tr);
+      return supplierSel;
+    }
+    materials.forEach(addRowDom);
+
+    const addBtn = el("button", "admin-primary-small", "+ Add material");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", () => { const row = { supplier: "", product_id: "", product_name: "", quantity: "", unit_price: "" }; materials.push(row); addRowDom(row).focus(); });
+
+    wrap.append(scroll, addBtn, subtotal);
+    refreshSubtotal();
+    return wrap;
+  }
+
+  function compositeList(seg, units, onChanged) {
+    const wrap = document.createDocumentFragment();
+    wrap.appendChild(el("p", "dash-note", `Saved ${seg.title.toLowerCase()} units. Open to edit, or delete.`));
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Space", "Unit", "Material specifications", "Design specifications", "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tbody = el("tbody");
+    if (!units.length) { const tr = el("tr"); const td = el("td", "dash-empty", "No units yet."); td.colSpan = 10; tr.appendChild(td); tbody.appendChild(tr); }
+    units.forEach((u) => {
+      const open = el("button", "tk-email-link", "Open");
+      open.type = "button";
+      open.addEventListener("click", async () => {
+        try {
+          const ref = { spaces: await loadSelectedSpaces(currentProject), suppliers: await loadSuppliers(), products: await loadCatalogProducts(), labour: await loadLabour() };
+          const units2 = await loadCompositeUnits(seg.table, currentProject);
+          const unit = units2.find((x) => x.id === u.id) || u;
+          panel.textContent = "";
+          panel.appendChild(compositeEditor(seg, ref, { unit }, () => renderCompositeSegment(panel, seg)));
+          panel.appendChild(compositeList(seg, units2, () => renderCompositeSegment(panel, seg)));
+        } catch (error) { message(`Could not open: ${error.message}`, true); }
+      });
+      const del = el("button", "tk-delete-link", "Delete");
+      del.type = "button";
+      del.addEventListener("click", async () => {
+        if (!window.confirm(`Delete this ${seg.noun}? This cannot be undone.`)) return;
+        const { error } = await sb.from(seg.table).delete().eq("id", u.id);
+        if (error) return void message(`Could not delete: ${error.message}`, true);
+        message("Unit deleted.");
+        onChanged();
+      });
+      const actions = el("div", "tk-cell-actions"); actions.append(open, del);
+      const cells = [u.space || "—", u.unit_name || "—", u.material_spec || "—", u.design_spec || "—", money(u.total_price), money(u.margin_price), money(u.margin_amount), money(u.discount_price), money(u.gst_price), actions];
+      const tr = el("tr");
+      cells.forEach((c) => { const td = el("td"); if (c instanceof Node) td.appendChild(c); else td.textContent = c; tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+    t.append(thead, tbody);
+    scroll.appendChild(t);
+    wrap.appendChild(scroll);
+    return wrap;
   }
 
   function selectProject(id) {
