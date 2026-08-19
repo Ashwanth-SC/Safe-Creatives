@@ -594,15 +594,15 @@
   // { node, refresh }; refresh() re-syncs the sqft pickers + costs after a
   // recompute changes the per-category sqft.
   function buildLabourSection(cfg, onChange) {
-    const { labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft, hasLabour, catSqftBox, getCatSqft } = cfg;
+    const { labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft, hasLabour, catSqftBox, getCatSqft, showCatSqft = true } = cfg;
     const wrap = el("div", "tk-box-section");
     wrap.appendChild(el("div", "tk-box-section-head", "Labour"));
     if (!hasLabour) {
       wrap.appendChild(el("p", "dash-note", "No labour in the database yet — add labourers (with their task and rates) in the Turnkey database first."));
-      wrap.appendChild(catSqftBox);
+      if (showCatSqft) wrap.appendChild(catSqftBox);
       return { node: wrap, refresh: () => {} };
     }
-    wrap.appendChild(el("p", "dash-note", "Pick a labourer by category → name → task, enter the days, then tick the box & shutters categories this task covers — their sqft is summed automatically. Cost = days × cost/day + sqft × cost/sqft; it adds into the total (margin, discount & GST apply)."));
+    wrap.appendChild(el("p", "dash-note", "Pick a labourer by category → name → task, enter the days, then tick the material categories this task covers — their sqft is summed automatically. Cost = days × cost/day + sqft × cost/sqft; it adds into the total (margin, discount & GST apply)."));
 
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
@@ -686,7 +686,8 @@
       addRowDom(row).focus();
     });
 
-    wrap.append(scroll, addBtn, subtotal, catSqftBox);
+    wrap.append(scroll, addBtn, subtotal);
+    if (showCatSqft) wrap.appendChild(catSqftBox);
     refreshSubtotal();
     return {
       node: wrap,
@@ -1095,11 +1096,12 @@
     });
 
     const specialSection = buildSpecialSection(special, () => recompute());
-    const catSqftBox = el("div", "tk-cat-sqft");
+    // Wall panels don't show the per-category sqft reference table (there's no
+    // cutlist); the labour sqft picker still uses the panel's own areas.
     const labourUI = buildLabourSection(
       {
         labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft,
-        hasLabour: labourRows.length > 0, catSqftBox, getCatSqft: () => catSqftList,
+        hasLabour: labourRows.length > 0, getCatSqft: () => catSqftList, showCatSqft: false,
       },
       () => recompute()
     );
@@ -1115,7 +1117,6 @@
         catSqftList = (res.computed && res.computed.category_sqft) || [];
         renderWallSections(sectionsWrap, res.computed);
         renderTotals(totalsWrap, res.computed);
-        renderCatSqft(catSqftBox, res.computed);
         labourUI.refresh();
         msg.textContent = "";
         if (save) {
@@ -1148,7 +1149,6 @@
     extrasWrap.append(specialSection, labourUI.node);
     block.append(grid, selRow, sectionsWrap, extrasWrap, totalsWrap, actions, msg);
 
-    renderCatSqft(catSqftBox, null);
     renderTotals(totalsWrap, null);
     if (existing && coreReady()) compute(false);
     else renderWallSections(sectionsWrap, null);

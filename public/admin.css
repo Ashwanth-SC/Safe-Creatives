@@ -273,6 +273,11 @@ button:disabled { opacity: .5; cursor: progress; }
 /* Equal-width selector dropdowns in the builder */
 .tk-sel-grid .admin-field { width:210px; }
 .tk-sel-grid .admin-field select { width:100%; }
+/* Builder dropdowns/fields always read left-to-right (some browsers right-align
+   a <select>'s selected value). */
+.tk-add select, .tk-add input,
+.tk-edit select, .tk-edit input,
+.tk-box-section select, .tk-box-section input { text-align:left; }
 .tk-cat-row { display:flex; flex-wrap:wrap; gap:14px 32px; margin:4px 0 14px; }
 
 /* Compact multi-select dropdown */
