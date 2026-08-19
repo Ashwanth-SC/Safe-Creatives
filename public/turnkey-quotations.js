@@ -1959,12 +1959,13 @@
     });
     furniture.forEach((r) => {
       const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
-      const detail = [r.material_spec, r.design_spec].filter(Boolean).join(" · ");
+      const detail = [r.material_spec, r.design_spec].filter(Boolean).join(", ");
       lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.unit_name || "—", detail: detail || "Furniture", qty, unit_price: up, total: round2(qty * up) });
     });
     accessories.forEach((r) => {
       const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
-      lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.unit_name || "—", detail: r.specification || "Accessory", qty, unit_price: up, total: round2(qty * up) });
+      const detail = ["Accessory", r.specification].filter(Boolean).join(" · ");
+      lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.unit_name || "—", detail, qty, unit_price: up, total: round2(qty * up) });
     });
     paint.forEach((r) => {
       const qty = Number(r.sqft) || 0, up = Number(r.unit_price) || 0;

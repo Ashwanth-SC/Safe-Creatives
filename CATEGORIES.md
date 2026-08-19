@@ -34,8 +34,13 @@ Notes:
 | --- | --- |
 | **Edge hinges** | Edge hinge dropdown |
 | **Inner hinges** | Inner hinge dropdown |
-| **Handle** | Handles (chosen per part-category) |
-| **Channel** | Drawer channels (auto-picked by panel size) |
+| **Handle** | Handles (chosen per panel) |
+| **Channel** | Drawer channels (auto-picked, closest size ≤ panel) |
+| **Minifix** | Carcass/partition/drawer parts (auto, one product) |
+| **Legs** | Carcass base (auto, one product) |
+
+Special additions (Box & Shutters, Wall Panels, Civil, Electrical) also pick
+from the Hardwares database — **any category** — as a product + quantity.
 
 ## Labour database (`Labour category`)
 
