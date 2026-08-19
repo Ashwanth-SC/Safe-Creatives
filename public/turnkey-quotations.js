@@ -97,7 +97,11 @@
       return;
     }
     if (currentProject && currentTab === "furniture") {
-      renderFurniture(panel);
+      renderManualSegment(panel, FURNITURE_SEG);
+      return;
+    }
+    if (currentProject && currentTab === "accessories") {
+      renderManualSegment(panel, ACCESSORIES_SEG);
       return;
     }
     panel.appendChild(placeholder(currentTab));
@@ -278,6 +282,23 @@
       .order("sort_order", { ascending: true });
     if (error) throw error;
     return data || [];
+  }
+  async function loadAccessories(projectId) {
+    const { data, error } = await sb
+      .from("turnkey_quote_accessories")
+      .select("id, supplier, unit_name, specification, quantity, unit_price, total_price, margin_price, margin_amount, discount_price, gst_price, sort_order")
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  async function loadSuppliers() {
+    const { data, error } = await sb
+      .from("turnkey_suppliers")
+      .select("supplier_company_name")
+      .order("supplier_company_name", { ascending: true });
+    if (error) throw error;
+    return [...new Set((data || []).map((s) => s.supplier_company_name).filter(Boolean))];
   }
 
   async function renderBoxShutters(container) {
@@ -1279,18 +1300,55 @@
   }
 
   // ------------------------------------------------------------------
-  // Furniture — manual line entry (no computation), client-side totals
+  // Manual line-entry segments (Furniture, Accessories) — no material
+  // computation. An editable table with per-row margin/discount/GST columns
+  // and the totals cards below; rows persist straight to the segment's table.
   // ------------------------------------------------------------------
-  async function renderFurniture(container) {
+  const FURNITURE_SEG = {
+    table: "turnkey_quote_furniture", load: loadFurniture, migration: "034",
+    title: "Furniture", addLabel: "+ Add furniture", saveLabel: "Save furniture",
+    note: "Enter each item — no material computation, the line total is Quantity × Price. Supplier, Unit, Quantity, specs and price are stored for the vendor BOQ; the totals below carry the project margin, discount & GST.",
+    cols: [
+      { key: "space", label: "Space", kind: "space" },
+      { key: "supplier", label: "Supplier", kind: "supplier" },
+      { key: "unit_name", label: "Unit", kind: "text", ph: "Unit" },
+      { key: "material_spec", label: "Material specification", kind: "text", ph: "Material spec" },
+      { key: "design_spec", label: "Design specification", kind: "text", ph: "Design spec" },
+      { key: "quantity", label: "Quantity", kind: "number" },
+      { key: "unit_price", label: "Price", kind: "number" },
+    ],
+  };
+  const ACCESSORIES_SEG = {
+    table: "turnkey_quote_accessories", load: loadAccessories, migration: "035",
+    title: "Accessories", addLabel: "+ Add accessory", saveLabel: "Save accessories",
+    note: "Enter each accessory — no computation, the line total is Quantity × Price. Supplier, Unit, Specification, Quantity and price are stored for the vendor BOQ; the totals below carry the project margin, discount & GST.",
+    cols: [
+      { key: "supplier", label: "Supplier", kind: "supplier" },
+      { key: "unit_name", label: "Unit", kind: "text", ph: "Unit" },
+      { key: "specification", label: "Specification", kind: "text", ph: "Specification" },
+      { key: "quantity", label: "Quantity", kind: "number" },
+      { key: "unit_price", label: "Price", kind: "number" },
+    ],
+  };
+
+  const round2q = (n) => Math.round(n * 100) / 100;
+
+  async function renderManualSegment(container, seg) {
     container.textContent = "";
     container.appendChild(el("p", "dash-note", "Loading…"));
-    let spaces, saved;
+    const needSpaces = seg.cols.some((c) => c.kind === "space");
+    const needSuppliers = seg.cols.some((c) => c.kind === "supplier");
+    let spaces = [], suppliers = [], saved = [];
     try {
-      [spaces, saved] = await Promise.all([loadSelectedSpaces(currentProject), loadFurniture(currentProject)]);
+      [spaces, suppliers, saved] = await Promise.all([
+        needSpaces ? loadSelectedSpaces(currentProject) : Promise.resolve([]),
+        needSuppliers ? loadSuppliers() : Promise.resolve([]),
+        seg.load(currentProject),
+      ]);
     } catch (error) {
       container.textContent = "";
       container.appendChild(
-        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migration 034.`)
+        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migration ${seg.migration}.`)
       );
       return;
     }
@@ -1298,32 +1356,31 @@
 
     const proj = projectsById.get(currentProject) || {};
     const m = Number(proj.margin_percent) || 0, d = Number(proj.discount_percent) || 0, g = Number(proj.gst_percent) || 0;
-    const round2 = (n) => Math.round(n * 100) / 100;
     const rowTotals = (r) => {
-      const total = round2((Number(r.quantity) || 0) * (Number(r.unit_price) || 0));
-      const withMargin = round2(total * (1 + m / 100));
-      const marginAmount = round2(withMargin - total);
-      const withDiscount = round2(withMargin * (1 - d / 100));
-      const withGst = round2(withDiscount * (1 + g / 100));
+      const total = round2q((Number(r.quantity) || 0) * (Number(r.unit_price) || 0));
+      const withMargin = round2q(total * (1 + m / 100));
+      const marginAmount = round2q(withMargin - total);
+      const withDiscount = round2q(withMargin * (1 - d / 100));
+      const withGst = round2q(withDiscount * (1 + g / 100));
       return { total, withMargin, marginAmount, withDiscount, withGst };
     };
 
     // Editable working set, seeded from the saved rows.
-    const rows = saved.map((r) => ({
-      id: r.id, space: r.space || "", supplier: r.supplier || "", unit_name: r.unit_name || "",
-      material_spec: r.material_spec || "", design_spec: r.design_spec || "",
-      quantity: r.quantity ?? "", unit_price: r.unit_price ?? "",
-    }));
+    const rows = saved.map((r) => {
+      const o = { id: r.id };
+      seg.cols.forEach((c) => { o[c.key] = r[c.key] ?? ""; });
+      return o;
+    });
 
     const section = el("div", "tk-box-section");
-    section.appendChild(el("div", "tk-box-section-head", "Furniture"));
-    section.appendChild(el("p", "dash-note", "Enter each item — no material computation, the line total is Quantity × Price. Supplier, Unit, Quantity, specs and price are stored for the vendor BOQ; the totals below carry the project margin, discount & GST."));
+    section.appendChild(el("div", "tk-box-section-head", seg.title));
+    section.appendChild(el("p", "dash-note", seg.note));
 
     const scroll = el("div", "table-scroll");
     const table = el("table", "dash-table");
     const thead = el("thead");
     const hr = el("tr");
-    ["Space", "Supplier", "Unit", "Material specification", "Design specification", "Quantity", "Price", "Line total", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    [...seg.cols.map((c) => c.label), "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach((h) => hr.appendChild(el("th", null, h)));
     thead.appendChild(hr);
     const tbody = el("tbody");
     table.append(thead, tbody);
@@ -1337,34 +1394,50 @@
         sum.total += t.total; sum.with_margin += t.withMargin; sum.margin_amount += t.marginAmount;
         sum.with_discount += t.withDiscount; sum.with_gst += t.withGst;
       });
-      Object.keys(sum).forEach((k) => (sum[k] = round2(sum[k])));
+      Object.keys(sum).forEach((k) => (sum[k] = round2q(sum[k])));
       renderTotals(totalsWrap, { totals: sum });
     };
 
     function addRowDom(row) {
       const tr = el("tr");
-      const spaceSel = selectEl(spaces, row.space || "", spaces.length ? "Area…" : "No spaces");
-      spaceSel.className = "grid-input grid-select";
-      const textInput = (val, ph) => { const i = document.createElement("input"); i.type = "text"; i.className = "grid-input"; i.placeholder = ph; i.value = val || ""; return i; };
-      const numInput = (val, ph) => { const i = document.createElement("input"); i.type = "number"; i.min = "0"; i.className = "grid-input"; i.placeholder = ph; i.value = (val === "" || val == null) ? "" : val; return i; };
-      const supplierI = textInput(row.supplier, "Supplier");
-      const unitI = textInput(row.unit_name, "Unit");
-      const matI = textInput(row.material_spec, "Material spec");
-      const desI = textInput(row.design_spec, "Design spec");
-      const qtyI = numInput(row.quantity, "0");
-      const priceI = numInput(row.unit_price, "0");
-      const lineCell = el("td");
-      const updateLine = () => { lineCell.textContent = money(rowTotals(row).total); refreshTotals(); };
-
-      spaceSel.addEventListener("change", () => { row.space = spaceSel.value; });
-      supplierI.addEventListener("input", () => { row.supplier = supplierI.value; });
-      unitI.addEventListener("input", () => { row.unit_name = unitI.value; });
-      matI.addEventListener("input", () => { row.material_spec = matI.value; });
-      desI.addEventListener("input", () => { row.design_spec = desI.value; });
-      qtyI.addEventListener("input", () => { row.quantity = qtyI.value; updateLine(); });
-      priceI.addEventListener("input", () => { row.unit_price = priceI.value; updateLine(); });
-
       const cell = (c) => { const td = el("td"); td.appendChild(c); return td; };
+      const totCell = el("td"), mpCell = el("td"), mCell = el("td"), dCell = el("td"), gCell = el("td");
+      const updateLine = () => {
+        const t = rowTotals(row);
+        totCell.textContent = money(t.total); mpCell.textContent = money(t.withMargin);
+        mCell.textContent = money(t.marginAmount); dCell.textContent = money(t.withDiscount); gCell.textContent = money(t.withGst);
+        refreshTotals();
+      };
+
+      let firstControl = null;
+      seg.cols.forEach((c) => {
+        let control;
+        if (c.kind === "space") {
+          control = selectEl(spaces, row[c.key] || "", spaces.length ? "Area…" : "No spaces");
+          control.className = "grid-input grid-select";
+          control.addEventListener("change", () => { row[c.key] = control.value; });
+        } else if (c.kind === "supplier") {
+          const opts = row[c.key] && !suppliers.includes(row[c.key]) ? [row[c.key], ...suppliers] : suppliers;
+          control = selectEl(opts, row[c.key] || "", suppliers.length ? "Supplier…" : "No suppliers");
+          control.className = "grid-input grid-select";
+          control.addEventListener("change", () => { row[c.key] = control.value; });
+        } else if (c.kind === "number") {
+          control = document.createElement("input");
+          control.type = "number"; control.min = "0"; control.className = "grid-input"; control.placeholder = "0";
+          control.value = (row[c.key] === "" || row[c.key] == null) ? "" : row[c.key];
+          control.addEventListener("input", () => { row[c.key] = control.value; updateLine(); });
+        } else {
+          control = document.createElement("input");
+          control.type = "text"; control.className = "grid-input"; control.placeholder = c.ph || c.label;
+          control.value = row[c.key] || "";
+          control.addEventListener("input", () => { row[c.key] = control.value; });
+        }
+        if (!firstControl) firstControl = control;
+        tr.appendChild(cell(control));
+      });
+
+      tr.append(totCell, mpCell, mCell, dCell, gCell);
+
       const delTd = el("td", "db-grid-del");
       const del = el("button", "tk-delete-link", "✕");
       del.type = "button"; del.title = "Remove";
@@ -1373,80 +1446,56 @@
         tr.remove(); refreshTotals();
       });
       delTd.appendChild(del);
+      tr.appendChild(delTd);
 
-      tr.append(cell(spaceSel), cell(supplierI), cell(unitI), cell(matI), cell(desI), cell(qtyI), cell(priceI), lineCell, delTd);
-      lineCell.textContent = money(rowTotals(row).total);
+      const t0 = rowTotals(row);
+      totCell.textContent = money(t0.total); mpCell.textContent = money(t0.withMargin);
+      mCell.textContent = money(t0.marginAmount); dCell.textContent = money(t0.withDiscount); gCell.textContent = money(t0.withGst);
+
       tbody.appendChild(tr);
-      return supplierI;
+      return firstControl;
     }
     rows.forEach(addRowDom);
 
-    const addBtn = el("button", "admin-primary-small", "+ Add furniture");
+    const addBtn = el("button", "admin-primary-small", seg.addLabel);
     addBtn.type = "button";
     addBtn.addEventListener("click", () => {
-      const row = { id: crypto.randomUUID(), space: "", supplier: "", unit_name: "", material_spec: "", design_spec: "", quantity: "", unit_price: "" };
+      const row = { id: crypto.randomUUID() };
+      seg.cols.forEach((c) => { row[c.key] = ""; });
       rows.push(row);
-      addRowDom(row).focus();
+      const first = addRowDom(row);
+      if (first) first.focus();
     });
     section.append(scroll, addBtn);
 
-    // Saved table (same headers as Box & Shutters / Wall Panels).
-    const savedWrap = el("div");
-    function renderSaved(list) {
-      savedWrap.textContent = "";
-      savedWrap.appendChild(el("p", "dash-note", "Saved furniture, as it appears in the quotation."));
-      const s = el("div", "table-scroll");
-      const t = el("table", "dash-table");
-      const th = el("thead"); const h = el("tr");
-      ["Space", "Unit", "Material specifications", "Design specifications", "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach((x) => h.appendChild(el("th", null, x)));
-      th.appendChild(h);
-      const tb = el("tbody");
-      if (!list.length) {
-        const tr = el("tr"); const td = el("td", "dash-empty", "No furniture yet."); td.colSpan = 10; tr.appendChild(td); tb.appendChild(tr);
-      }
-      list.forEach((r) => {
-        const cells = [
-          r.space || "—", r.unit_name || "—", r.material_spec || "—", r.design_spec || "—",
-          money(r.total_price), money(r.margin_price), money(r.margin_amount), money(r.discount_price), money(r.gst_price), "",
-        ];
-        const tr = el("tr");
-        cells.forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
-        tb.appendChild(tr);
-      });
-      t.append(th, tb); s.appendChild(t); savedWrap.appendChild(s);
-    }
-
     const msg = el("p", "admin-hint", "");
-    const saveBtn = el("button", "admin-primary", "Save furniture");
+    const saveBtn = el("button", "admin-primary", seg.saveLabel);
     saveBtn.type = "button";
     saveBtn.addEventListener("click", async () => {
       saveBtn.disabled = true;
       msg.textContent = "Saving…";
-      const nonEmpty = (r) => (r.unit_name || "").trim() || (r.supplier || "").trim() || Number(r.quantity) || Number(r.unit_price);
+      const nonEmpty = (r) => seg.cols.some((c) => (c.kind === "number" ? Number(r[c.key]) : String(r[c.key] || "").trim()));
       const records = rows.filter(nonEmpty).map((r, i) => {
         const t = rowTotals(r);
-        return {
-          id: r.id, project_id: currentProject,
-          space: r.space || null, supplier: (r.supplier || "").trim() || null, unit_name: (r.unit_name || "").trim() || null,
-          material_spec: (r.material_spec || "").trim() || null, design_spec: (r.design_spec || "").trim() || null,
-          quantity: Number(r.quantity) || 0, unit_price: Number(r.unit_price) || 0,
+        const rec = {
+          id: r.id, project_id: currentProject, sort_order: i,
           total_price: t.total, margin_price: t.withMargin, margin_amount: t.marginAmount, discount_price: t.withDiscount, gst_price: t.withGst,
-          sort_order: i,
         };
+        seg.cols.forEach((c) => { rec[c.key] = c.kind === "number" ? (Number(r[c.key]) || 0) : (String(r[c.key] || "").trim() || null); });
+        return rec;
       });
       try {
         if (records.length) {
-          const { error } = await sb.from("turnkey_quote_furniture").upsert(records);
+          const { error } = await sb.from(seg.table).upsert(records);
           if (error) throw error;
         }
         const keepIds = records.map((r) => r.id);
-        let delQ = sb.from("turnkey_quote_furniture").delete().eq("project_id", currentProject);
+        let delQ = sb.from(seg.table).delete().eq("project_id", currentProject);
         if (keepIds.length) delQ = delQ.not("id", "in", `(${keepIds.join(",")})`);
         const { error: delErr } = await delQ;
         if (delErr) throw delErr;
         msg.textContent = "";
-        message(`Saved ${records.length} furniture item${records.length === 1 ? "" : "s"}.`);
-        renderSaved(await loadFurniture(currentProject));
+        message(`Saved ${seg.title.toLowerCase()} — ${records.length} row${records.length === 1 ? "" : "s"}.`);
       } catch (error) {
         msg.textContent = `Save failed: ${error.message}`;
       } finally {
@@ -1458,11 +1507,9 @@
     actions.append(saveBtn);
 
     const block = el("div", "admin-package tk-add");
-    block.append(section, totalsWrap, actions, msg, savedWrap);
+    block.append(section, totalsWrap, actions, msg);
     container.appendChild(block);
-
     refreshTotals();
-    renderSaved(saved);
   }
 
   function selectProject(id) {
