@@ -124,6 +124,10 @@
       renderVendorBoq(panel);
       return;
     }
+    if (currentProject && currentTab === "labour-boq") {
+      renderLabourBoq(panel);
+      return;
+    }
     panel.appendChild(placeholder(currentTab));
   }
 
@@ -366,6 +370,17 @@
     const { data, error } = await sb.from(table).select("*").eq("project_id", projectId).order("created_at", { ascending: false });
     if (error) throw error;
     return data || [];
+  }
+  // Every labour line across the segments that carry labour, for the Labour BOQ.
+  async function loadAllLabourLines(projectId) {
+    const tables = ["turnkey_quote_box_units", "turnkey_quote_wall_panels", "turnkey_quote_civil", "turnkey_quote_electrical"];
+    const out = [];
+    for (const table of tables) {
+      const { data, error } = await sb.from(table).select("labour_lines").eq("project_id", projectId);
+      if (error) continue; // resilient to a table not existing yet
+      (data || []).forEach((u) => (u.labour_lines || []).forEach((l) => out.push(l)));
+    }
+    return out;
   }
 
   async function renderBoxShutters(container) {
@@ -2266,6 +2281,138 @@
     scroll.appendChild(t);
     wrap.appendChild(scroll);
     return wrap;
+  }
+
+  // ------------------------------------------------------------------
+  // Labour BOQ — every labour line, grouped by labourer (name)
+  // ------------------------------------------------------------------
+  async function renderLabourBoq(container) {
+    container.textContent = "";
+    container.appendChild(el("p", "dash-note", "Loading…"));
+    let seller, lines;
+    try {
+      [seller, lines] = await Promise.all([loadSellerSettings(), loadAllLabourLines(currentProject)]);
+    } catch (error) {
+      container.textContent = "";
+      container.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}. If a table/column is missing, run migrations 025–038.`));
+      return;
+    }
+    container.textContent = "";
+
+    const proj = projectsById.get(currentProject) || {};
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const NO_NAME = "(unnamed labour)";
+    const groups = new Map();
+    lines.forEach((l) => {
+      const name = (l.name && String(l.name).trim()) || NO_NAME;
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name).push(l);
+    });
+    const labourers = [...groups.entries()]
+      .map(([name, rows]) => ({
+        name, rows,
+        days: round2(rows.reduce((a, r) => a + (Number(r.total_days) || 0), 0)),
+        sqft: round2(rows.reduce((a, r) => a + (Number(r.total_sqft) || 0), 0)),
+        price: round2(rows.reduce((a, r) => a + (Number(r.cost) || 0), 0)),
+      }))
+      .sort((a, b) => (a.name === NO_NAME ? 1 : b.name === NO_NAME ? -1 : a.name.localeCompare(b.name)));
+
+    const head = el("div", "admin-package");
+    head.appendChild(el("p", "eyebrow", "LABOUR BOQ"));
+    head.appendChild(el("p", "dash-note", `Project #${proj.project_number || ""}. Every labour line across Box & Shutters, Wall Panels, Civil and Electrical, grouped by labourer — category, task, days, sqft and cost. Export each labourer's sheet for tracking.`));
+    container.appendChild(head);
+
+    if (!labourers.length) {
+      container.appendChild(el("p", "dash-note", "No labour lines yet. Add labour to a Box & Shutters / Wall Panels / Civil / Electrical unit first."));
+      return;
+    }
+    labourers.forEach((l) => container.appendChild(labourBoqTable(l, seller, proj)));
+  }
+
+  function labourBoqTable(l, seller, proj) {
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", l.name));
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Labour category", "Labour name", "Labour task", "Days", "Sqft", "Price"].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tb = el("tbody");
+    l.rows.forEach((r) => {
+      const tr = el("tr");
+      [r.category || "—", r.name || "—", r.task || "—", r.total_days ?? 0, r.total_sqft ?? 0, money(r.cost)].forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+    const trT = el("tr", "tk-cat-sqft-total");
+    const span = el("td"); span.colSpan = 3; span.textContent = "Total";
+    trT.appendChild(span);
+    [l.days, l.sqft, money(l.price)].forEach((c) => { const td = el("td"); td.textContent = c; trT.appendChild(td); });
+    tb.appendChild(trT);
+    t.append(thead, tb);
+    scroll.appendChild(t);
+    wrap.appendChild(scroll);
+
+    const exportBtn = el("button", "admin-primary-small", "Export labour sheet");
+    exportBtn.type = "button";
+    exportBtn.addEventListener("click", () => openLabourBoqWindow(l, seller, proj));
+    wrap.appendChild(exportBtn);
+    return wrap;
+  }
+
+  function labourBoqHtml(l, seller, proj) {
+    const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+    const sellerName = seller.trade_name || seller.legal_name || "Safe Creatives";
+    const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
+    const body = l.rows.map((r) => `<tr><td>${escHtml(r.category || "—")}</td><td>${escHtml(r.task || "—")}</td><td class="num">${escHtml(r.total_days ?? 0)}</td><td class="num">${escHtml(r.total_sqft ?? 0)}</td><td class="num">${escHtml(money(r.cost))}</td></tr>`).join("");
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Labour sheet — ${escHtml(l.name)} (Project #${escHtml(proj.project_number || "")})</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "DM Sans", Arial, sans-serif; color: #171717; background: #f4f4f2; }
+  .toolbar { position: sticky; top: 0; display: flex; gap: 12px; align-items: center; padding: 12px 18px; background: #0c4444; color: #fff; }
+  .toolbar button { padding: 9px 16px; border: 0; border-radius: 6px; background: #fff; color: #0c4444; font: 600 13px "DM Sans", sans-serif; cursor: pointer; }
+  .doc { max-width: 820px; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,.08); }
+  header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #0c4444; padding-bottom: 16px; }
+  header h1 { margin: 0 0 6px; font-size: 20px; color: #0c4444; }
+  header p { margin: 2px 0; font-size: 12px; color: #444; }
+  .meta { text-align: right; }
+  .meta h3 { margin: 0 0 6px; letter-spacing: .1em; color: #6f222a; }
+  .who { margin: 18px 0 6px; }
+  .who h4 { margin: 0 0 4px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #777; }
+  .who p { margin: 2px 0; font-size: 15px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #e6e6e2; text-align: left; vertical-align: top; }
+  th { font: 600 10px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #777; background: #fafaf8; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  tfoot td { font-weight: 700; color: #0c4444; border-top: 2px solid #0c4444; background: #f4f6f3; }
+  .note { margin-top: 24px; font-size: 11px; color: #888; }
+  @media print { body { background: #fff; } .toolbar { display: none; } .doc { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
+</style></head><body>
+  <div class="toolbar"><button onclick="window.print()">Download / Print (PDF)</button></div>
+  <div class="doc">
+    <header>
+      <div><h1>${escHtml(sellerName)}</h1><p>${escHtml(sellerAddr)}</p>${seller.phone || seller.email ? `<p>${escHtml([seller.phone, seller.email].filter(Boolean).join(" · "))}</p>` : ""}</div>
+      <div class="meta"><h3>LABOUR SHEET</h3><p>Project #${escHtml(proj.project_number || "")}</p><p>${escHtml(today)}</p></div>
+    </header>
+    <section class="who"><h4>Labourer</h4><p>${escHtml(l.name)}</p></section>
+    <table>
+      <thead><tr><th>Labour category</th><th>Task</th><th class="num">Days</th><th class="num">Sqft</th><th class="num">Price</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr><td colspan="2">Total</td><td class="num">${escHtml(l.days)}</td><td class="num">${escHtml(l.sqft)}</td><td class="num">${escHtml(money(l.price))}</td></tr></tfoot>
+    </table>
+    <p class="note">Labour work sheet for internal tracking.</p>
+  </div>
+</body></html>`;
+  }
+
+  function openLabourBoqWindow(l, seller, proj) {
+    const w = window.open("", "_blank");
+    if (!w) { message("Pop-up blocked — allow pop-ups for this site to open the labour sheet.", true); return; }
+    w.document.open();
+    w.document.write(labourBoqHtml(l, seller, proj));
+    w.document.close();
+    w.focus();
   }
 
   function selectProject(id) {
