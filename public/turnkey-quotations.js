@@ -108,6 +108,10 @@
       renderManualSegment(panel, PAINT_SEG);
       return;
     }
+    if (currentProject && currentTab === "export") {
+      renderExport(panel);
+      return;
+    }
     panel.appendChild(placeholder(currentTab));
   }
 
@@ -320,6 +324,23 @@
       .select("id, product_name, supplier, category, price_per_sqft");
     if (error) throw error;
     return data || [];
+  }
+  async function loadSellerSettings() {
+    const { data, error } = await sb
+      .from("seller_settings")
+      .select("legal_name, trade_name, gstin, pan, address_line, city, state_name, state_code, pin_code, email, phone")
+      .maybeSingle();
+    if (error) throw error;
+    return data || {};
+  }
+  async function loadProjectFull(id) {
+    const { data, error } = await sb
+      .from("turnkey_projects")
+      .select("project_number, client_name, client_phone, client_email, project_name, site_address")
+      .eq("id", id)
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   async function renderBoxShutters(container) {
@@ -1586,6 +1607,202 @@
     block.append(section, totalsWrap, actions, msg);
     container.appendChild(block);
     refreshTotals();
+  }
+
+  // ------------------------------------------------------------------
+  // Quotation export — a customer-facing table per category + PDF window
+  // ------------------------------------------------------------------
+  // Customer columns per segment (descriptive only — no supplier / cost). The
+  // money columns are always Price (= margin_price), Price with discount
+  // (= discount_price) and Price with GST (= gst_price).
+  const EXPORT_SEGMENTS = [
+    { title: "Box & Shutters", load: loadBoxUnits, cols: [
+      { label: "Space", get: (r) => r.space }, { label: "Unit", get: (r) => r.unit_name },
+      { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
+    ] },
+    { title: "Wall Panels", load: loadWallPanels, cols: [
+      { label: "Space", get: (r) => r.space },
+      { label: "Panel", get: (r) => `${r.panel_type || ""}${r.length_mm && r.width_mm ? ` · ${r.length_mm}×${r.width_mm} mm` : ""}`.trim() },
+      { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
+    ] },
+    { title: "Furniture", load: loadFurniture, cols: [
+      { label: "Space", get: (r) => r.space }, { label: "Unit", get: (r) => r.unit_name },
+      { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
+      { label: "Qty", get: (r) => r.quantity },
+    ] },
+    { title: "Accessories", load: loadAccessories, cols: [
+      { label: "Unit", get: (r) => r.unit_name }, { label: "Specification", get: (r) => r.specification }, { label: "Qty", get: (r) => r.quantity },
+    ] },
+    { title: "Paint work", load: loadPaint, cols: [
+      { label: "Description", get: (r) => r.description }, { label: "Sqft", get: (r) => r.sqft },
+    ] },
+  ];
+
+  const escHtml = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  async function renderExport(container) {
+    container.textContent = "";
+    container.appendChild(el("p", "dash-note", "Loading…"));
+    let seller, project, segData;
+    try {
+      const res = await Promise.all([
+        loadSellerSettings(),
+        loadProjectFull(currentProject),
+        ...EXPORT_SEGMENTS.map((s) => s.load(currentProject)),
+      ]);
+      [seller, project] = res;
+      segData = res.slice(2);
+    } catch (error) {
+      container.textContent = "";
+      container.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}. If a table/column is missing, run migrations 027–036.`));
+      return;
+    }
+    container.textContent = "";
+
+    const segments = EXPORT_SEGMENTS.map((s, i) => {
+      const rows = segData[i] || [];
+      const totals = rows.reduce((a, r) => {
+        a.price += Number(r.margin_price) || 0;
+        a.disc += Number(r.discount_price) || 0;
+        a.gst += Number(r.gst_price) || 0;
+        return a;
+      }, { price: 0, disc: 0, gst: 0 });
+      return { title: s.title, cols: s.cols, rows, totals };
+    }).filter((s) => s.rows.length);
+
+    const grand = segments.reduce((a, s) => { a.price += s.totals.price; a.disc += s.totals.disc; a.gst += s.totals.gst; return a; }, { price: 0, disc: 0, gst: 0 });
+
+    const head = el("div", "admin-package");
+    head.appendChild(el("p", "eyebrow", "QUOTATION EXPORT"));
+    head.appendChild(el("p", "dash-note", `Project #${project.project_number} — ${project.client_name}. The customer quotation: each category as its own table, showing Price, Price with discount and Price with GST. Supplier and cost are not shown.`));
+    const exportBtn = el("button", "admin-primary", "Open printable quotation");
+    exportBtn.type = "button";
+    exportBtn.disabled = !segments.length;
+    exportBtn.addEventListener("click", () => openQuotationWindow(seller, project, segments, grand));
+    head.appendChild(exportBtn);
+    container.appendChild(head);
+
+    if (!segments.length) {
+      container.appendChild(el("p", "dash-note", "No saved quotation lines in any category yet."));
+      return;
+    }
+    segments.forEach((s) => container.appendChild(exportPreviewTable(s)));
+    container.appendChild(exportSummaryTable(segments, grand));
+  }
+
+  function exportPreviewTable(s) {
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", s.title));
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    [...s.cols.map((c) => c.label), "Price", "Price with discount", "Price with GST"].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tb = el("tbody");
+    s.rows.forEach((r) => {
+      const tr = el("tr");
+      s.cols.forEach((c) => { const td = el("td"); const v = c.get(r); td.textContent = (v == null || v === "") ? "—" : v; tr.appendChild(td); });
+      [r.margin_price, r.discount_price, r.gst_price].forEach((v) => { const td = el("td"); td.textContent = money(v); tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+    const trT = el("tr", "tk-cat-sqft-total");
+    const span = el("td"); span.colSpan = s.cols.length; span.textContent = "Total";
+    trT.appendChild(span);
+    [s.totals.price, s.totals.disc, s.totals.gst].forEach((v) => { const td = el("td"); td.textContent = money(v); trT.appendChild(td); });
+    tb.appendChild(trT);
+    t.append(thead, tb);
+    scroll.appendChild(t);
+    wrap.appendChild(scroll);
+    return wrap;
+  }
+
+  function exportSummaryTable(segments, grand) {
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", "Summary — by category"));
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const hr = el("tr");
+    ["Category", "Total", "Total with discount", "Total with GST"].forEach((h) => hr.appendChild(el("th", null, h)));
+    t.appendChild(hr);
+    segments.forEach((s) => {
+      const tr = el("tr");
+      [s.title, money(s.totals.price), money(s.totals.disc), money(s.totals.gst)].forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+      t.appendChild(tr);
+    });
+    const trG = el("tr", "tk-cat-sqft-total");
+    ["Grand total", money(grand.price), money(grand.disc), money(grand.gst)].forEach((c) => { const td = el("td"); td.textContent = c; trG.appendChild(td); });
+    t.appendChild(trG);
+    scroll.appendChild(t);
+    wrap.appendChild(scroll);
+    return wrap;
+  }
+
+  function quotationHtml(seller, project, segments, grand) {
+    const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+    const sellerName = seller.trade_name || seller.legal_name || "Safe Creatives";
+    const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
+    const seg = segments.map((s) => {
+      const heads = [...s.cols.map((c) => `<th>${escHtml(c.label)}</th>`), `<th class="num">Price</th>`, `<th class="num">Price with discount</th>`, `<th class="num">Price with GST</th>`].join("");
+      const body = s.rows.map((r) => {
+        const tds = s.cols.map((c) => { const v = c.get(r); return `<td>${escHtml(v == null || v === "" ? "—" : v)}</td>`; }).join("");
+        return `<tr>${tds}<td class="num">${escHtml(money(r.margin_price))}</td><td class="num">${escHtml(money(r.discount_price))}</td><td class="num">${escHtml(money(r.gst_price))}</td></tr>`;
+      }).join("");
+      const total = `<tr class="total"><td colspan="${s.cols.length}">Total</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`;
+      return `<h2>${escHtml(s.title)}</h2><table><thead><tr>${heads}</tr></thead><tbody>${body}${total}</tbody></table>`;
+    }).join("");
+    const summary = segments.map((s) => `<tr><td>${escHtml(s.title)}</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`).join("");
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Quotation — ${escHtml(project.client_name)} (#${escHtml(project.project_number)})</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "DM Sans", Arial, sans-serif; color: #171717; background: #f4f4f2; }
+  .toolbar { position: sticky; top: 0; display: flex; gap: 12px; align-items: center; padding: 12px 18px; background: #0c4444; color: #fff; }
+  .toolbar button { padding: 9px 16px; border: 0; border-radius: 6px; background: #fff; color: #0c4444; font: 600 13px "DM Sans", sans-serif; cursor: pointer; }
+  .toolbar .muted { color: #cfe3e3; font-size: 12px; }
+  .doc { max-width: 900px; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,.08); }
+  header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #0c4444; padding-bottom: 16px; }
+  header h1 { margin: 0 0 6px; font-size: 22px; color: #0c4444; }
+  header p { margin: 2px 0; font-size: 12px; color: #444; }
+  .meta { text-align: right; }
+  .meta h3 { margin: 0 0 6px; letter-spacing: .1em; color: #6f222a; }
+  .cust { margin: 18px 0 6px; }
+  .cust h4 { margin: 0 0 4px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #777; }
+  .cust p { margin: 2px 0; }
+  h2 { margin: 26px 0 8px; font-size: 14px; color: #6f222a; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #e6e6e2; text-align: left; vertical-align: top; }
+  th { font: 600 10px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #777; background: #fafaf8; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  tr.total td { font-weight: 700; color: #0c4444; border-top: 2px solid #0c4444; background: #f4f6f3; }
+  .note { margin-top: 24px; font-size: 11px; color: #888; }
+  @media print { body { background: #fff; } .toolbar { display: none; } .doc { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
+</style></head><body>
+  <div class="toolbar">
+    <button onclick="window.print()">Download / Print (PDF)</button>
+    <span class="muted">Email to customer — coming next.</span>
+  </div>
+  <div class="doc">
+    <header>
+      <div class="seller"><h1>${escHtml(sellerName)}</h1><p>${escHtml(sellerAddr)}</p>${seller.gstin ? `<p>GSTIN: ${escHtml(seller.gstin)}</p>` : ""}${seller.phone || seller.email ? `<p>${escHtml([seller.phone, seller.email].filter(Boolean).join(" · "))}</p>` : ""}</div>
+      <div class="meta"><h3>QUOTATION</h3><p>Project #${escHtml(project.project_number)}</p><p>${escHtml(today)}</p></div>
+    </header>
+    <section class="cust"><h4>Prepared for</h4><p><strong>${escHtml(project.client_name)}</strong></p>${project.client_phone ? `<p>${escHtml(project.client_phone)}</p>` : ""}${project.client_email ? `<p>${escHtml(project.client_email)}</p>` : ""}${project.site_address ? `<p>${escHtml(project.site_address)}</p>` : ""}${project.project_name ? `<p>Project: ${escHtml(project.project_name)}</p>` : ""}</section>
+    ${seg}
+    <h2>Summary</h2>
+    <table><thead><tr><th>Category</th><th class="num">Total</th><th class="num">Total with discount</th><th class="num">Total with GST</th></tr></thead><tbody>${summary}<tr class="total"><td>Grand total</td><td class="num">${escHtml(money(grand.price))}</td><td class="num">${escHtml(money(grand.disc))}</td><td class="num">${escHtml(money(grand.gst))}</td></tr></tbody></table>
+    <p class="note">This is a quotation, not a tax invoice. Amounts shown as Price include the applicable margin; GST is shown where applicable. Valid subject to confirmation.</p>
+  </div>
+</body></html>`;
+  }
+
+  function openQuotationWindow(seller, project, segments, grand) {
+    const w = window.open("", "_blank");
+    if (!w) { message("Pop-up blocked — allow pop-ups for this site to open the quotation.", true); return; }
+    w.document.open();
+    w.document.write(quotationHtml(seller, project, segments, grand));
+    w.document.close();
+    w.focus();
   }
 
   function selectProject(id) {
