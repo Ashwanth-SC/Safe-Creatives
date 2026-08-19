@@ -213,6 +213,9 @@
     addBtn.addEventListener("click", async () => {
       if (defer) {
         const row = { __new: true };
+        // Seed the new row with any per-column defaults so NOT NULL columns
+        // (with a DB default) aren't sent as null on save.
+        columns.forEach((c) => { if (c.default !== undefined) row[c.key] = c.default; });
         liveRows.push(row);
         const empty = tbody.querySelector(".db-empty-row");
         if (empty) empty.remove();
@@ -610,14 +613,15 @@
     const grid = editableGrid({
       table: "turnkey_box_part_logic",
       orderBy: "sort_order",
+      deferSave: true, // part_category is required + unique — fill the row, then Save changes
       columns: [
         { key: "part_category", label: "Part category" },
-        { key: "ply_qty", label: "Plywood qty", type: "number" },
-        { key: "outer_lam", label: "Outer laminate", type: "number" },
-        { key: "inner_lam", label: "Inner laminate", type: "number" },
-        { key: "hinge_type", label: "Hinge", type: "select", options: ["None", "Edge", "Inner"] },
-        { key: "handles", label: "Handles", type: "number" },
-        { key: "channel", label: "Channel", type: "select", options: ["No", "Yes"] },
+        { key: "ply_qty", label: "Plywood qty", type: "number", default: 1 },
+        { key: "outer_lam", label: "Outer laminate", type: "number", default: 0 },
+        { key: "inner_lam", label: "Inner laminate", type: "number", default: 0 },
+        { key: "hinge_type", label: "Hinge", type: "select", options: ["None", "Edge", "Inner"], default: "None" },
+        { key: "handles", label: "Handles", type: "number", default: 0 },
+        { key: "channel", label: "Channel", type: "select", options: ["No", "Yes"], default: "No" },
       ],
     });
     const wrap = document.createDocumentFragment();
@@ -625,7 +629,7 @@
       el(
         "p",
         "dash-note",
-        "The per-part-category quantity logic for Box & Shutters. Edit the plywood / laminate multipliers, hinge type, handle count and whether a channel applies. The hinge count formula and channel selection are applied by the calculator."
+        "The per-part-category quantity logic for Box & Shutters. Edit the plywood / laminate multipliers, hinge type, handle count and whether a channel applies, then click Save changes. Part category is required and must be unique. The calculator reads this table every time it prices a unit, so changes apply to the next Compute / Save (already-saved units keep their numbers until you reopen and Save them again)."
       )
     );
     wrap.appendChild(grid.frag);
