@@ -287,7 +287,7 @@
   async function loadWallPanels(projectId) {
     const { data, error } = await sb
       .from("turnkey_quote_wall_panels")
-      .select("id, space, panel_type, length_mm, width_mm, material_spec, design_spec, total_price, margin_price, margin_amount, discount_price, gst_price, created_at")
+      .select("id, space, panel_type, length_ft, height_ft, material_spec, design_spec, total_price, margin_price, margin_amount, discount_price, gst_price, created_at")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
     if (error) throw error;
@@ -704,6 +704,61 @@
     return wrap;
   }
 
+  // Special additions as a hardware Product (any category) + Quantity table.
+  // Mutates `special` = [{ hardware_id, product_name, quantity }]; price = qty ×
+  // the hardware's price. Used by Wall Panels / Civil / Electrical / Box.
+  function buildSpecialProductSection(special, hardware, onChange) {
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", "Special additions"));
+    wrap.appendChild(el("p", "dash-note", "Pick any hardware product and a quantity — price = Quantity × the product's price. The names are appended to the design spec and the cost adds into the total."));
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Product", "Quantity", "Price", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tbody = el("tbody");
+    t.append(thead, tbody);
+    scroll.appendChild(t);
+
+    const hwOptions = (hardware || []).map((h) => [h.id, `${h.product_name || "unnamed"}${h.category ? " · " + h.category : ""}`]);
+    const hwById = new Map((hardware || []).map((h) => [h.id, h]));
+    const rowCost = (r) => { const hw = r.hardware_id ? hwById.get(r.hardware_id) : null; return (Number(r.quantity) || 0) * (hw ? Number(hw.price) || 0 : 0); };
+    const subtotal = el("p", "tk-box-total", "");
+    const refreshSubtotal = () => { subtotal.textContent = `Special additions total: ${money(special.reduce((s, r) => s + rowCost(r), 0))}`; };
+
+    function addRowDom(row) {
+      const tr = el("tr");
+      const cell = (c) => { const td = el("td"); td.appendChild(c); return td; };
+      const opts = row.hardware_id && !hwById.has(row.hardware_id) && row.product_name ? [[row.hardware_id, row.product_name], ...hwOptions] : hwOptions;
+      const prodSel = selectEl(opts, row.hardware_id || "", hwOptions.length ? "Product…" : "No hardware");
+      prodSel.className = "grid-input grid-select";
+      const qtyI = document.createElement("input"); qtyI.type = "number"; qtyI.min = "0"; qtyI.className = "grid-input"; qtyI.placeholder = "0";
+      qtyI.value = (row.quantity === "" || row.quantity == null) ? "" : row.quantity;
+      const priceCell = el("td");
+      const update = () => { priceCell.textContent = money(rowCost(row)); refreshSubtotal(); onChange(); };
+      prodSel.addEventListener("change", () => { row.hardware_id = prodSel.value; const hw = hwById.get(prodSel.value); row.product_name = hw ? (hw.product_name || "") : ""; update(); });
+      qtyI.addEventListener("input", () => { row.quantity = qtyI.value; update(); });
+      const delTd = el("td", "db-grid-del");
+      const del = el("button", "tk-delete-link", "✕"); del.type = "button"; del.title = "Remove";
+      del.addEventListener("click", () => { const i = special.indexOf(row); if (i >= 0) special.splice(i, 1); tr.remove(); refreshSubtotal(); onChange(); });
+      delTd.appendChild(del);
+      tr.append(cell(prodSel), cell(qtyI), priceCell, delTd);
+      priceCell.textContent = money(rowCost(row));
+      tbody.appendChild(tr);
+      return prodSel;
+    }
+    special.forEach(addRowDom);
+
+    const addBtn = el("button", "admin-primary-small", "+ Add addition");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", () => { const row = { hardware_id: "", product_name: "", quantity: "" }; special.push(row); addRowDom(row).focus(); });
+
+    wrap.append(scroll, addBtn, subtotal);
+    refreshSubtotal();
+    return wrap;
+  }
+
   // The Labour table: category -> name -> task cascade + days + a sqft picker
   // (sqft = sum of the chosen box & shutters categories), a live computed cost
   // per row, and the per-part-category sqft reference below. Returns
@@ -1099,22 +1154,23 @@
   async function renderWallPanels(container) {
     container.textContent = "";
     container.appendChild(el("p", "dash-note", "Loading…"));
-    let spaces, products, labour, panels;
+    let spaces, products, hardware, labour, panels;
     try {
-      [spaces, products, labour, panels] = await Promise.all([
+      [spaces, products, hardware, labour, panels] = await Promise.all([
         loadSelectedSpaces(currentProject),
         loadProducts(),
+        loadHardware(),
         loadLabour(),
         loadWallPanels(currentProject),
       ]);
     } catch (error) {
       container.textContent = "";
       container.appendChild(
-        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migrations 027–033.`)
+        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migrations 027–039.`)
       );
       return;
     }
-    const ref = { spaces, products, labour };
+    const ref = { spaces, products, hardware, labour };
     container.textContent = "";
     container.appendChild(wallPanelEditor(ref, null, () => renderWallPanels(container)));
     container.appendChild(wallPanelsList(panels, () => renderWallPanels(container)));
@@ -1127,7 +1183,7 @@
     const u = existing?.unit || {};
     const block = el("details", "admin-package tk-add");
     block.open = !existing;
-    block.appendChild(el("summary", null, existing ? `Edit panel — ${u.panel_type || ""} ${u.length_mm || ""}×${u.width_mm || ""}` : "Add a wall panel"));
+    block.appendChild(el("summary", null, existing ? `Edit panel — ${u.panel_type || ""} ${u.length_ft || ""}×${u.height_ft || ""} ft` : "Add a wall panel"));
 
     let panelId = u.id || null;
 
@@ -1136,28 +1192,26 @@
     const lamPanel = ref.products.filter((p) => ["laminate", "panel"].includes(normCat(p.category)));
     const plyBrands = distinctVals(plywood.map((p) => p.brand)).sort();
     const plySubsForBrand = (b) => distinctVals(plywood.filter((p) => p.brand === b).map((p) => p.sub_category)).sort();
-    const lamBrands = distinctVals(lamPanel.map((p) => p.brand)).sort();
-    const lamsForBrand = (b) => lamPanel.filter((p) => p.brand === b).map((p) => [p.id, p.product_name || "unnamed"]);
+    const lamOptions = lamPanel.map((p) => [p.id, p.product_name || "unnamed"]);
 
     // Inputs
     const spaceS = selectEl(ref.spaces, u.space || "", ref.spaces.length ? "Select area…" : "No spaces — set them up first");
     const panelTypeS = selectEl(PANEL_TYPES, u.panel_type || "", "Panel type…");
     const lengthI = document.createElement("input");
-    lengthI.type = "number"; lengthI.min = "0"; lengthI.placeholder = "Length (mm)";
-    if (u.length_mm != null) lengthI.value = u.length_mm;
-    const widthI = document.createElement("input");
-    widthI.type = "number"; widthI.min = "0"; widthI.placeholder = "Width (mm)";
-    if (u.width_mm != null) widthI.value = u.width_mm;
+    lengthI.type = "number"; lengthI.min = "0"; lengthI.step = "0.01"; lengthI.placeholder = "Length (ft)";
+    if (u.length_ft != null) lengthI.value = u.length_ft;
+    const heightI = document.createElement("input");
+    heightI.type = "number"; heightI.min = "0"; heightI.step = "0.01"; heightI.placeholder = "Height (ft)";
+    if (u.height_ft != null) heightI.value = u.height_ft;
 
     const plyBrandS = selectEl(plyBrands, u.plywood_brand || "", "Plywood brand…");
     const plySubS = selectEl(plySubsForBrand(u.plywood_brand || ""), u.plywood_sub_category || "", "Plywood type…");
-    const lamBrandS = selectEl(lamBrands, u.laminate_brand || "", "Laminate brand…");
-    const lamS = selectEl(lamsForBrand(u.laminate_brand || ""), u.laminate_id || "", "Laminate / panel…");
+    const lamS = selectEl(lamOptions, u.laminate_id || "", "Laminate / panel…");
 
     const grid = el("div", "admin-inline");
-    grid.append(field("Space", spaceS), field("Panel type", panelTypeS), field("Length (mm)", lengthI), field("Width (mm)", widthI));
+    grid.append(field("Space", spaceS), field("Panel type", panelTypeS), field("Length (ft)", lengthI), field("Height (ft)", heightI));
     const selRow = el("div", "admin-inline tk-sel-grid");
-    selRow.append(field("Plywood brand", plyBrandS), field("Plywood type", plySubS), field("Laminate brand", lamBrandS), field("Laminate / panel", lamS));
+    selRow.append(field("Plywood brand", plyBrandS), field("Plywood type", plySubS), field("Laminate / panel", lamS));
 
     const sectionsWrap = el("div", "tk-box-sections");
     const totalsWrap = el("div");
@@ -1171,8 +1225,8 @@
     };
     syncPlyEnabled();
 
-    // Special additions + Labour state (shared components; same model as Box).
-    const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ name: s.name || "", cost: s.cost ?? "" }));
+    // Special additions (hardware product + qty) + Labour state.
+    const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ hardware_id: s.hardware_id || "", product_name: s.product_name || "", quantity: s.quantity ?? "" }));
     const labour = (Array.isArray(u.labour_lines) ? u.labour_lines : []).map((l) => ({
       labour_id: l.labour_id || "", category: l.category || "", name: l.name || "",
       task: l.task || "", total_days: l.total_days ?? "",
@@ -1207,13 +1261,12 @@
       panel_type: panelTypeS.value || null,
       plywood_brand: plyBrandS.value || null,
       plywood_sub_category: plySubS.value || null,
-      laminate_brand: lamBrandS.value || null,
       laminate_id: lamS.value || null,
-      length_mm: Number(lengthI.value) || null,
-      width_mm: Number(widthI.value) || null,
+      length_ft: Number(lengthI.value) || null,
+      height_ft: Number(heightI.value) || null,
       special_additions: special
-        .map((s) => ({ name: (s.name || "").trim(), cost: Number(s.cost) || 0 }))
-        .filter((s) => s.name || s.cost),
+        .map((s) => ({ hardware_id: s.hardware_id || null, quantity: Number(s.quantity) || 0, product_name: s.product_name || null }))
+        .filter((s) => s.hardware_id || s.quantity),
       labour_lines: labour
         .map((l) => ({
           labour_id: l.labour_id || null,
@@ -1224,7 +1277,7 @@
         .filter((l) => l.labour_id || l.total_days || l.sqft_categories.length || l.total_sqft),
     });
 
-    const specialSection = buildSpecialSection(special, () => recompute());
+    const specialSection = buildSpecialProductSection(special, ref.hardware, () => recompute());
     // Wall panels don't show the per-category sqft reference table (there's no
     // cutlist); the labour sqft picker still uses the panel's own areas.
     const labourUI = buildLabourSection(
@@ -1235,10 +1288,10 @@
       () => recompute()
     );
 
-    const coreReady = () => panelTypeS.value && Number(lengthI.value) > 0 && Number(widthI.value) > 0 && lamS.value;
+    const coreReady = () => panelTypeS.value && Number(lengthI.value) > 0 && Number(heightI.value) > 0 && lamS.value;
 
     async function compute(save) {
-      if (save && !coreReady()) return void (msg.textContent = "Pick a panel type, a laminate/panel and enter the length & width first.");
+      if (save && !coreReady()) return void (msg.textContent = "Pick a panel type, a laminate/panel and enter the length & height first.");
       msg.textContent = save ? "Saving…" : "Computing…";
       try {
         const res = await computeWallPanel(inputs(save));
@@ -1260,10 +1313,9 @@
     const recompute = () => { if (coreReady()) compute(false); };
 
     plyBrandS.addEventListener("change", () => { replaceOptions(plySubS, plySubsForBrand(plyBrandS.value), "", "Plywood type…"); recompute(); });
-    lamBrandS.addEventListener("change", () => { replaceOptions(lamS, lamsForBrand(lamBrandS.value), "", "Laminate / panel…"); recompute(); });
     panelTypeS.addEventListener("change", () => { syncPlyEnabled(); recompute(); });
     [plySubS, lamS].forEach((s) => s.addEventListener("change", recompute));
-    [spaceS, lengthI, widthI].forEach((c) => c.addEventListener("change", recompute));
+    [spaceS, lengthI, heightI].forEach((c) => c.addEventListener("change", recompute));
 
     const computeBtn = el("button", "admin-primary-small", "Compute");
     computeBtn.type = "button";
@@ -1284,48 +1336,48 @@
     return block;
   }
 
-  // The Materials breakdown for a wall panel (plywood + laminate/panel).
+  // The Materials breakdown for a wall panel (computed supplier/category/product).
   function renderWallSections(container, computed) {
     container.textContent = "";
     if (!computed) {
-      container.appendChild(el("p", "dash-note", "Pick a panel type, a laminate/panel and enter the length & width, then Compute."));
+      container.appendChild(el("p", "dash-note", "Pick a panel type, a laminate/panel and enter the length & height, then Compute."));
       return;
     }
-    const miniTable = (headers, rows) => {
-      const scroll = el("div", "table-scroll");
-      const t = el("table", "dash-table");
-      const hr = el("tr");
-      headers.forEach((h) => hr.appendChild(el("th", null, h)));
-      t.appendChild(hr);
-      rows.forEach((r) => {
-        const tr = el("tr");
-        r.forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
-        t.appendChild(tr);
-      });
-      scroll.appendChild(t);
-      return scroll;
-    };
-
-    const s1 = el("div", "tk-box-section");
-    s1.appendChild(el("div", "tk-box-section-head", `Materials — ${computed.panel_type || "panel"}`));
-
-    const ply = computed.plywood;
-    if (ply && ply.applies) {
-      s1.appendChild(el("p", "tk-box-line", `Plywood (${ply.thickness} mm)`));
-      s1.appendChild(miniTable(["Board", "Cover (sqft)", "Qty", "Total"], [[
-        ply.missing ? "⚠ no board found" : (ply.name || "—"), ply.cover_sqft ?? "—", ply.qty ?? "—", money(ply.price),
-      ]]));
-      if (computed.dimensions && computed.dimensions.frame_sqft > 0) {
-        s1.appendChild(el("p", "tk-box-line", `(includes ${computed.dimensions.frame_sqft} sqft of frame strips)`));
-      }
+    container.appendChild(renderMaterialsTable(computed));
+    if (computed.dimensions && computed.dimensions.frame_sqft > 0) {
+      container.appendChild(el("p", "tk-box-line", `Framed: 12 mm face ${computed.dimensions.face_sqft} sqft + 16 mm frame ${computed.dimensions.frame_sqft} sqft.`));
     }
-    const lam = computed.laminate;
-    s1.appendChild(el("p", "tk-box-line", "Laminate / panel"));
-    s1.appendChild(miniTable(["Laminate / panel", "Cover (sqft)", "Qty", "Total"], [[
-      lam.missing ? "⚠ not found" : (lam.name || "—"), lam.cover_sqft ?? "—", lam.qty ?? "—", money(lam.price),
-    ]]));
-    s1.appendChild(el("p", "tk-box-total", `Material total: ${money(computed.totals.material)}`));
-    container.appendChild(s1);
+  }
+
+  // A read-only Materials breakdown table (supplier / category / product / qty /
+  // price) built from the computed.materials the backend returns. Shared by Wall
+  // Panels and Box & Shutters; it's what feeds the vendor BOQ.
+  function renderMaterialsTable(computed) {
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", "Materials"));
+    const rows = (computed && computed.materials) || [];
+    if (!rows.length) { wrap.appendChild(el("p", "dash-note", "No materials computed yet.")); return wrap; }
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Supplier", "Category", "Product", "Quantity", "Price"].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tb = el("tbody");
+    rows.forEach((r) => {
+      const tr = el("tr");
+      [r.supplier || "—", r.category || "—", r.product || "—", r.quantity, money(r.price)].forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+    const trT = el("tr", "tk-cat-sqft-total");
+    const span = el("td"); span.colSpan = 4; span.textContent = "Material total";
+    const totTd = el("td"); totTd.textContent = money((computed.totals && computed.totals.material) || 0);
+    trT.append(span, totTd);
+    tb.appendChild(trT);
+    t.append(thead, tb);
+    scroll.appendChild(t);
+    wrap.appendChild(scroll);
+    return wrap;
   }
 
   function wallPanelsList(panels, onChanged) {
@@ -1353,7 +1405,7 @@
       open.addEventListener("click", async () => {
         try {
           const existing = await loadWallPanel(p.id);
-          const ref = { spaces: await loadSelectedSpaces(currentProject), products: await loadProducts(), labour: await loadLabour() };
+          const ref = { spaces: await loadSelectedSpaces(currentProject), products: await loadProducts(), hardware: await loadHardware(), labour: await loadLabour() };
           panel.textContent = "";
           panel.appendChild(wallPanelEditor(ref, existing, () => renderWallPanels(panel)));
           panel.appendChild(wallPanelsList(await loadWallPanels(currentProject), () => renderWallPanels(panel)));
@@ -1374,7 +1426,7 @@
       const actions = el("div", "tk-cell-actions");
       actions.append(open, del);
 
-      const dims = p.length_mm && p.width_mm ? `${p.length_mm}×${p.width_mm} mm` : "";
+      const dims = p.length_ft && p.height_ft ? `${p.length_ft}×${p.height_ft} ft` : "";
       const cells = [
         p.space || "—", `${p.panel_type || "—"}${dims ? " · " + dims : ""}`, p.material_spec || "—", p.design_spec || "—",
         money(p.total_price), money(p.margin_price), money(p.margin_amount), money(p.discount_price), money(p.gst_price), actions,
@@ -1675,7 +1727,7 @@
     ] },
     { title: "Wall Panels", load: loadWallPanels, cols: [
       { label: "Space", get: (r) => r.space },
-      { label: "Panel", get: (r) => `${r.panel_type || ""}${r.length_mm && r.width_mm ? ` · ${r.length_mm}×${r.width_mm} mm` : ""}`.trim() },
+      { label: "Panel", get: (r) => `${r.panel_type || ""}${r.length_ft && r.height_ft ? ` · ${r.length_ft}×${r.height_ft} ft` : ""}`.trim() },
       { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
     ] },
     { title: "Furniture", load: loadFurniture, cols: [

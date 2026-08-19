@@ -3,36 +3,30 @@
 // ============================================================================
 //
 // Inputs: space, panel_type (Direct|Base|Framed), plywood_brand +
-// plywood_sub_category, laminate_brand + laminate_id, length_mm, width_mm,
-// special_additions, labour_lines, project_id.
+// plywood_sub_category, laminate_id, length_ft, height_ft (FEET),
+// special_additions [{hardware_id, quantity}], labour_lines, project_id.
 //
-// Units: products are in FEET (area_sqft = std_width*std_height); dimensions
-// come in mm and convert internally. Prices are PER SHEET (the price_per_sqft
-// column, mirroring Box & Shutters). Plywood thickness is in mm.
+// Units: everything in FEET. face sqft = L*H. Products' area_sqft is the sheet
+// area; price_per_sqft is the per-SHEET price. Laminate is picked directly.
 //
 // Materials:
-//   * laminate/panel: cover = L*W (mm^2 -> sqft); sheets = ceil(cover /
-//     lam sheet area); price = sheets * price.
+//   * laminate/panel: sheets = ceil(face / lam sheet area); price = sheets*price.
 //   * Direct  — laminate only.
-//   * Base    — laminate + 8 mm plywood (brand+type at 8 mm); ply cover = L*W.
-//   * Framed  — laminate + 16 mm plywood (brand+type at 16 mm); ply cover =
-//     face (L*W) + frame. Frame = vertical strips (floor(width_ft) strips, each
-//     3" wide x (L-1ft) tall) + 2 horizontal strips (3" wide x full width).
-//     Face + frame are summed into one 16 mm plywood quantity.
+//   * Base    — laminate + 8 mm ply face (cover = L*H).
+//   * Framed  — laminate + 12 mm ply face (L*H) + 16 mm ply frame. Frame sqft =
+//     (L*0.25*2) + ((H-2)*0.25*floor(H)).
+//   * special additions — hardware product + quantity (price = qty*hw price).
 //
 // Totals: material + special + labour -> base total; margin, discount, GST from
-// the project percentages cascade over all of it (special names also append to
-// the design spec). On save: stores the panel + rebuilds the shared BOQ.
+// the project percentages cascade. Emits a materials breakdown (supplier /
+// category / product / qty / price) that feeds the vendor BOQ. On save: stores
+// the panel + rebuilds the shared BOQ.
 //
-// Needs migration 033. Deploy: supabase functions deploy compute-wall-panel
+// Needs migrations 033 + 039. Deploy: supabase functions deploy compute-wall-panel
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { rebuildBoq } from "../_shared/rebuild-boq.ts";
-
-const SQFT_PER_MM2 = 92903.04;
-const FT_MM = 304.8;
-const STRIP_MM = 76.2; // 3 inches
 
 function corsHeadersFor(req: Request): Record<string, string> {
   const configured = (Deno.env.get("SITE_ORIGIN") ?? "*").split(",").map((v) => v.trim()).filter(Boolean);
@@ -88,73 +82,101 @@ Deno.serve(async (req) => {
 
   const panelType = String(body.panel_type ?? "").trim().toLowerCase(); // direct | base | framed
   if (!["direct", "base", "framed"].includes(panelType)) return json({ error: "Choose a panel type (Direct, Base or Framed)." }, 400);
-  const L = num(body.length_mm);
-  const W = num(body.width_mm);
-  if (!(L > 0) || !(W > 0)) return json({ error: "Enter a length and width (mm)." }, 400);
+  const L = num(body.length_ft); // feet
+  const H = num(body.height_ft); // feet
+  if (!(L > 0) || !(H > 0)) return json({ error: "Enter a length and height (feet)." }, 400);
   if (!body.laminate_id) return json({ error: "Choose a laminate / panel." }, 400);
 
-  const faceSqft = (L * W) / SQFT_PER_MM2;
+  const faceSqft = round2(L * H);
 
-  // ---- Laminate / panel ----------------------------------------------------
+  // ---- Laminate / panel (picked directly, no brand) -----------------------
   const { data: lamProd } = await admin
     .from("turnkey_products")
-    .select("id, product_name, supplier, brand, thickness, area_sqft, price_per_sqft")
+    .select("id, product_name, supplier, category, thickness, area_sqft, price_per_sqft")
     .eq("id", String(body.laminate_id))
     .maybeSingle();
+  const lamName = lamProd ? String(lamProd.product_name ?? "") : null;
   const lamSheet = lamProd ? Number(lamProd.area_sqft) || 0 : 0;
   const lamPricePer = lamProd ? Number(lamProd.price_per_sqft) || 0 : 0;
   const lamQty = lamProd && lamSheet > 0 ? ceilDiv(faceSqft, lamSheet) : null;
   const lamPrice = lamQty != null ? round2(lamQty * lamPricePer) : 0;
 
-  // ---- Plywood (Base = 8 mm face; Framed = 16 mm face + frame) --------------
+  // ---- Plywood: Base = 8mm face; Framed = 12mm face + 16mm frame -----------
   const plyBrand = body.plywood_brand ? String(body.plywood_brand) : null;
   const plySub = body.plywood_sub_category ? String(body.plywood_sub_category) : null;
-  const plyThickness = panelType === "base" ? 8 : panelType === "framed" ? 16 : null;
 
-  // Frame area (Framed only): floor(width_ft) vertical strips 3" x (L-1ft),
-  // plus 2 horizontal strips 3" x full width.
-  let frameSqft = 0;
-  if (panelType === "framed") {
-    // One vertical strip per whole foot of width (floor); +1e-9 so a clean
-    // whole-foot width doesn't fall to 5.9999… and floor down a strip.
-    const vCount = Math.floor(W / FT_MM + 1e-9);
-    const vHeightMm = Math.max(0, L - FT_MM); // (length - 1 ft)
-    const frameMm2 = vCount * STRIP_MM * vHeightMm + 2 * STRIP_MM * W;
-    frameSqft = frameMm2 / SQFT_PER_MM2;
-  }
-  const plyCoverSqft = panelType === "base" ? faceSqft : panelType === "framed" ? faceSqft + frameSqft : 0;
+  // Frame area (Framed only), sqft: 2 horizontal strips (L x 0.25ft) plus
+  // floor(H) vertical strips ((H-2) x 0.25ft).
+  const frameSqft = panelType === "framed"
+    ? round2(L * 0.25 * 2 + Math.max(0, H - 2) * 0.25 * Math.floor(H + 1e-9))
+    : 0;
 
-  let plyBoard: Any = null;
-  if (plyThickness && plyBrand) {
-    let q = admin.from("turnkey_products").select("id, product_name, supplier, thickness, area_sqft, price_per_sqft").eq("brand", plyBrand);
+  // Per-thickness plywood requirement.
+  const plyReq: { thickness: number; coverSqft: number }[] = [];
+  if (panelType === "base") plyReq.push({ thickness: 8, coverSqft: faceSqft });
+  if (panelType === "framed") { plyReq.push({ thickness: 12, coverSqft: faceSqft }); plyReq.push({ thickness: 16, coverSqft: frameSqft }); }
+
+  let plyProducts: Any[] = [];
+  if (plyReq.length && plyBrand) {
+    let q = admin.from("turnkey_products").select("id, product_name, supplier, category, thickness, area_sqft, price_per_sqft").eq("brand", plyBrand);
     if (plySub) q = q.eq("sub_category", plySub);
     const { data } = await q;
-    plyBoard = (data ?? []).find((p: Any) => num(p.thickness) === plyThickness) ?? null;
+    plyProducts = data ?? [];
   }
-  const plySheet = plyBoard ? Number(plyBoard.area_sqft) || 0 : 0;
-  const plyPricePer = plyBoard ? Number(plyBoard.price_per_sqft) || 0 : 0;
-  const plyQty = plyThickness && plyBoard && plySheet > 0 ? ceilDiv(plyCoverSqft, plySheet) : null;
-  const plyPrice = plyQty != null ? round2(plyQty * plyPricePer) : 0;
-  const plyMissing = plyThickness != null && !plyBoard;
+  const plywood = plyReq.map((req) => {
+    const board = plyProducts.find((p: Any) => num(p.thickness) === req.thickness) ?? null;
+    const sheet = board ? Number(board.area_sqft) || 0 : 0;
+    const pricePer = board ? Number(board.price_per_sqft) || 0 : 0;
+    const qty = board && sheet > 0 ? ceilDiv(req.coverSqft, sheet) : null;
+    const price = qty != null ? round2(qty * pricePer) : 0;
+    return {
+      thickness: req.thickness, cover_sqft: round2(req.coverSqft),
+      name: board ? String(board.product_name ?? "") : null,
+      supplier: board ? (board.supplier ?? null) : null,
+      category: board ? String(board.category ?? "") : null,
+      qty, price, price_per: pricePer, missing: !board,
+    };
+  });
+  const plyPrice = round2(plywood.reduce((s, p) => s + (p.price || 0), 0));
+
+  // ---- Special additions: hardware product + quantity ---------------------
+  const specialIn = Array.isArray(body.special_additions) ? (body.special_additions as Any[]) : [];
+  const specialHwIds = specialIn.map((s: Any) => s?.hardware_id).filter(Boolean).map(String);
+  const specialHwById = new Map<string, Any>();
+  if (specialHwIds.length) {
+    const { data } = await admin.from("turnkey_hardwares").select("id, product_name, supplier, category, price").in("id", [...new Set(specialHwIds)]);
+    (data ?? []).forEach((h: Any) => specialHwById.set(String(h.id), h));
+  }
+  const specialTable = specialIn.map((s: Any) => {
+    const hw = s?.hardware_id ? specialHwById.get(String(s.hardware_id)) : undefined;
+    const qty = num(s?.quantity);
+    const unitPrice = hw ? Number(hw.price) || 0 : 0;
+    return {
+      hardware_id: s?.hardware_id ? String(s.hardware_id) : null,
+      product_name: hw ? String(hw.product_name ?? "") : (s?.product_name ? String(s.product_name) : null),
+      supplier: hw ? (hw.supplier ?? null) : null,
+      category: hw ? String(hw.category ?? "") : null,
+      quantity: qty, unit_price: unitPrice, cost: round2(qty * unitPrice),
+    };
+  }).filter((s) => s.hardware_id || s.quantity);
+  const specialTotal = round2(specialTable.reduce((sum, s) => sum + (s.cost || 0), 0));
 
   const materialTotal = round2(lamPrice + plyPrice);
 
-  // ---- BOQ lines -----------------------------------------------------------
-  const boqLines: { product_name: string; category: string; quantity: number; supplier: string | null; unit_price: number | null }[] = [];
-  if (lamProd && lamQty && lamQty > 0) boqLines.push({ product_name: String(lamProd.product_name ?? ""), category: "Laminate/panel", quantity: lamQty, supplier: lamProd.supplier ?? null, unit_price: lamPricePer });
-  if (plyBoard && plyQty && plyQty > 0) boqLines.push({ product_name: String(plyBoard.product_name ?? ""), category: "Plywood", quantity: plyQty, supplier: plyBoard.supplier ?? null, unit_price: plyPricePer });
-
-  // ---- Special additions ---------------------------------------------------
-  const specialIn = Array.isArray(body.special_additions) ? (body.special_additions as Any[]) : [];
-  const specialTable = specialIn
-    .map((s: Any) => ({ name: String(s?.name ?? "").trim(), cost: round2(num(s?.cost)) }))
-    .filter((s) => s.name || s.cost > 0);
-  const specialTotal = round2(specialTable.reduce((sum, s) => sum + (s.cost || 0), 0));
+  // ---- Materials breakdown + BOQ lines ------------------------------------
+  const materials: Any[] = [];
+  const boqLines: Any[] = [];
+  const pushMat = (supplier: Any, category: Any, product: Any, quantity: Any, unit_price: Any, price: Any) => {
+    materials.push({ supplier: supplier ?? null, category: category ?? null, product: product ?? "", quantity, unit_price, price });
+    if (quantity && quantity > 0) boqLines.push({ product_name: String(product ?? ""), category: category ?? null, quantity, supplier: supplier ?? null, unit_price });
+  };
+  if (lamProd && lamQty && lamQty > 0) pushMat(lamProd.supplier ?? null, lamProd.category || "Laminate/panel", lamName, lamQty, lamPricePer, lamPrice);
+  plywood.forEach((p) => { if (p.qty && p.qty > 0) pushMat(p.supplier, p.category || `Plywood ${p.thickness}mm`, p.name, p.qty, p.price_per, p.price); });
+  specialTable.forEach((s) => { if (s.quantity && s.quantity > 0) pushMat(s.supplier, s.category || "Special addition", s.product_name, s.quantity, s.unit_price, s.cost); });
 
   // ---- Category sqft (drives the labour sqft picker) -----------------------
-  const categorySqft: { category: string; sqft: number }[] = [{ category: "Laminate/panel", sqft: round2(faceSqft) }];
-  if (panelType === "base") categorySqft.push({ category: "Plywood (8 mm)", sqft: round2(faceSqft) });
-  if (panelType === "framed") categorySqft.push({ category: "Plywood (16 mm)", sqft: round2(plyCoverSqft) });
+  const categorySqft: { category: string; sqft: number }[] = [{ category: "Laminate/panel", sqft: faceSqft }];
+  plywood.forEach((p) => categorySqft.push({ category: `Plywood (${p.thickness} mm)`, sqft: p.cover_sqft }));
   const catSqftLookup = new Map(categorySqft.map((r) => [r.category, r.sqft]));
 
   // ---- Labour --------------------------------------------------------------
@@ -204,27 +226,18 @@ Deno.serve(async (req) => {
 
   // ---- Spec strings --------------------------------------------------------
   const clean = (arr: (string | null | undefined)[]) => arr.map((s) => (s ?? "").trim()).filter(Boolean);
-  const laminateBrand = body.laminate_brand ? String(body.laminate_brand) : (lamProd ? String(lamProd.brand ?? "") : null);
-  const lamName = lamProd ? String(lamProd.product_name ?? "") : null;
-  const boardName = plyBoard ? String(plyBoard.product_name ?? "") : null;
   const typeLabel = panelType.charAt(0).toUpperCase() + panelType.slice(1);
-  const materialSpec = clean([boardName, laminateBrand, lamName]).join(", ");
-  const specialNames = specialTable.map((s) => s.name);
-  const designSpec = clean([typeLabel, laminateBrand, lamName, ...specialNames]).join(", ");
+  const plyNames = plywood.map((p) => p.name);
+  const specialNames = specialTable.map((s) => s.product_name);
+  const materialSpec = clean([...plyNames, lamName, ...specialNames]).join(", ");
+  const designSpec = clean([typeLabel, lamName, ...specialNames]).join(", ");
 
   const computed = {
     panel_type: typeLabel,
-    dimensions: { length_mm: L, width_mm: W, face_sqft: round2(faceSqft), frame_sqft: round2(frameSqft) },
-    laminate: { name: lamName, thickness: lamProd ? num(lamProd.thickness) : null, cover_sqft: round2(faceSqft), qty: lamQty, price: lamPrice, missing: !lamProd },
-    plywood: {
-      thickness: plyThickness,
-      name: boardName,
-      cover_sqft: round2(plyCoverSqft),
-      qty: plyQty,
-      price: plyPrice,
-      missing: plyMissing,
-      applies: plyThickness != null,
-    },
+    dimensions: { length_ft: L, height_ft: H, face_sqft: faceSqft, frame_sqft: round2(frameSqft) },
+    laminate: { name: lamName, thickness: lamProd ? num(lamProd.thickness) : null, cover_sqft: faceSqft, qty: lamQty, price: lamPrice, missing: !lamProd },
+    plywood,
+    materials,
     special: { total: specialTotal, table: specialTable },
     labour: { total: labourTotal, table: labourTable },
     category_sqft: categorySqft,
@@ -252,10 +265,10 @@ Deno.serve(async (req) => {
       panel_type: typeLabel,
       plywood_brand: plyBrand,
       plywood_sub_category: plySub,
-      laminate_brand: laminateBrand,
+      laminate_brand: null,
       laminate_id: body.laminate_id ? String(body.laminate_id) : null,
-      length_mm: L,
-      width_mm: W,
+      length_ft: L,
+      height_ft: H,
       special_additions: specialTable,
       labour_lines: labourTable,
       total_material_price: materialTotal,
