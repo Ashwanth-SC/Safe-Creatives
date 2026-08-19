@@ -430,15 +430,15 @@
     let csvText = u.csv_text || "";
     let unitId = u.id || null;
 
-    // Reference sets derived from the products database.
+    // Reference sets derived from the databases.
     const plywood = ref.products.filter((p) => normCat(p.category) === "plywood");
     const laminate = ref.products.filter((p) => normCat(p.category) === "laminate");
     const materialBrands = distinctVals(plywood.map((p) => p.brand)).sort();
-    const laminateBrands = distinctVals(laminate.map((p) => p.brand)).sort();
     const subsForBrand = (brand) => distinctVals(plywood.filter((p) => p.brand === brand).map((p) => p.sub_category)).sort();
-    const lamsForBrand = (brand) => laminate.filter((p) => p.brand === brand).map((p) => [p.id, p.product_name || "unnamed"]);
+    const lamOptions = laminate.map((p) => [p.id, p.product_name || "unnamed"]);
+    const handleOptions = (ref.hardware || []).filter((h) => normCat(h.category) === "handle").map((h) => [h.id, h.product_name || "unnamed"]);
 
-    // Top inputs
+    // Main inputs
     const spaceS = selectEl(ref.spaces, u.space || "", ref.spaces.length ? "Select area…" : "No spaces — set them up first");
     const nameI = document.createElement("input");
     nameI.type = "text";
@@ -453,35 +453,25 @@
     importBtn.type = "button";
     importBtn.addEventListener("click", () => fileInput.click());
 
-    const grid = el("div", "admin-inline");
-    grid.append(field("Space", spaceS), field("Unit name", nameI), field("Cutlist", importBtn));
-    grid.appendChild(fileInput);
-
-    // Plywood / laminate selectors (single-select).
+    // Main: plywood brand/type + one common inner laminate (outer laminate is
+    // chosen per panel below; hinges/minifix/legs/channels are automatic).
     const matBrandS = selectEl(materialBrands, u.material_brand || "", "Plywood brand…");
     const subS = selectEl(subsForBrand(u.material_brand || ""), u.material_sub_category || "", "Plywood type…");
-    const lamBrandS = selectEl(laminateBrands, u.laminate_brand || "", "Laminate brand…");
-    const outerS = selectEl(lamsForBrand(u.laminate_brand || ""), u.outer_laminate_id || "", "Outer laminate…");
-    const innerS = selectEl(lamsForBrand(u.laminate_brand || ""), u.inner_laminate_id || "", "Inner laminate…");
+    const innerS = selectEl(lamOptions, u.inner_laminate_id || "", "Inner laminate…");
+    matBrandS.addEventListener("change", () => { replaceOptions(subS, subsForBrand(matBrandS.value), "", "Plywood type…"); compute(false); });
+    [subS, innerS].forEach((s) => s.addEventListener("change", () => compute(false)));
 
-    matBrandS.addEventListener("change", () => replaceOptions(subS, subsForBrand(matBrandS.value), "", "Plywood type…"));
-    lamBrandS.addEventListener("change", () => {
-      const lams = lamsForBrand(lamBrandS.value);
-      replaceOptions(outerS, lams, "", "Outer laminate…");
-      replaceOptions(innerS, lams, "", "Inner laminate…");
-    });
+    const grid = el("div", "admin-inline");
+    grid.append(field("Space", spaceS), field("Unit name", nameI), field("Plywood brand", matBrandS), field("Plywood type", subS), field("Inner laminate", innerS), field("Cutlist", importBtn));
+    grid.appendChild(fileInput);
 
-    // Hardware selectors (from the free-text hardware categories).
-    const hwOptions = (cat) => (ref.hardware || []).filter((h) => normCat(h.category) === cat).map((h) => [h.id, h.product_name || "unnamed"]);
-    const edgeHingeS = selectEl(hwOptions("edge hinges"), u.edge_hinge_id || "", "Edge hinge…");
-    const innerHingeS = selectEl(hwOptions("inner hinges"), u.inner_hinge_id || "", "Inner hinge…");
-    // Handles are chosen per part-category row in the handles table below.
-    const handleOptions = hwOptions("handle");
-    const handleSel = u.handle_ids && typeof u.handle_ids === "object" ? { ...u.handle_ids } : {};
+    // Per-panel selections (keyed by panel index), filled in the Outer laminate
+    // and Handles sections that render after a compute.
+    const outerLamSel = (u.outer_laminate_ids && typeof u.outer_laminate_ids === "object") ? { ...u.outer_laminate_ids } : {};
+    const handleSel = (u.handle_ids && typeof u.handle_ids === "object") ? { ...u.handle_ids } : {};
 
-    // Special additions (name + cost) and Labour (category -> name -> task +
-    // days + sqft) — both editable below, both fold into the base total on save.
-    const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ name: s.name || "", cost: s.cost ?? "" }));
+    // Special additions (hardware product + qty) and Labour.
+    const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ hardware_id: s.hardware_id || "", product_name: s.product_name || "", quantity: s.quantity ?? "" }));
     const labour = (Array.isArray(u.labour_lines) ? u.labour_lines : []).map((l) => ({
       labour_id: l.labour_id || "", category: l.category || "", name: l.name || "",
       task: l.task || "", total_days: l.total_days ?? "",
@@ -513,27 +503,20 @@
       return (Number(row.total_days) || 0) * (Number(lr.cost_per_day) || 0) + rowSqft(row) * (Number(lr.cost_per_sqft) || 0);
     };
 
-    const selRow = el("div", "admin-inline tk-sel-grid");
-    selRow.append(
-      field("Plywood brand", matBrandS),
-      field("Plywood type", subS),
-      field("Laminate brand", lamBrandS),
-      field("Outer laminate", outerS),
-      field("Inner laminate", innerS),
-      field("Edge hinge", edgeHingeS),
-      field("Inner hinge", innerHingeS)
-    );
-
     const sectionsWrap = el("div", "tk-box-sections");
+    const materialsWrap = el("div", "tk-box-sections");
     const totalsWrap = el("div");
     const msg = el("p", "admin-hint", "");
 
-    // Passed to renderSections so the handles table can offer a handle dropdown
-    // per part category; changing one recomputes the unit.
+    // Passed to renderSections so the Outer laminate + Handles sections can offer
+    // a dropdown per applicable panel; changing one recomputes the unit.
     const ctx = {
+      lamOptions,
       handleOptions,
+      outerLamSel,
       handleSel,
-      onHandleChange: (cat, id) => { if (id) handleSel[cat] = id; else delete handleSel[cat]; compute(false); },
+      onOuterChange: (idx, id) => { if (id) outerLamSel[idx] = id; else delete outerLamSel[idx]; compute(false); },
+      onHandleChange: (idx, id) => { if (id) handleSel[idx] = id; else delete handleSel[idx]; compute(false); },
     };
 
     const inputs = (save) => ({
@@ -545,15 +528,12 @@
       csv_text: csvText,
       material_brand: matBrandS.value || null,
       material_sub_category: subS.value || null,
-      laminate_brand: lamBrandS.value || null,
-      outer_laminate_id: outerS.value || null,
       inner_laminate_id: innerS.value || null,
-      edge_hinge_id: edgeHingeS.value || null,
-      inner_hinge_id: innerHingeS.value || null,
+      outer_laminate_ids: outerLamSel,
       handle_ids: handleSel,
       special_additions: special
-        .map((s) => ({ name: (s.name || "").trim(), cost: Number(s.cost) || 0 }))
-        .filter((s) => s.name || s.cost),
+        .map((s) => ({ hardware_id: s.hardware_id || null, quantity: Number(s.quantity) || 0, product_name: s.product_name || null }))
+        .filter((s) => s.hardware_id || s.quantity),
       labour_lines: labour
         .map((l) => ({
           labour_id: l.labour_id || null,
@@ -565,7 +545,7 @@
     });
 
     // ---- Special additions (interactive; persists across recomputes) -------
-    const specialSection = buildSpecialSection(special, () => compute(false));
+    const specialSection = buildSpecialProductSection(special, ref.hardware, () => compute(false));
 
     // ---- Labour (interactive) + per-category sqft reference ----------------
     const catSqftBox = el("div", "tk-cat-sqft");
@@ -585,6 +565,8 @@
         if (save) unitId = res.unit_id;
         catSqftList = (res.computed && res.computed.category_sqft) || [];
         renderSections(sectionsWrap, res.computed, ctx);
+        materialsWrap.textContent = "";
+        materialsWrap.appendChild(renderMaterialsTable(res.computed));
         renderTotals(totalsWrap, res.computed);
         renderCatSqft(catSqftBox, res.computed);
         labourUI.refresh();
@@ -615,9 +597,8 @@
 
     const actions = el("div", "admin-row-actions");
     actions.append(computeBtn, saveBtn);
-    const extrasWrap = el("div", "tk-box-sections");
-    extrasWrap.append(specialSection, labourUI.node);
-    block.append(grid, selRow, sectionsWrap, extrasWrap, totalsWrap, actions, msg);
+    // Order: Main → Outer laminate + Handles → Special additions → Materials → Labour → totals.
+    block.append(grid, sectionsWrap, specialSection, materialsWrap, labourUI.node, totalsWrap, actions, msg);
 
     renderCatSqft(catSqftBox, null);
     renderTotals(totalsWrap, null);
@@ -992,95 +973,38 @@
     container.appendChild(totBox);
   }
 
-  // Renders the material tables, hardware sections + totals. `ctx` (optional)
-  // makes the handles table interactive (a handle dropdown per part category).
+  // Renders the per-panel Outer laminate + Handles sections. `ctx` makes them
+  // interactive (a laminate / handle dropdown per applicable panel).
   function renderSections(container, computed, ctx) {
     container.textContent = "";
     if (!computed) {
-      container.appendChild(el("p", "dash-note", "Import a cutlist and choose materials, then Compute."));
+      container.appendChild(el("p", "dash-note", "Import a cutlist and pick the plywood + inner laminate, then Compute."));
       return;
     }
-
-    const miniTable = (headers, rows) => {
+    const perPanel = (title, note, panels, options, sel, onChange) => {
+      const s = el("div", "tk-box-section");
+      s.appendChild(el("div", "tk-box-section-head", title));
+      s.appendChild(el("p", "dash-note", note));
+      if (!panels.length) { s.appendChild(el("p", "dash-note", "No applicable panels.")); return s; }
       const scroll = el("div", "table-scroll");
       const t = el("table", "dash-table");
-      const hr = el("tr");
-      headers.forEach((h) => hr.appendChild(el("th", null, h)));
-      t.appendChild(hr);
-      rows.forEach((r) => {
+      const hr = el("tr"); ["Panel", "Category", title.split(" ")[0]].forEach((h) => hr.appendChild(el("th", null, h))); t.appendChild(hr);
+      panels.forEach((p) => {
         const tr = el("tr");
-        r.forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+        const c1 = el("td"); c1.textContent = p.name || "—"; tr.appendChild(c1);
+        const c2 = el("td"); c2.textContent = p.category || "—"; tr.appendChild(c2);
+        const c3 = el("td");
+        const dd = selectEl(options, sel[p.index] || "", "Select…");
+        dd.className = "grid-input grid-select";
+        dd.addEventListener("change", () => onChange(p.index, dd.value));
+        c3.appendChild(dd); tr.appendChild(c3);
         t.appendChild(tr);
       });
-      scroll.appendChild(t);
-      return scroll;
+      scroll.appendChild(t); s.appendChild(scroll);
+      return s;
     };
-    const thk = (v) => (v != null ? `${v} mm` : "—");
-
-    // --- Materials: plywood + outer + inner laminate ---
-    const s1 = el("div", "tk-box-section");
-    s1.appendChild(el("div", "tk-box-section-head", "Materials"));
-    const plyRows = (computed.groups || []).map((g) => [
-      g.missing ? "⚠ no board found" : g.product_name || "—", g.qty ?? "—", thk(g.thickness), money(g.price),
-    ]);
-    if (!plyRows.length) plyRows.push(["—", "—", "—", money(0)]);
-    s1.appendChild(el("p", "tk-box-line", "Plywood"));
-    s1.appendChild(miniTable(["Board", "Qty", "Thickness", "Total"], plyRows));
-    const lam = computed.laminate;
-    s1.appendChild(el("p", "tk-box-line", "Outer laminate"));
-    s1.appendChild(miniTable(["Laminate", "Qty", "Thickness", "Total"], [[lam.outer.name || "—", lam.outer.qty ?? "—", thk(lam.outer.thickness), money(lam.outer.price)]]));
-    s1.appendChild(el("p", "tk-box-line", "Inner laminate"));
-    s1.appendChild(miniTable(["Laminate", "Qty", "Thickness", "Total"], [[lam.inner.name || "—", lam.inner.qty ?? "—", thk(lam.inner.thickness), money(lam.inner.price)]]));
-    s1.appendChild(el("p", "tk-box-total", `Material total: ${money(computed.totals.material)}`));
-    container.appendChild(s1);
-
-    // --- Hinges ---
-    const hg = computed.hinges;
-    const s2 = el("div", "tk-box-section");
-    s2.appendChild(el("div", "tk-box-section-head", "Hinges"));
-    s2.appendChild(el("p", "tk-box-line", `Edge hinges (${hg.edge.name || "—"}): ${hg.edge.qty} → ${money(hg.edge.price)}`));
-    s2.appendChild(el("p", "tk-box-line", `Inner hinges (${hg.inner.name || "—"}): ${hg.inner.qty} → ${money(hg.inner.price)}`));
-    container.appendChild(s2);
-
-    // --- Channels ---
-    const ch = computed.channels;
-    const s3 = el("div", "tk-box-section");
-    s3.appendChild(el("div", "tk-box-section-head", "Channels"));
-    s3.appendChild(el("p", "tk-box-line", `Channels (${ch.names.join(", ") || "—"}): ${ch.qty} → ${money(ch.price)}`));
-    container.appendChild(s3);
-
-    // --- Handles (a handle dropdown per part category) ---
-    const ha = computed.handles;
-    const s4 = el("div", "tk-box-section");
-    s4.appendChild(el("div", "tk-box-section-head", "Handles"));
-    const hScroll = el("div", "table-scroll");
-    const hT = el("table", "dash-table");
-    const hHr = el("tr");
-    ["Part", "Handles", "Handle", "Total"].forEach((h) => hHr.appendChild(el("th", null, h)));
-    hT.appendChild(hHr);
-    (ha.table || []).forEach((r) => {
-      const tr = el("tr");
-      const c1 = el("td"); c1.textContent = r.category; tr.appendChild(c1);
-      const c2 = el("td"); c2.textContent = r.qty; tr.appendChild(c2);
-      const c3 = el("td");
-      if (ctx) {
-        const sel = selectEl(ctx.handleOptions, ctx.handleSel[r.category] || "", "Select handle…");
-        sel.addEventListener("change", () => ctx.onHandleChange(r.category, sel.value));
-        c3.appendChild(sel);
-      } else {
-        c3.textContent = r.handle_name || "—";
-      }
-      tr.appendChild(c3);
-      const c4 = el("td"); c4.textContent = money(r.price); tr.appendChild(c4);
-      hT.appendChild(tr);
-    });
-    hScroll.appendChild(hT);
-    s4.appendChild(hScroll);
-    s4.appendChild(el("p", "tk-box-line", `Handles total: ${ha.qty} → ${money(ha.price)}`));
-    container.appendChild(s4);
-
-    // Special additions, Labour and the totals box render after this, in their
-    // own persistent sections (they stay editable across recomputes).
+    container.appendChild(perPanel("Outer laminate", "Choose the outer laminate for each applicable panel.", computed.outer_panels || [], ctx.lamOptions, ctx.outerLamSel, ctx.onOuterChange));
+    container.appendChild(perPanel("Handles", "Choose the handle for each applicable panel.", computed.handle_panels || [], ctx.handleOptions, ctx.handleSel, ctx.onHandleChange));
   }
 
   function unitsList(units, onChanged) {

@@ -616,12 +616,14 @@
       deferSave: true, // part_category is required + unique — fill the row, then Save changes
       columns: [
         { key: "part_category", label: "Part category" },
-        { key: "ply_qty", label: "Plywood qty", type: "number", default: 1 },
+        { key: "plywood_thickness", label: "Plywood thickness (mm)", type: "number", default: 16 },
         { key: "outer_lam", label: "Outer laminate", type: "number", default: 0 },
         { key: "inner_lam", label: "Inner laminate", type: "number", default: 0 },
         { key: "hinge_type", label: "Hinge", type: "select", options: ["None", "Edge", "Inner"], default: "None" },
         { key: "handles", label: "Handles", type: "number", default: 0 },
         { key: "channel", label: "Channel", type: "select", options: ["No", "Yes"], default: "No" },
+        { key: "minifix", label: "Minifix", type: "select", options: ["No", "Yes"], default: "No" },
+        { key: "legs", label: "Legs", type: "select", options: ["No", "Yes"], default: "No" },
       ],
     });
     const wrap = document.createDocumentFragment();
@@ -629,7 +631,7 @@
       el(
         "p",
         "dash-note",
-        "The per-part-category quantity logic for Box & Shutters. Edit the plywood / laminate multipliers, hinge type, handle count and whether a channel applies, then click Save changes. Part category is required and must be unique. The calculator reads this table every time it prices a unit, so changes apply to the next Compute / Save (already-saved units keep their numbers until you reopen and Save them again)."
+        "The per-part-category logic for Box & Shutters: plywood thickness (mm), outer/inner laminate multipliers, hinge type (Edge/Inner), handles per panel, and whether a channel / minifix / legs applies. Edit, then click Save changes. Part category is required and unique. The calculator reads this table every time it prices a unit, so changes apply to the next Compute / Save (already-saved units keep their numbers until you reopen and Save them again). Hinge / minifix / legs / channel counts are computed from the panel size."
       )
     );
     wrap.appendChild(grid.frag);
