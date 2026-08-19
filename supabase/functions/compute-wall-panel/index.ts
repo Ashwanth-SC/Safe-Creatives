@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
   // ---- Laminate / panel ----------------------------------------------------
   const { data: lamProd } = await admin
     .from("turnkey_products")
-    .select("id, product_name, brand, thickness, area_sqft, price_per_sqft")
+    .select("id, product_name, supplier, brand, thickness, area_sqft, price_per_sqft")
     .eq("id", String(body.laminate_id))
     .maybeSingle();
   const lamSheet = lamProd ? Number(lamProd.area_sqft) || 0 : 0;
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
 
   let plyBoard: Any = null;
   if (plyThickness && plyBrand) {
-    let q = admin.from("turnkey_products").select("id, product_name, thickness, area_sqft, price_per_sqft").eq("brand", plyBrand);
+    let q = admin.from("turnkey_products").select("id, product_name, supplier, thickness, area_sqft, price_per_sqft").eq("brand", plyBrand);
     if (plySub) q = q.eq("sub_category", plySub);
     const { data } = await q;
     plyBoard = (data ?? []).find((p: Any) => num(p.thickness) === plyThickness) ?? null;
@@ -140,9 +140,9 @@ Deno.serve(async (req) => {
   const materialTotal = round2(lamPrice + plyPrice);
 
   // ---- BOQ lines -----------------------------------------------------------
-  const boqLines: { product_name: string; category: string; quantity: number }[] = [];
-  if (lamProd && lamQty && lamQty > 0) boqLines.push({ product_name: String(lamProd.product_name ?? ""), category: "Laminate/panel", quantity: lamQty });
-  if (plyBoard && plyQty && plyQty > 0) boqLines.push({ product_name: String(plyBoard.product_name ?? ""), category: "Plywood", quantity: plyQty });
+  const boqLines: { product_name: string; category: string; quantity: number; supplier: string | null; unit_price: number | null }[] = [];
+  if (lamProd && lamQty && lamQty > 0) boqLines.push({ product_name: String(lamProd.product_name ?? ""), category: "Laminate/panel", quantity: lamQty, supplier: lamProd.supplier ?? null, unit_price: lamPricePer });
+  if (plyBoard && plyQty && plyQty > 0) boqLines.push({ product_name: String(plyBoard.product_name ?? ""), category: "Plywood", quantity: plyQty, supplier: plyBoard.supplier ?? null, unit_price: plyPricePer });
 
   // ---- Special additions ---------------------------------------------------
   const specialIn = Array.isArray(body.special_additions) ? (body.special_additions as Any[]) : [];

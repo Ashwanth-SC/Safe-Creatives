@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
 
   let plyProducts: Any[] = [];
   if (materialBrand) {
-    let q = admin.from("turnkey_products").select("id, product_name, thickness, area_sqft, price_per_sqft").eq("brand", materialBrand);
+    let q = admin.from("turnkey_products").select("id, product_name, supplier, thickness, area_sqft, price_per_sqft").eq("brand", materialBrand);
     if (materialSub) q = q.eq("sub_category", materialSub);
     const { data } = await q;
     plyProducts = data ?? [];
@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
   plyProducts.forEach((p) => plyByThickness.set(num(p.thickness), p));
 
   let plywoodPrice = 0;
-  const boqLines: { product_name: string; category: string; quantity: number }[] = [];
+  const boqLines: { product_name: string; category: string; quantity: number; supplier: string | null; unit_price: number | null }[] = [];
   const groups = [...byThickness.entries()]
     .sort((a, b) => num(b[0]) - num(a[0]))
     .map(([t, g]) => {
@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
         qty = ceilDiv(coverSqft, sheetArea);
         lineTotal = round2(qty * price);
         plywoodPrice += lineTotal;
-        boqLines.push({ product_name: String(prod.product_name ?? ""), category: "Plywood", quantity: qty });
+        boqLines.push({ product_name: String(prod.product_name ?? ""), category: "Plywood", quantity: qty, supplier: prod.supplier ?? null, unit_price: price });
       }
       return {
         thickness: num(t),
@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
   const lamIds = [body.outer_laminate_id, body.inner_laminate_id].filter(Boolean).map(String);
   const lamById = new Map<string, Any>();
   if (lamIds.length) {
-    const { data } = await admin.from("turnkey_products").select("id, product_name, thickness, area_sqft, price_per_sqft").in("id", lamIds);
+    const { data } = await admin.from("turnkey_products").select("id, product_name, supplier, thickness, area_sqft, price_per_sqft").in("id", lamIds);
     (data ?? []).forEach((p) => lamById.set(String(p.id), p));
   }
   const lamCalc = (id: unknown, coverMm2: number, cat: string) => {
@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
     const price = prod ? Number(prod.price_per_sqft) || 0 : 0;
     const qty = prod && sheetArea > 0 ? ceilDiv(cover, sheetArea) : null;
     const total = qty != null ? round2(qty * price) : null;
-    if (qty != null && qty > 0) boqLines.push({ product_name: String(prod.product_name ?? ""), category: cat, quantity: qty });
+    if (qty != null && qty > 0) boqLines.push({ product_name: String(prod.product_name ?? ""), category: cat, quantity: qty, supplier: prod.supplier ?? null, unit_price: price });
     return { name: prod ? String(prod.product_name ?? "") : null, thickness: prod ? num(prod.thickness) : null, cover_sqft: round2(cover), qty, price: total };
   };
   const outer = lamCalc(body.outer_laminate_id, outerMm2, "Outer laminate");
@@ -200,16 +200,16 @@ Deno.serve(async (req) => {
   const hwIds = [body.edge_hinge_id, body.inner_hinge_id, ...Object.values(handleIds)].filter(Boolean).map(String);
   const hwById = new Map<string, Any>();
   if (hwIds.length) {
-    const { data } = await admin.from("turnkey_hardwares").select("id, product_name, price").in("id", [...new Set(hwIds)]);
+    const { data } = await admin.from("turnkey_hardwares").select("id, product_name, supplier, price").in("id", [...new Set(hwIds)]);
     (data ?? []).forEach((h) => hwById.set(String(h.id), h));
   }
   const edgeHinge = body.edge_hinge_id ? hwById.get(String(body.edge_hinge_id)) : undefined;
   const innerHinge = body.inner_hinge_id ? hwById.get(String(body.inner_hinge_id)) : undefined;
 
-  const { data: chData } = await admin.from("turnkey_hardwares").select("product_name, category, size, price");
+  const { data: chData } = await admin.from("turnkey_hardwares").select("product_name, supplier, category, size, price");
   const channels = (chData ?? [])
     .filter((h: Any) => normPart(h.category) === "channel")
-    .map((h: Any) => ({ name: String(h.product_name ?? ""), sizeMm: num(h.size) * MM_PER_FT, price: Number(h.price) || 0 }))
+    .map((h: Any) => ({ name: String(h.product_name ?? ""), supplier: h.supplier ?? null, sizeMm: num(h.size) * MM_PER_FT, price: Number(h.price) || 0 }))
     .filter((c: Any) => Number.isFinite(c.sizeMm));
   const pickChannel = (panelMax: number) => {
     if (!channels.length) return null;
@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
   };
 
   let edgeQty = 0, innerQty = 0, channelQty = 0, channelPrice = 0;
-  const channelUse = new Map<string, number>();
+  const channelUse = new Map<string, { qty: number; supplier: string | null; price: number }>();
   const handleByCat = new Map<string, number>();
   for (const p of panels) {
     const L = lg(p.partCat);
@@ -231,7 +231,12 @@ Deno.serve(async (req) => {
     if (h > 0) { const cat = String(L.part_category ?? p.partCat); handleByCat.set(cat, (handleByCat.get(cat) || 0) + h * p.qty); }
     if (String(L.channel).toLowerCase() === "yes") {
       const c = pickChannel(size);
-      if (c) { channelQty += p.qty; channelPrice += c.price * p.qty; channelUse.set(c.name, (channelUse.get(c.name) || 0) + p.qty); }
+      if (c) {
+        channelQty += p.qty; channelPrice += c.price * p.qty;
+        const cu = channelUse.get(c.name) ?? { qty: 0, supplier: c.supplier ?? null, price: c.price };
+        cu.qty += p.qty;
+        channelUse.set(c.name, cu);
+      }
     }
   }
   const edgePrice = round2(edgeQty * (edgeHinge ? Number(edgeHinge.price) || 0 : 0));
@@ -246,14 +251,14 @@ Deno.serve(async (req) => {
     const price = round2(qty * (prod ? Number(prod.price) || 0 : 0));
     handlePrice += price;
     handleQty += qty;
-    if (prod && qty > 0) boqLines.push({ product_name: String(prod.product_name ?? ""), category: "Handle", quantity: qty });
+    if (prod && qty > 0) boqLines.push({ product_name: String(prod.product_name ?? ""), category: "Handle", quantity: qty, supplier: prod.supplier ?? null, unit_price: Number(prod.price) || 0 });
     return { category: cat, qty, handle_id: id ?? null, handle_name: prod ? String(prod.product_name ?? "") : null, price };
   });
   handlePrice = round2(handlePrice);
 
-  if (edgeHinge && edgeQty > 0) boqLines.push({ product_name: String(edgeHinge.product_name ?? ""), category: "Edge hinges", quantity: edgeQty });
-  if (innerHinge && innerQty > 0) boqLines.push({ product_name: String(innerHinge.product_name ?? ""), category: "Inner hinges", quantity: innerQty });
-  for (const [name, q] of channelUse) boqLines.push({ product_name: name, category: "Channel", quantity: q });
+  if (edgeHinge && edgeQty > 0) boqLines.push({ product_name: String(edgeHinge.product_name ?? ""), category: "Edge hinges", quantity: edgeQty, supplier: edgeHinge.supplier ?? null, unit_price: Number(edgeHinge.price) || 0 });
+  if (innerHinge && innerQty > 0) boqLines.push({ product_name: String(innerHinge.product_name ?? ""), category: "Inner hinges", quantity: innerQty, supplier: innerHinge.supplier ?? null, unit_price: Number(innerHinge.price) || 0 });
+  for (const [name, cu] of channelUse) boqLines.push({ product_name: name, category: "Channel", quantity: cu.qty, supplier: cu.supplier, unit_price: cu.price });
 
   const hardwareTotal = round2(edgePrice + innerHingePrice + handlePrice + channelPrice);
 

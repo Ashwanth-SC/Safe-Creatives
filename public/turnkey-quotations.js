@@ -112,6 +112,10 @@
       renderExport(panel);
       return;
     }
+    if (currentProject && currentTab === "vendor-boq") {
+      renderVendorBoq(panel);
+      return;
+    }
     panel.appendChild(placeholder(currentTab));
   }
 
@@ -341,6 +345,14 @@
       .single();
     if (error) throw error;
     return data;
+  }
+  async function loadProjectBoq(projectId) {
+    const { data, error } = await sb
+      .from("turnkey_project_boq")
+      .select("product_name, category, quantity, supplier, unit_price")
+      .eq("project_id", projectId);
+    if (error) throw error;
+    return data || [];
   }
 
   async function renderBoxShutters(container) {
@@ -1801,6 +1813,176 @@
     if (!w) { message("Pop-up blocked — allow pop-ups for this site to open the quotation.", true); return; }
     w.document.open();
     w.document.write(quotationHtml(seller, project, segments, grand));
+    w.document.close();
+    w.focus();
+  }
+
+  // ------------------------------------------------------------------
+  // Vendor BOQ — everything you buy, grouped by supplier
+  // ------------------------------------------------------------------
+  async function renderVendorBoq(container) {
+    container.textContent = "";
+    container.appendChild(el("p", "dash-note", "Loading…"));
+    // Rebuild the material BOQ first so it reflects the latest units (and
+    // backfills supplier/price for older lines). Best-effort.
+    try { await computeUnit({ recompute_boq: true, project_id: currentProject }); } catch (_e) { /* keep going */ }
+
+    let seller, boq, furniture, accessories, paint;
+    try {
+      [seller, boq, furniture, accessories, paint] = await Promise.all([
+        loadSellerSettings(),
+        loadProjectBoq(currentProject),
+        loadFurniture(currentProject),
+        loadAccessories(currentProject),
+        loadPaint(currentProject),
+      ]);
+    } catch (error) {
+      container.textContent = "";
+      container.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}. If a table/column is missing, run migrations 034–037.`));
+      return;
+    }
+    container.textContent = "";
+
+    const proj = projectsById.get(currentProject) || {};
+    const gst = Number(proj.gst_percent) || 0;
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const NO_SUPPLIER = "(supplier not set)";
+
+    // Flatten every purchasable line into { supplier, product, detail, qty, unit_price, total }.
+    const lines = [];
+    boq.forEach((r) => {
+      const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
+      lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: r.category || "", qty, unit_price: up, total: round2(qty * up) });
+    });
+    furniture.forEach((r) => {
+      const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
+      const detail = [r.material_spec, r.design_spec].filter(Boolean).join(" · ");
+      lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.unit_name || "—", detail: detail || "Furniture", qty, unit_price: up, total: round2(qty * up) });
+    });
+    accessories.forEach((r) => {
+      const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
+      lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.unit_name || "—", detail: r.specification || "Accessory", qty, unit_price: up, total: round2(qty * up) });
+    });
+    paint.forEach((r) => {
+      const qty = Number(r.sqft) || 0, up = Number(r.unit_price) || 0;
+      lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.description || "—", detail: "Paint work (sqft)", qty, unit_price: up, total: round2(qty * up) });
+    });
+
+    // Group by supplier.
+    const groups = new Map();
+    lines.forEach((l) => {
+      if (!groups.has(l.supplier)) groups.set(l.supplier, []);
+      groups.get(l.supplier).push(l);
+    });
+    const suppliers = [...groups.entries()]
+      .map(([supplier, rows]) => {
+        const total = round2(rows.reduce((a, r) => a + r.total, 0));
+        return { supplier, rows, total, totalWithGst: round2(total * (1 + gst / 100)) };
+      })
+      .sort((a, b) => (a.supplier === NO_SUPPLIER ? 1 : b.supplier === NO_SUPPLIER ? -1 : a.supplier.localeCompare(b.supplier)));
+
+    const head = el("div", "admin-package");
+    head.appendChild(el("p", "eyebrow", "VENDOR BOQ"));
+    head.appendChild(el("p", "dash-note", `Project #${proj.project_number || ""}. What to buy, grouped by supplier — quantity, product, unit price, line total, and the total with GST (${gst}%). Export each supplier's list for procurement.`));
+    container.appendChild(head);
+
+    if (!suppliers.length) {
+      container.appendChild(el("p", "dash-note", "Nothing to procure yet. Save some Box & Shutters / Wall Panels / Furniture / Accessories / Paint lines first."));
+      return;
+    }
+    suppliers.forEach((s) => container.appendChild(vendorSupplierTable(s, seller, proj, gst)));
+  }
+
+  function vendorSupplierTable(s, seller, proj, gst) {
+    const wrap = el("div", "tk-box-section");
+    wrap.appendChild(el("div", "tk-box-section-head", s.supplier));
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Product", "Detail", "Quantity", "Unit price", "Line total"].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tb = el("tbody");
+    s.rows.forEach((r) => {
+      const tr = el("tr");
+      [r.product, r.detail || "—", r.qty, money(r.unit_price), money(r.total)].forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+    const trT = el("tr", "tk-cat-sqft-total");
+    const span = el("td"); span.colSpan = 4; span.textContent = "Total";
+    trT.appendChild(span);
+    const totTd = el("td"); totTd.textContent = money(s.total); trT.appendChild(totTd);
+    tb.appendChild(trT);
+    const trG = el("tr", "tk-cat-sqft-total");
+    const span2 = el("td"); span2.colSpan = 4; span2.textContent = `Total with GST (${gst}%)`;
+    trG.appendChild(span2);
+    const gstTd = el("td"); gstTd.textContent = money(s.totalWithGst); trG.appendChild(gstTd);
+    tb.appendChild(trG);
+    t.append(thead, tb);
+    scroll.appendChild(t);
+    wrap.appendChild(scroll);
+
+    const exportBtn = el("button", "admin-primary-small", "Export vendor BOQ");
+    exportBtn.type = "button";
+    exportBtn.addEventListener("click", () => openVendorBoqWindow(s, seller, proj, gst));
+    wrap.appendChild(exportBtn);
+    return wrap;
+  }
+
+  function vendorBoqHtml(s, seller, proj, gst) {
+    const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+    const sellerName = seller.trade_name || seller.legal_name || "Safe Creatives";
+    const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
+    const body = s.rows.map((r) => `<tr><td>${escHtml(r.product)}</td><td>${escHtml(r.detail || "—")}</td><td class="num">${escHtml(r.qty)}</td><td class="num">${escHtml(money(r.unit_price))}</td><td class="num">${escHtml(money(r.total))}</td></tr>`).join("");
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Vendor BOQ — ${escHtml(s.supplier)} (Project #${escHtml(proj.project_number || "")})</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "DM Sans", Arial, sans-serif; color: #171717; background: #f4f4f2; }
+  .toolbar { position: sticky; top: 0; display: flex; gap: 12px; align-items: center; padding: 12px 18px; background: #6f222a; color: #fff; }
+  .toolbar button { padding: 9px 16px; border: 0; border-radius: 6px; background: #fff; color: #6f222a; font: 600 13px "DM Sans", sans-serif; cursor: pointer; }
+  .doc { max-width: 900px; margin: 20px auto; padding: 40px; background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,.08); }
+  header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #6f222a; padding-bottom: 16px; }
+  header h1 { margin: 0 0 6px; font-size: 20px; color: #6f222a; }
+  header p { margin: 2px 0; font-size: 12px; color: #444; }
+  .meta { text-align: right; }
+  .meta h3 { margin: 0 0 6px; letter-spacing: .1em; color: #0c4444; }
+  .vend { margin: 18px 0 6px; }
+  .vend h4 { margin: 0 0 4px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #777; }
+  .vend p { margin: 2px 0; font-size: 15px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #e6e6e2; text-align: left; vertical-align: top; }
+  th { font: 600 10px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #777; background: #fafaf8; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  tfoot td { font-weight: 700; color: #6f222a; border-top: 2px solid #6f222a; background: #faf5f5; }
+  .note { margin-top: 24px; font-size: 11px; color: #888; }
+  @media print { body { background: #fff; } .toolbar { display: none; } .doc { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
+</style></head><body>
+  <div class="toolbar"><button onclick="window.print()">Download / Print (PDF)</button></div>
+  <div class="doc">
+    <header>
+      <div><h1>${escHtml(sellerName)}</h1><p>${escHtml(sellerAddr)}</p>${seller.gstin ? `<p>GSTIN: ${escHtml(seller.gstin)}</p>` : ""}${seller.phone || seller.email ? `<p>${escHtml([seller.phone, seller.email].filter(Boolean).join(" · "))}</p>` : ""}</div>
+      <div class="meta"><h3>VENDOR BOQ</h3><p>Project #${escHtml(proj.project_number || "")}</p><p>${escHtml(today)}</p></div>
+    </header>
+    <section class="vend"><h4>Supplier</h4><p>${escHtml(s.supplier)}</p></section>
+    <table>
+      <thead><tr><th>Product</th><th>Detail</th><th class="num">Quantity</th><th class="num">Unit price</th><th class="num">Line total</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot>
+        <tr><td colspan="4">Total</td><td class="num">${escHtml(money(s.total))}</td></tr>
+        <tr><td colspan="4">Total with GST (${gst}%)</td><td class="num">${escHtml(money(s.totalWithGst))}</td></tr>
+      </tfoot>
+    </table>
+    <p class="note">Procurement bill of quantities for internal tracking. GST at ${gst}% as per the project.</p>
+  </div>
+</body></html>`;
+  }
+
+  function openVendorBoqWindow(s, seller, proj, gst) {
+    const w = window.open("", "_blank");
+    if (!w) { message("Pop-up blocked — allow pop-ups for this site to open the BOQ.", true); return; }
+    w.document.open();
+    w.document.write(vendorBoqHtml(s, seller, proj, gst));
     w.document.close();
     w.focus();
   }
