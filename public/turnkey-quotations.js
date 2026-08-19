@@ -238,7 +238,7 @@
   async function loadHardware() {
     const { data, error } = await sb
       .from("turnkey_hardwares")
-      .select("id, product_name, category, size, price");
+      .select("id, product_name, supplier, category, size, price");
     if (error) throw error;
     return data || [];
   }
@@ -2024,10 +2024,17 @@
       lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.description || "—", detail: "Paint work (sqft)", qty, unit_price: up, total: round2(qty * up) });
     });
     [["Civil work", civil], ["Electrical work", electrical]].forEach(([label, units]) => {
-      units.forEach((u) => (u.material_lines || []).forEach((r) => {
-        const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
-        lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: `${label}${u.unit_name ? " · " + u.unit_name : ""}`, qty, unit_price: up, total: round2(qty * up) });
-      }));
+      units.forEach((u) => {
+        (u.material_lines || []).forEach((r) => {
+          const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
+          lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: `${label}${u.unit_name ? " · " + u.unit_name : ""}`, qty, unit_price: up, total: round2(qty * up) });
+        });
+        (u.special_additions || []).forEach((r) => {
+          const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
+          if (!qty && !r.hardware_id) return;
+          lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: `${label} · special${u.unit_name ? " · " + u.unit_name : ""}`, qty, unit_price: up, total: round2(qty * up) });
+        });
+      });
     });
 
     // Group by supplier.
@@ -2158,17 +2165,17 @@
   async function renderCompositeSegment(container, seg) {
     container.textContent = "";
     container.appendChild(el("p", "dash-note", "Loading…"));
-    let spaces, suppliers, products, labour, units;
+    let spaces, suppliers, products, hardware, labour, units;
     try {
-      [spaces, suppliers, products, labour, units] = await Promise.all([
-        loadSelectedSpaces(currentProject), loadSuppliers(), loadCatalogProducts(), loadLabour(), loadCompositeUnits(seg.table, currentProject),
+      [spaces, suppliers, products, hardware, labour, units] = await Promise.all([
+        loadSelectedSpaces(currentProject), loadSuppliers(), loadCatalogProducts(), loadHardware(), loadLabour(), loadCompositeUnits(seg.table, currentProject),
       ]);
     } catch (error) {
       container.textContent = "";
       container.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}. If a table/column is missing, run migration ${seg.migration}.`));
       return;
     }
-    const ref = { spaces, suppliers, products, labour };
+    const ref = { spaces, suppliers, products, hardware, labour };
     container.textContent = "";
     container.appendChild(compositeEditor(seg, ref, null, () => renderCompositeSegment(container, seg)));
     container.appendChild(compositeList(seg, units, () => renderCompositeSegment(container, seg)));
@@ -2193,9 +2200,11 @@
 
     // Sub-section state.
     const materials = (Array.isArray(u.material_lines) ? u.material_lines : []).map((r) => ({ supplier: r.supplier || "", product_id: r.product_id || "", product_name: r.product_name || "", quantity: r.quantity ?? "", unit_price: r.unit_price ?? "" }));
-    const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ name: s.name || "", cost: s.cost ?? "" }));
+    const special = (Array.isArray(u.special_additions) ? u.special_additions : []).map((s) => ({ hardware_id: s.hardware_id || "", product_name: s.product_name || "", quantity: s.quantity ?? "" }));
     const labour = (Array.isArray(u.labour_lines) ? u.labour_lines : []).map((l) => ({ labour_id: l.labour_id || "", category: l.category || "", name: l.name || "", task: l.task || "", total_days: l.total_days ?? "", total_sqft: l.total_sqft ?? "" }));
 
+    const hwById = new Map((ref.hardware || []).map((h) => [h.id, h]));
+    const specialCost = (r) => { const hw = r.hardware_id ? hwById.get(r.hardware_id) : null; return round2((Number(r.quantity) || 0) * (hw ? Number(hw.price) || 0 : 0)); };
     const labourRows = ref.labour || [];
     const labourById = new Map(labourRows.map((r) => [r.id, r]));
     const labourCategories = distinctVals(labourRows.map((r) => r.category)).sort();
@@ -2207,7 +2216,7 @@
 
     const materialTotal = () => round2(materials.reduce((a, r) => a + materialCost(r), 0));
     const labourTotal = () => round2(labour.reduce((a, r) => a + labourCost(r), 0));
-    const specialTotal = () => round2(special.reduce((a, r) => a + (Number(r.cost) || 0), 0));
+    const specialTotal = () => round2(special.reduce((a, r) => a + specialCost(r), 0));
 
     const totalsWrap = el("div");
     const refreshTotals = () => {
@@ -2221,7 +2230,7 @@
 
     const materialSection = buildMaterialSection({ materials, suppliers: ref.suppliers, products: ref.products, category: seg.category, materialCost }, refreshTotals);
     const labourUI = buildLabourSection({ labour, labourCategories, namesForCat, tasksForCatName, labourCost, rowSqft, hasLabour: labourRows.length > 0, manualSqft: true, showCatSqft: false }, refreshTotals);
-    const specialSection = buildSpecialSection(special, refreshTotals);
+    const specialSection = buildSpecialProductSection(special, ref.hardware, refreshTotals);
 
     const msg = el("p", "admin-hint", "");
     const saveBtn = el("button", "admin-primary", existing ? "Save changes" : "Save unit");
@@ -2231,8 +2240,11 @@
       msg.textContent = "Saving…";
       const matLines = materials.filter((r) => r.product_id || r.product_name || Number(r.quantity)).map((r) => ({ supplier: r.supplier || null, product_id: r.product_id || null, product_name: (r.product_name || "").trim() || null, quantity: Number(r.quantity) || 0, unit_price: Number(r.unit_price) || 0, total: materialCost(r) }));
       const labLines = labour.filter((l) => l.labour_id || l.total_days || l.total_sqft).map((l) => ({ labour_id: l.labour_id || null, category: l.category || null, name: l.name || null, task: l.task || null, total_days: Number(l.total_days) || 0, total_sqft: Number(l.total_sqft) || 0, cost: labourCost(l) }));
-      const specLines = special.filter((s) => (s.name || "").trim() || Number(s.cost)).map((s) => ({ name: (s.name || "").trim(), cost: Number(s.cost) || 0 }));
-      const materialSpec = [...matLines.map((r) => r.product_name).filter(Boolean), ...specLines.map((s) => s.name).filter(Boolean)].join(", ");
+      const specLines = special.filter((s) => s.hardware_id || Number(s.quantity)).map((s) => {
+        const hw = s.hardware_id ? hwById.get(s.hardware_id) : null;
+        return { hardware_id: s.hardware_id || null, product_name: (s.product_name || (hw && hw.product_name) || "").trim() || null, supplier: hw ? (hw.supplier || null) : null, category: hw ? (hw.category || null) : null, quantity: Number(s.quantity) || 0, unit_price: hw ? Number(hw.price) || 0 : 0, cost: specialCost(s) };
+      });
+      const materialSpec = [...matLines.map((r) => r.product_name).filter(Boolean), ...specLines.map((s) => s.product_name).filter(Boolean)].join(", ");
       const total = round2(materialTotal() + labourTotal() + specialTotal());
       const withMargin = round2(total * (1 + m / 100));
       const record = {
@@ -2359,7 +2371,7 @@
       open.type = "button";
       open.addEventListener("click", async () => {
         try {
-          const ref = { spaces: await loadSelectedSpaces(currentProject), suppliers: await loadSuppliers(), products: await loadCatalogProducts(), labour: await loadLabour() };
+          const ref = { spaces: await loadSelectedSpaces(currentProject), suppliers: await loadSuppliers(), products: await loadCatalogProducts(), hardware: await loadHardware(), labour: await loadLabour() };
           const units2 = await loadCompositeUnits(seg.table, currentProject);
           const unit = units2.find((x) => x.id === u.id) || u;
           panel.textContent = "";
