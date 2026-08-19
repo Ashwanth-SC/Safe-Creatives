@@ -104,6 +104,10 @@
       renderManualSegment(panel, ACCESSORIES_SEG);
       return;
     }
+    if (currentProject && currentTab === "paint") {
+      renderManualSegment(panel, PAINT_SEG);
+      return;
+    }
     panel.appendChild(placeholder(currentTab));
   }
 
@@ -299,6 +303,23 @@
       .order("supplier_company_name", { ascending: true });
     if (error) throw error;
     return [...new Set((data || []).map((s) => s.supplier_company_name).filter(Boolean))];
+  }
+  async function loadPaint(projectId) {
+    const { data, error } = await sb
+      .from("turnkey_quote_paint")
+      .select("id, supplier, product_id, description, sqft, unit_price, total_price, margin_price, margin_amount, discount_price, gst_price, sort_order")
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  // Products with supplier + rate, for the product-dropdown segment columns (Paint).
+  async function loadCatalogProducts() {
+    const { data, error } = await sb
+      .from("turnkey_products")
+      .select("id, product_name, supplier, category, price_per_sqft");
+    if (error) throw error;
+    return data || [];
   }
 
   async function renderBoxShutters(container) {
@@ -1331,6 +1352,18 @@
     ],
   };
 
+  const PAINT_SEG = {
+    table: "turnkey_quote_paint", load: loadPaint, migration: "036",
+    title: "Paint work", addLabel: "+ Add paint work", saveLabel: "Save paint work",
+    totalLabel: "Price", qtyKey: "sqft",
+    note: "Pick a supplier, then a paint from the products database; enter the total applicable sqft. Price = Sqft × the product's per-sqft cost. The totals below carry the project margin, discount & GST.",
+    cols: [
+      { key: "supplier", label: "Supplier", kind: "supplier" },
+      { key: "product_id", label: "Description", kind: "product", category: "paint", filterBy: "supplier", nameKey: "description" },
+      { key: "sqft", label: "Sqft", kind: "number" },
+    ],
+  };
+
   const round2q = (n) => Math.round(n * 100) / 100;
 
   async function renderManualSegment(container, seg) {
@@ -1338,11 +1371,13 @@
     container.appendChild(el("p", "dash-note", "Loading…"));
     const needSpaces = seg.cols.some((c) => c.kind === "space");
     const needSuppliers = seg.cols.some((c) => c.kind === "supplier");
-    let spaces = [], suppliers = [], saved = [];
+    const needProducts = seg.cols.some((c) => c.kind === "product");
+    let spaces = [], suppliers = [], products = [], saved = [];
     try {
-      [spaces, suppliers, saved] = await Promise.all([
+      [spaces, suppliers, products, saved] = await Promise.all([
         needSpaces ? loadSelectedSpaces(currentProject) : Promise.resolve([]),
         needSuppliers ? loadSuppliers() : Promise.resolve([]),
+        needProducts ? loadCatalogProducts() : Promise.resolve([]),
         seg.load(currentProject),
       ]);
     } catch (error) {
@@ -1356,8 +1391,11 @@
 
     const proj = projectsById.get(currentProject) || {};
     const m = Number(proj.margin_percent) || 0, d = Number(proj.discount_percent) || 0, g = Number(proj.gst_percent) || 0;
+    const qtyKey = seg.qtyKey || "quantity";      // the multiplier column
+    const priceKey = seg.priceKey || "unit_price"; // the per-unit rate (a column, or set by a product pick)
+    const rateIsColumn = seg.cols.some((c) => c.key === priceKey);
     const rowTotals = (r) => {
-      const total = round2q((Number(r.quantity) || 0) * (Number(r.unit_price) || 0));
+      const total = round2q((Number(r[qtyKey]) || 0) * (Number(r[priceKey]) || 0));
       const withMargin = round2q(total * (1 + m / 100));
       const marginAmount = round2q(withMargin - total);
       const withDiscount = round2q(withMargin * (1 - d / 100));
@@ -1368,7 +1406,8 @@
     // Editable working set, seeded from the saved rows.
     const rows = saved.map((r) => {
       const o = { id: r.id };
-      seg.cols.forEach((c) => { o[c.key] = r[c.key] ?? ""; });
+      seg.cols.forEach((c) => { o[c.key] = r[c.key] ?? ""; if (c.kind === "product") o[c.nameKey] = r[c.nameKey] ?? ""; });
+      if (!rateIsColumn) o[priceKey] = r[priceKey] ?? "";
       return o;
     });
 
@@ -1380,7 +1419,7 @@
     const table = el("table", "dash-table");
     const thead = el("thead");
     const hr = el("tr");
-    [...seg.cols.map((c) => c.label), "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    [...seg.cols.map((c) => c.label), seg.totalLabel || "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach((h) => hr.appendChild(el("th", null, h)));
     thead.appendChild(hr);
     const tbody = el("tbody");
     table.append(thead, tbody);
@@ -1410,6 +1449,7 @@
       };
 
       let firstControl = null;
+      const controlByKey = {};
       seg.cols.forEach((c) => {
         let control;
         if (c.kind === "space") {
@@ -1420,7 +1460,37 @@
           const opts = row[c.key] && !suppliers.includes(row[c.key]) ? [row[c.key], ...suppliers] : suppliers;
           control = selectEl(opts, row[c.key] || "", suppliers.length ? "Supplier…" : "No suppliers");
           control.className = "grid-input grid-select";
-          control.addEventListener("change", () => { row[c.key] = control.value; });
+          control.addEventListener("change", () => {
+            row[c.key] = control.value;
+            // Refresh any product dropdowns filtered by this supplier.
+            seg.cols.forEach((cc) => {
+              if (cc.kind === "product" && cc.filterBy === c.key && controlByKey[cc.key]) {
+                row[cc.key] = ""; row[cc.nameKey] = ""; if (!rateIsColumn) row[priceKey] = "";
+                controlByKey[cc.key]._fill();
+                updateLine();
+              }
+            });
+          });
+        } else if (c.kind === "product") {
+          control = document.createElement("select");
+          control.className = "grid-input grid-select";
+          const fill = () => {
+            const sup = row[c.filterBy];
+            const opts = products.filter((p) => normCat(p.category) === normCat(c.category) && (!sup || p.supplier === sup));
+            control.textContent = "";
+            control.appendChild(new Option(sup ? "Select…" : "Pick a supplier first", ""));
+            opts.forEach((p) => control.appendChild(new Option(p.product_name || "unnamed", p.id)));
+            control.value = row[c.key] || "";
+          };
+          fill();
+          control._fill = fill;
+          control.addEventListener("change", () => {
+            row[c.key] = control.value;
+            const p = products.find((x) => String(x.id) === control.value);
+            row[c.nameKey] = p ? (p.product_name || "") : "";
+            row[priceKey] = p ? (Number(p.price_per_sqft) || 0) : "";
+            updateLine();
+          });
         } else if (c.kind === "number") {
           control = document.createElement("input");
           control.type = "number"; control.min = "0"; control.className = "grid-input"; control.placeholder = "0";
@@ -1432,6 +1502,7 @@
           control.value = row[c.key] || "";
           control.addEventListener("input", () => { row[c.key] = control.value; });
         }
+        controlByKey[c.key] = control;
         if (!firstControl) firstControl = control;
         tr.appendChild(cell(control));
       });
@@ -1481,7 +1552,12 @@
           id: r.id, project_id: currentProject, sort_order: i,
           total_price: t.total, margin_price: t.withMargin, margin_amount: t.marginAmount, discount_price: t.withDiscount, gst_price: t.withGst,
         };
-        seg.cols.forEach((c) => { rec[c.key] = c.kind === "number" ? (Number(r[c.key]) || 0) : (String(r[c.key] || "").trim() || null); });
+        seg.cols.forEach((c) => {
+          if (c.kind === "number") rec[c.key] = Number(r[c.key]) || 0;
+          else if (c.kind === "product") { rec[c.key] = r[c.key] || null; rec[c.nameKey] = (String(r[c.nameKey] || "").trim()) || null; }
+          else rec[c.key] = String(r[c.key] || "").trim() || null;
+        });
+        if (!rateIsColumn) rec[priceKey] = Number(r[priceKey]) || 0;
         return rec;
       });
       try {
