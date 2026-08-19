@@ -96,6 +96,10 @@
       renderWallPanels(panel);
       return;
     }
+    if (currentProject && currentTab === "furniture") {
+      renderFurniture(panel);
+      return;
+    }
     panel.appendChild(placeholder(currentTab));
   }
 
@@ -265,6 +269,15 @@
     const { data: unit, error } = await sb.from("turnkey_quote_wall_panels").select("*").eq("id", id).single();
     if (error) throw error;
     return { unit };
+  }
+  async function loadFurniture(projectId) {
+    const { data, error } = await sb
+      .from("turnkey_quote_furniture")
+      .select("id, space, supplier, unit_name, material_spec, design_spec, quantity, unit_price, total_price, margin_price, margin_amount, discount_price, gst_price, sort_order")
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+    return data || [];
   }
 
   async function renderBoxShutters(container) {
@@ -1263,6 +1276,193 @@
     scroll.appendChild(t);
     wrap.appendChild(scroll);
     return wrap;
+  }
+
+  // ------------------------------------------------------------------
+  // Furniture — manual line entry (no computation), client-side totals
+  // ------------------------------------------------------------------
+  async function renderFurniture(container) {
+    container.textContent = "";
+    container.appendChild(el("p", "dash-note", "Loading…"));
+    let spaces, saved;
+    try {
+      [spaces, saved] = await Promise.all([loadSelectedSpaces(currentProject), loadFurniture(currentProject)]);
+    } catch (error) {
+      container.textContent = "";
+      container.appendChild(
+        el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table/column, run migration 034.`)
+      );
+      return;
+    }
+    container.textContent = "";
+
+    const proj = projectsById.get(currentProject) || {};
+    const m = Number(proj.margin_percent) || 0, d = Number(proj.discount_percent) || 0, g = Number(proj.gst_percent) || 0;
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const rowTotals = (r) => {
+      const total = round2((Number(r.quantity) || 0) * (Number(r.unit_price) || 0));
+      const withMargin = round2(total * (1 + m / 100));
+      const marginAmount = round2(withMargin - total);
+      const withDiscount = round2(withMargin * (1 - d / 100));
+      const withGst = round2(withDiscount * (1 + g / 100));
+      return { total, withMargin, marginAmount, withDiscount, withGst };
+    };
+
+    // Editable working set, seeded from the saved rows.
+    const rows = saved.map((r) => ({
+      id: r.id, space: r.space || "", supplier: r.supplier || "", unit_name: r.unit_name || "",
+      material_spec: r.material_spec || "", design_spec: r.design_spec || "",
+      quantity: r.quantity ?? "", unit_price: r.unit_price ?? "",
+    }));
+
+    const section = el("div", "tk-box-section");
+    section.appendChild(el("div", "tk-box-section-head", "Furniture"));
+    section.appendChild(el("p", "dash-note", "Enter each item — no material computation, the line total is Quantity × Price. Supplier, Unit, Quantity, specs and price are stored for the vendor BOQ; the totals below carry the project margin, discount & GST."));
+
+    const scroll = el("div", "table-scroll");
+    const table = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    ["Space", "Supplier", "Unit", "Material specification", "Design specification", "Quantity", "Price", "Line total", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tbody = el("tbody");
+    table.append(thead, tbody);
+    scroll.appendChild(table);
+
+    const totalsWrap = el("div");
+    const refreshTotals = () => {
+      const sum = { total: 0, with_margin: 0, margin_amount: 0, with_discount: 0, with_gst: 0 };
+      rows.forEach((r) => {
+        const t = rowTotals(r);
+        sum.total += t.total; sum.with_margin += t.withMargin; sum.margin_amount += t.marginAmount;
+        sum.with_discount += t.withDiscount; sum.with_gst += t.withGst;
+      });
+      Object.keys(sum).forEach((k) => (sum[k] = round2(sum[k])));
+      renderTotals(totalsWrap, { totals: sum });
+    };
+
+    function addRowDom(row) {
+      const tr = el("tr");
+      const spaceSel = selectEl(spaces, row.space || "", spaces.length ? "Area…" : "No spaces");
+      spaceSel.className = "grid-input grid-select";
+      const textInput = (val, ph) => { const i = document.createElement("input"); i.type = "text"; i.className = "grid-input"; i.placeholder = ph; i.value = val || ""; return i; };
+      const numInput = (val, ph) => { const i = document.createElement("input"); i.type = "number"; i.min = "0"; i.className = "grid-input"; i.placeholder = ph; i.value = (val === "" || val == null) ? "" : val; return i; };
+      const supplierI = textInput(row.supplier, "Supplier");
+      const unitI = textInput(row.unit_name, "Unit");
+      const matI = textInput(row.material_spec, "Material spec");
+      const desI = textInput(row.design_spec, "Design spec");
+      const qtyI = numInput(row.quantity, "0");
+      const priceI = numInput(row.unit_price, "0");
+      const lineCell = el("td");
+      const updateLine = () => { lineCell.textContent = money(rowTotals(row).total); refreshTotals(); };
+
+      spaceSel.addEventListener("change", () => { row.space = spaceSel.value; });
+      supplierI.addEventListener("input", () => { row.supplier = supplierI.value; });
+      unitI.addEventListener("input", () => { row.unit_name = unitI.value; });
+      matI.addEventListener("input", () => { row.material_spec = matI.value; });
+      desI.addEventListener("input", () => { row.design_spec = desI.value; });
+      qtyI.addEventListener("input", () => { row.quantity = qtyI.value; updateLine(); });
+      priceI.addEventListener("input", () => { row.unit_price = priceI.value; updateLine(); });
+
+      const cell = (c) => { const td = el("td"); td.appendChild(c); return td; };
+      const delTd = el("td", "db-grid-del");
+      const del = el("button", "tk-delete-link", "✕");
+      del.type = "button"; del.title = "Remove";
+      del.addEventListener("click", () => {
+        const i = rows.indexOf(row); if (i >= 0) rows.splice(i, 1);
+        tr.remove(); refreshTotals();
+      });
+      delTd.appendChild(del);
+
+      tr.append(cell(spaceSel), cell(supplierI), cell(unitI), cell(matI), cell(desI), cell(qtyI), cell(priceI), lineCell, delTd);
+      lineCell.textContent = money(rowTotals(row).total);
+      tbody.appendChild(tr);
+      return supplierI;
+    }
+    rows.forEach(addRowDom);
+
+    const addBtn = el("button", "admin-primary-small", "+ Add furniture");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", () => {
+      const row = { id: crypto.randomUUID(), space: "", supplier: "", unit_name: "", material_spec: "", design_spec: "", quantity: "", unit_price: "" };
+      rows.push(row);
+      addRowDom(row).focus();
+    });
+    section.append(scroll, addBtn);
+
+    // Saved table (same headers as Box & Shutters / Wall Panels).
+    const savedWrap = el("div");
+    function renderSaved(list) {
+      savedWrap.textContent = "";
+      savedWrap.appendChild(el("p", "dash-note", "Saved furniture, as it appears in the quotation."));
+      const s = el("div", "table-scroll");
+      const t = el("table", "dash-table");
+      const th = el("thead"); const h = el("tr");
+      ["Space", "Unit", "Material specifications", "Design specifications", "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach((x) => h.appendChild(el("th", null, x)));
+      th.appendChild(h);
+      const tb = el("tbody");
+      if (!list.length) {
+        const tr = el("tr"); const td = el("td", "dash-empty", "No furniture yet."); td.colSpan = 10; tr.appendChild(td); tb.appendChild(tr);
+      }
+      list.forEach((r) => {
+        const cells = [
+          r.space || "—", r.unit_name || "—", r.material_spec || "—", r.design_spec || "—",
+          money(r.total_price), money(r.margin_price), money(r.margin_amount), money(r.discount_price), money(r.gst_price), "",
+        ];
+        const tr = el("tr");
+        cells.forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+        tb.appendChild(tr);
+      });
+      t.append(th, tb); s.appendChild(t); savedWrap.appendChild(s);
+    }
+
+    const msg = el("p", "admin-hint", "");
+    const saveBtn = el("button", "admin-primary", "Save furniture");
+    saveBtn.type = "button";
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      msg.textContent = "Saving…";
+      const nonEmpty = (r) => (r.unit_name || "").trim() || (r.supplier || "").trim() || Number(r.quantity) || Number(r.unit_price);
+      const records = rows.filter(nonEmpty).map((r, i) => {
+        const t = rowTotals(r);
+        return {
+          id: r.id, project_id: currentProject,
+          space: r.space || null, supplier: (r.supplier || "").trim() || null, unit_name: (r.unit_name || "").trim() || null,
+          material_spec: (r.material_spec || "").trim() || null, design_spec: (r.design_spec || "").trim() || null,
+          quantity: Number(r.quantity) || 0, unit_price: Number(r.unit_price) || 0,
+          total_price: t.total, margin_price: t.withMargin, margin_amount: t.marginAmount, discount_price: t.withDiscount, gst_price: t.withGst,
+          sort_order: i,
+        };
+      });
+      try {
+        if (records.length) {
+          const { error } = await sb.from("turnkey_quote_furniture").upsert(records);
+          if (error) throw error;
+        }
+        const keepIds = records.map((r) => r.id);
+        let delQ = sb.from("turnkey_quote_furniture").delete().eq("project_id", currentProject);
+        if (keepIds.length) delQ = delQ.not("id", "in", `(${keepIds.join(",")})`);
+        const { error: delErr } = await delQ;
+        if (delErr) throw delErr;
+        msg.textContent = "";
+        message(`Saved ${records.length} furniture item${records.length === 1 ? "" : "s"}.`);
+        renderSaved(await loadFurniture(currentProject));
+      } catch (error) {
+        msg.textContent = `Save failed: ${error.message}`;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    const actions = el("div", "admin-row-actions");
+    actions.append(saveBtn);
+
+    const block = el("div", "admin-package tk-add");
+    block.append(section, totalsWrap, actions, msg, savedWrap);
+    container.appendChild(block);
+
+    refreshTotals();
+    renderSaved(saved);
   }
 
   function selectProject(id) {
