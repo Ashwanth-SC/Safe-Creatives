@@ -1741,7 +1741,29 @@
     exportBtn.disabled = !segments.length;
     exportBtn.addEventListener("click", () => openQuotationWindow(seller, project, segments, grand));
     head.appendChild(exportBtn);
+    if (!project.client_email) head.appendChild(el("p", "dash-note", "Note: this project has no client email — add one in the dashboard to email the quotation."));
     container.appendChild(head);
+
+    // Called back by the printable window's "Email to customer" button: it hands
+    // us the generated PDF (base64); we email it via the edge function (auth here).
+    window.__scSendQuotationPdf = async (base64, filename) => {
+      if (!project.client_email) return { ok: false, message: "No email on file for this project — add it in the dashboard." };
+      try {
+        const { data, error } = await sb.functions.invoke("send-turnkey-quotation", { body: { project_id: currentProject, pdf_base64: base64, filename: filename || `Quotation-${project.project_number}.pdf` } });
+        if (error) {
+          let detail = error.message;
+          try { const b = await error.context.json(); if (b && b.error) detail = b.error; } catch (_ignored) { /* no body */ }
+          throw new Error(detail);
+        }
+        if (data && data.error) throw new Error(data.error);
+        if (data && data.ok === false && data.reason === "no_email") return { ok: false, message: "No email on file for this project." };
+        if (data && data.ok === false && data.reason === "email_not_configured") return { ok: false, message: "Email isn't configured on the server (RESEND_API_KEY)." };
+        message(`Quotation emailed to ${project.client_email}.`);
+        return { ok: true, message: `Sent to ${project.client_email}.` };
+      } catch (e) {
+        return { ok: false, message: `Send failed: ${e.message}` };
+      }
+    };
 
     if (!segments.length) {
       container.appendChild(el("p", "dash-note", "No saved quotation lines in any category yet."));
@@ -1838,10 +1860,12 @@
   tr.total td { font-weight: 700; color: #0c4444; border-top: 2px solid #0c4444; background: #f4f6f3; }
   .note { margin-top: 24px; font-size: 11px; color: #888; }
   @media print { body { background: #fff; } .toolbar { display: none; } .doc { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
-</style></head><body>
+</style>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script></head><body>
   <div class="toolbar">
     <button onclick="window.print()">Download / Print (PDF)</button>
-    <span class="muted">Email to customer — coming next.</span>
+    <button id="sc-email-btn" type="button">Email to customer</button>
+    <span class="muted" id="sc-email-status"></span>
   </div>
   <div class="doc">
     <header>
@@ -1854,6 +1878,34 @@
     <table><thead><tr><th>Category</th><th class="num">Total</th><th class="num">Total with discount</th><th class="num">Total with GST</th></tr></thead><tbody>${summary}<tr class="total"><td>Grand total</td><td class="num">${escHtml(money(grand.price))}</td><td class="num">${escHtml(money(grand.disc))}</td><td class="num">${escHtml(money(grand.gst))}</td></tr></tbody></table>
     <p class="note">This is a quotation, not a tax invoice. Amounts shown as Price include the applicable margin; GST is shown where applicable. Valid subject to confirmation.</p>
   </div>
+  <script>
+    (function () {
+      var RECIPIENT = ${JSON.stringify(project.client_email || "")};
+      var FILENAME = ${JSON.stringify(`Quotation-${project.project_number || ""}.pdf`)};
+      var btn = document.getElementById("sc-email-btn");
+      var status = document.getElementById("sc-email-status");
+      btn.addEventListener("click", async function () {
+        if (!window.opener || !window.opener.__scSendQuotationPdf) { status.textContent = "Open the quotation from the Export tab to enable email."; return; }
+        if (!RECIPIENT) { status.textContent = "No email on file for this project — add it in the dashboard."; return; }
+        if (!window.confirm("Email this quotation to " + RECIPIENT + "?")) return;
+        if (typeof window.html2pdf !== "function") { status.textContent = "PDF library still loading — try again in a second."; return; }
+        btn.disabled = true;
+        status.textContent = "Generating PDF…";
+        try {
+          var opt = { margin: 8, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }, pagebreak: { mode: ["css", "legacy"] } };
+          var uri = await window.html2pdf().set(opt).from(document.querySelector(".doc")).outputPdf("datauristring");
+          var b64 = uri.indexOf(",") >= 0 ? uri.split(",")[1] : uri;
+          status.textContent = "Sending…";
+          var res = await window.opener.__scSendQuotationPdf(b64, FILENAME);
+          status.textContent = res && res.message ? res.message : (res && res.ok ? "Sent." : "Failed.");
+        } catch (e) {
+          status.textContent = "Failed: " + (e && e.message ? e.message : e);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
 </body></html>`;
   }
 
