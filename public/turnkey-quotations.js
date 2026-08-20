@@ -1016,9 +1016,28 @@
     container.appendChild(perPanel("Handles", "Choose the handle for each applicable panel.", computed.handle_panels || [], ctx.handleOptions, ctx.handleSel, ctx.onHandleChange));
   }
 
+  // Duplicate a saved unit: copy the row (new id + fresh timestamps), then
+  // rebuild the BOQ. `nameKey` (if the table has one) gets " (copy)" appended.
+  async function duplicateUnit(table, id, computeFn, onChanged, nameKey) {
+    try {
+      const { data, error } = await sb.from(table).select("*").eq("id", id).single();
+      if (error) throw error;
+      const copy = { ...data };
+      delete copy.id; delete copy.created_at; delete copy.updated_at;
+      if (nameKey && copy[nameKey] != null) copy[nameKey] = `${copy[nameKey]} (copy)`;
+      const { error: insErr } = await sb.from(table).insert(copy);
+      if (insErr) throw insErr;
+      try { await computeFn({ recompute_boq: true, project_id: currentProject }); } catch (_e) { /* BOQ rebuild best-effort */ }
+      message("Duplicated — the copy is in the list below; open it to tweak.");
+      onChanged();
+    } catch (error) {
+      message(`Could not duplicate: ${error.message}`, true);
+    }
+  }
+
   function unitsList(units, onChanged) {
     const wrap = document.createDocumentFragment();
-    wrap.appendChild(el("p", "dash-note", "Saved Box & Shutters units. Open to edit, or delete."));
+    wrap.appendChild(el("p", "dash-note", "Saved Box & Shutters units. Open to edit, duplicate, or delete."));
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
     const thead = el("thead");
@@ -1059,8 +1078,11 @@
         message("Unit deleted.");
         onChanged();
       });
+      const dup = el("button", "tk-email-link", "Duplicate");
+      dup.type = "button";
+      dup.addEventListener("click", () => duplicateUnit("turnkey_quote_box_units", u.id, computeUnit, onChanged, "unit_name"));
       const actions = el("div", "tk-cell-actions");
-      actions.append(open, del);
+      actions.append(open, dup, del);
 
       const cells = [
         u.space || "—", u.unit_name || "—", u.material_spec || "—", u.design_spec || "—",
@@ -1315,7 +1337,7 @@
 
   function wallPanelsList(panels, onChanged) {
     const wrap = document.createDocumentFragment();
-    wrap.appendChild(el("p", "dash-note", "Saved wall panels. Open to edit, or delete."));
+    wrap.appendChild(el("p", "dash-note", "Saved wall panels. Open to edit, duplicate, or delete."));
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
     const thead = el("thead");
@@ -1356,8 +1378,11 @@
         message("Wall panel deleted.");
         onChanged();
       });
+      const dup = el("button", "tk-email-link", "Duplicate");
+      dup.type = "button";
+      dup.addEventListener("click", () => duplicateUnit("turnkey_quote_wall_panels", p.id, computeWallPanel, onChanged, null));
       const actions = el("div", "tk-cell-actions");
-      actions.append(open, del);
+      actions.append(open, dup, del);
 
       const dims = p.length_ft && p.height_ft ? `${p.length_ft}×${p.height_ft} ft` : "";
       const cells = [
