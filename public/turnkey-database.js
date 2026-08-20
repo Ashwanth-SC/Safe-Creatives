@@ -639,11 +639,39 @@
     return wrap;
   }
 
+  async function accessoriesPanel() {
+    const supplierNames = await loadSupplierNames();
+
+    const grid = editableGrid({
+      table: "turnkey_accessories",
+      orderBy: "created_at",
+      columns: [
+        { key: "supplier", label: "Supplier", type: "select", options: supplierNames, aliases: ["supplier company name"] },
+        { key: "product_name", label: "Product name" },
+        { key: "product_category", label: "Product category", default: "Accessories", aliases: ["category"] },
+        { key: "price_per_piece", label: "Price (per piece)", type: "number", aliases: ["price", "price/piece"] },
+      ],
+    });
+
+    const wrap = document.createDocumentFragment();
+    wrap.appendChild(
+      el(
+        "p",
+        "dash-note",
+        "Your accessories catalogue — supplier, product name, category (Accessories by default) and price per piece. The quotation Accessories segment picks from this list. Add rows, edit cells, or import a CSV."
+      )
+    );
+    wrap.appendChild(grid.frag);
+    await grid.load();
+    return wrap;
+  }
+
   const PANELS = {
     suppliers: suppliersPanel,
     products: productsPanel,
     labour: labourPanel,
     hardwares: hardwaresPanel,
+    accessories: accessoriesPanel,
     "box-logic": boxLogicPanel,
   };
 

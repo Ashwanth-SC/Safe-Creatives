@@ -310,7 +310,7 @@
   async function loadAccessories(projectId) {
     const { data, error } = await sb
       .from("turnkey_quote_accessories")
-      .select("id, supplier, unit_name, specification, quantity, unit_price, total_price, margin_price, margin_amount, discount_price, gst_price, sort_order")
+      .select("id, supplier, accessory_id, unit_name, specification, quantity, margin_percent, unit_price, total_price, margin_price, margin_amount, discount_price, gst_price, sort_order")
       .eq("project_id", projectId)
       .order("sort_order", { ascending: true });
     if (error) throw error;
@@ -338,6 +338,15 @@
     const { data, error } = await sb
       .from("turnkey_products")
       .select("id, product_name, supplier, category, price_per_sqft");
+    if (error) throw error;
+    return data || [];
+  }
+  // The accessories catalogue (turnkey_accessories) for the Accessories segment.
+  async function loadAccessoriesCatalog() {
+    const { data, error } = await sb
+      .from("turnkey_accessories")
+      .select("id, supplier, product_name, product_category, price_per_piece")
+      .order("product_name", { ascending: true });
     if (error) throw error;
     return data || [];
   }
@@ -1390,15 +1399,17 @@
     ],
   };
   const ACCESSORIES_SEG = {
-    table: "turnkey_quote_accessories", load: loadAccessories, migration: "035",
+    table: "turnkey_quote_accessories", load: loadAccessories, migration: "041",
     title: "Accessories", addLabel: "+ Add accessory", saveLabel: "Save accessories",
-    note: "Enter each accessory — no computation, the line total is Quantity × Price. Supplier, Unit, Specification, Quantity and price are stored for the vendor BOQ; the totals below carry the project margin, discount & GST.",
+    supplierFrom: "accessories", marginKey: "margin_percent",
+    note: "Pick a supplier, then an accessory from the accessories database (Database → Accessories) and a quantity. Set a Margin % per line — accessories override the project margin; discount & GST use the project rates. Supplier/product/qty/price feed the vendor BOQ.",
     cols: [
       { key: "supplier", label: "Supplier", kind: "supplier" },
-      { key: "unit_name", label: "Unit", kind: "text", ph: "Unit" },
+      { key: "accessory_id", label: "Product", kind: "product", source: "accessories", filterBy: "supplier", nameKey: "unit_name", priceField: "price_per_piece" },
       { key: "specification", label: "Specification", kind: "text", ph: "Specification" },
       { key: "quantity", label: "Quantity", kind: "number" },
-      { key: "unit_price", label: "Price", kind: "number" },
+      { key: "margin_percent", label: "Margin (%)", kind: "number" },
+      { key: "unit_price", label: "Price", kind: "readonly" },
     ],
   };
 
@@ -1421,13 +1432,15 @@
     container.appendChild(el("p", "dash-note", "Loading…"));
     const needSpaces = seg.cols.some((c) => c.kind === "space");
     const needSuppliers = seg.cols.some((c) => c.kind === "supplier");
-    const needProducts = seg.cols.some((c) => c.kind === "product");
-    let spaces = [], suppliers = [], products = [], saved = [];
+    const needCatalog = seg.cols.some((c) => c.kind === "product" && c.source !== "accessories");
+    const needAccessories = seg.cols.some((c) => c.kind === "product" && c.source === "accessories") || seg.supplierFrom === "accessories";
+    let spaces = [], suppliers = [], products = [], accessories = [], saved = [];
     try {
-      [spaces, suppliers, products, saved] = await Promise.all([
+      [spaces, suppliers, products, accessories, saved] = await Promise.all([
         needSpaces ? loadSelectedSpaces(currentProject) : Promise.resolve([]),
         needSuppliers ? loadSuppliers() : Promise.resolve([]),
-        needProducts ? loadCatalogProducts() : Promise.resolve([]),
+        needCatalog ? loadCatalogProducts() : Promise.resolve([]),
+        needAccessories ? loadAccessoriesCatalog() : Promise.resolve([]),
         seg.load(currentProject),
       ]);
     } catch (error) {
@@ -1438,15 +1451,17 @@
       return;
     }
     container.textContent = "";
+    if (seg.supplierFrom === "accessories") suppliers = distinctVals(accessories.map((a) => a.supplier)).sort();
 
     const proj = projectsById.get(currentProject) || {};
     const m = Number(proj.margin_percent) || 0, d = Number(proj.discount_percent) || 0, g = Number(proj.gst_percent) || 0;
     const qtyKey = seg.qtyKey || "quantity";      // the multiplier column
     const priceKey = seg.priceKey || "unit_price"; // the per-unit rate (a column, or set by a product pick)
-    const rateIsColumn = seg.cols.some((c) => c.key === priceKey);
+    const rateIsColumn = seg.cols.some((c) => c.key === priceKey && c.kind !== "readonly");
+    const rowMargin = (r) => (seg.marginKey ? (Number(r[seg.marginKey]) || 0) : m);
     const rowTotals = (r) => {
       const total = round2q((Number(r[qtyKey]) || 0) * (Number(r[priceKey]) || 0));
-      const withMargin = round2q(total * (1 + m / 100));
+      const withMargin = round2q(total * (1 + rowMargin(r) / 100));
       const marginAmount = round2q(withMargin - total);
       const withDiscount = round2q(withMargin * (1 - d / 100));
       const withGst = round2q(withDiscount * (1 + g / 100));
@@ -1491,7 +1506,9 @@
       const tr = el("tr");
       const cell = (c) => { const td = el("td"); td.appendChild(c); return td; };
       const totCell = el("td"), mpCell = el("td"), mCell = el("td"), dCell = el("td"), gCell = el("td");
+      const readonlyUpdaters = [];
       const updateLine = () => {
+        readonlyUpdaters.forEach((fn) => fn());
         const t = rowTotals(row);
         totCell.textContent = money(t.total); mpCell.textContent = money(t.withMargin);
         mCell.textContent = money(t.marginAmount); dCell.textContent = money(t.withDiscount); gCell.textContent = money(t.withGst);
@@ -1501,6 +1518,14 @@
       let firstControl = null;
       const controlByKey = {};
       seg.cols.forEach((c) => {
+        if (c.kind === "readonly") {
+          const td = el("td", "db-readonly");
+          const set = () => { td.textContent = money(Number(row[c.key]) || 0); };
+          set();
+          readonlyUpdaters.push(set);
+          tr.appendChild(td);
+          return;
+        }
         let control;
         if (c.kind === "space") {
           control = selectEl(spaces, row[c.key] || "", spaces.length ? "Area…" : "No spaces");
@@ -1522,13 +1547,16 @@
             });
           });
         } else if (c.kind === "product") {
+          const catalog = c.source === "accessories" ? accessories : products;
+          const priceField = c.priceField || "price_per_sqft";
+          const matches = (p) => (c.source === "accessories" ? true : normCat(p.category) === normCat(c.category));
           control = document.createElement("select");
           control.className = "grid-input grid-select";
           const fill = () => {
-            const sup = row[c.filterBy];
-            const opts = products.filter((p) => normCat(p.category) === normCat(c.category) && (!sup || p.supplier === sup));
+            const sup = c.filterBy ? row[c.filterBy] : null;
+            const opts = catalog.filter((p) => matches(p) && (!sup || p.supplier === sup));
             control.textContent = "";
-            control.appendChild(new Option(sup ? "Select…" : "Pick a supplier first", ""));
+            control.appendChild(new Option(c.filterBy && !sup ? "Pick a supplier first" : "Select…", ""));
             opts.forEach((p) => control.appendChild(new Option(p.product_name || "unnamed", p.id)));
             control.value = row[c.key] || "";
           };
@@ -1536,9 +1564,9 @@
           control._fill = fill;
           control.addEventListener("change", () => {
             row[c.key] = control.value;
-            const p = products.find((x) => String(x.id) === control.value);
+            const p = catalog.find((x) => String(x.id) === control.value);
             row[c.nameKey] = p ? (p.product_name || "") : "";
-            row[priceKey] = p ? (Number(p.price_per_sqft) || 0) : "";
+            row[priceKey] = p ? (Number(p[priceField]) || 0) : "";
             updateLine();
           });
         } else if (c.kind === "number") {
@@ -1603,6 +1631,7 @@
           total_price: t.total, margin_price: t.withMargin, margin_amount: t.marginAmount, discount_price: t.withDiscount, gst_price: t.withGst,
         };
         seg.cols.forEach((c) => {
+          if (c.kind === "readonly") return; // the priceKey it shows is stored below
           if (c.kind === "number") rec[c.key] = Number(r[c.key]) || 0;
           else if (c.kind === "product") { rec[c.key] = r[c.key] || null; rec[c.nameKey] = (String(r[c.nameKey] || "").trim()) || null; }
           else rec[c.key] = String(r[c.key] || "").trim() || null;
