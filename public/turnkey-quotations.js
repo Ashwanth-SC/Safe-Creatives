@@ -287,7 +287,7 @@
   async function loadWallPanels(projectId) {
     const { data, error } = await sb
       .from("turnkey_quote_wall_panels")
-      .select("id, space, panel_type, length_ft, height_ft, material_spec, design_spec, total_price, margin_price, margin_amount, discount_price, gst_price, created_at")
+      .select("id, space, unit_name, panel_type, length_ft, height_ft, material_spec, design_spec, total_price, margin_price, margin_amount, discount_price, gst_price, created_at")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
     if (error) throw error;
@@ -1138,7 +1138,7 @@
     const u = existing?.unit || {};
     const block = el("details", "admin-package tk-add");
     block.open = !existing;
-    block.appendChild(el("summary", null, existing ? `Edit panel — ${u.panel_type || ""} ${u.length_ft || ""}×${u.height_ft || ""} ft` : "Add a wall panel"));
+    block.appendChild(el("summary", null, existing ? `Edit panel — ${u.unit_name ? u.unit_name + " · " : ""}${u.panel_type || ""} ${u.length_ft || ""}×${u.height_ft || ""} ft` : "Add a wall panel"));
 
     let panelId = u.id || null;
 
@@ -1151,6 +1151,10 @@
 
     // Inputs
     const spaceS = selectEl(ref.spaces, u.space || "", ref.spaces.length ? "Select area…" : "No spaces — set them up first");
+    const nameI = document.createElement("input");
+    nameI.type = "text";
+    nameI.placeholder = "Unit name (e.g. TV wall)";
+    if (u.unit_name) nameI.value = u.unit_name;
     const panelTypeS = selectEl(PANEL_TYPES, u.panel_type || "", "Panel type…");
     const lengthI = document.createElement("input");
     lengthI.type = "number"; lengthI.min = "0"; lengthI.step = "0.01"; lengthI.placeholder = "Length (ft)";
@@ -1164,7 +1168,7 @@
     const lamS = selectEl(lamOptions, u.laminate_id || "", "Laminate / panel…");
 
     const grid = el("div", "admin-inline");
-    grid.append(field("Space", spaceS), field("Panel type", panelTypeS), field("Length (ft)", lengthI), field("Height (ft)", heightI));
+    grid.append(field("Space", spaceS), field("Unit name", nameI), field("Panel type", panelTypeS), field("Length (ft)", lengthI), field("Height (ft)", heightI));
     const selRow = el("div", "admin-inline tk-sel-grid");
     selRow.append(field("Plywood brand", plyBrandS), field("Plywood type", plySubS), field("Laminate / panel", lamS));
 
@@ -1213,6 +1217,7 @@
       unit_id: panelId,
       project_id: currentProject,
       space: spaceS.value || null,
+      unit_name: nameI.value.trim() || null,
       panel_type: panelTypeS.value || null,
       plywood_brand: plyBrandS.value || null,
       plywood_sub_category: plySubS.value || null,
@@ -1342,7 +1347,7 @@
     const t = el("table", "dash-table");
     const thead = el("thead");
     const hr = el("tr");
-    ["Space", "Panel", "Material specifications", "Design specifications", "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach(
+    ["Space", "Unit", "Panel", "Material specifications", "Design specifications", "Total", "With margin", "Margin", "With discount", "With GST", ""].forEach(
       (h) => hr.appendChild(el("th", null, h))
     );
     thead.appendChild(hr);
@@ -1350,7 +1355,7 @@
     if (!panels.length) {
       const tr = el("tr");
       const td = el("td", "dash-empty", "No wall panels yet.");
-      td.colSpan = 10;
+      td.colSpan = 11;
       tr.appendChild(td);
       tbody.appendChild(tr);
     }
@@ -1380,13 +1385,13 @@
       });
       const dup = el("button", "tk-email-link", "Duplicate");
       dup.type = "button";
-      dup.addEventListener("click", () => duplicateUnit("turnkey_quote_wall_panels", p.id, computeWallPanel, onChanged, null));
+      dup.addEventListener("click", () => duplicateUnit("turnkey_quote_wall_panels", p.id, computeWallPanel, onChanged, "unit_name"));
       const actions = el("div", "tk-cell-actions");
       actions.append(open, dup, del);
 
       const dims = p.length_ft && p.height_ft ? `${p.length_ft}×${p.height_ft} ft` : "";
       const cells = [
-        p.space || "—", `${p.panel_type || "—"}${dims ? " · " + dims : ""}`, p.material_spec || "—", p.design_spec || "—",
+        p.space || "—", p.unit_name || "—", `${p.panel_type || "—"}${dims ? " · " + dims : ""}`, p.material_spec || "—", p.design_spec || "—",
         money(p.total_price), money(p.margin_price), money(p.margin_amount), money(p.discount_price), money(p.gst_price), actions,
       ];
       const tr = el("tr");
@@ -1704,7 +1709,7 @@
       { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
     ] },
     { title: "Wall Panels", load: loadWallPanels, cols: [
-      { label: "Space", get: (r) => r.space },
+      { label: "Space", get: (r) => r.space }, { label: "Unit", get: (r) => r.unit_name },
       { label: "Panel", get: (r) => `${r.panel_type || ""}${r.length_ft && r.height_ft ? ` · ${r.length_ft}×${r.height_ft} ft` : ""}`.trim() },
       { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
     ] },
@@ -1951,6 +1956,36 @@
   // ------------------------------------------------------------------
   // Vendor BOQ — everything you buy, grouped by supplier
   // ------------------------------------------------------------------
+
+  // Club identical purchasable lines (same product + detail + unit price) into
+  // one, summing quantity and line total. Order follows first appearance.
+  function mergeBoqRows(rows) {
+    const r2 = (n) => Math.round(n * 100) / 100;
+    const map = new Map();
+    rows.forEach((row) => {
+      const key = [row.product, row.detail || "", row.unit_price].join("~|~");
+      const g = map.get(key);
+      if (g) { g.qty = r2(g.qty + row.qty); g.total = r2(g.total + row.total); }
+      else map.set(key, { ...row });
+    });
+    return [...map.values()];
+  }
+
+  // Club identical labour lines (same category + task) into one, summing days,
+  // sqft and cost. Order follows first appearance.
+  function mergeLabourRows(rows) {
+    const r2 = (n) => Math.round(n * 100) / 100;
+    const map = new Map();
+    rows.forEach((row) => {
+      const key = [row.category || "", row.task || ""].join("~|~");
+      const days = Number(row.total_days) || 0, sqft = Number(row.total_sqft) || 0, cost = Number(row.cost) || 0;
+      const g = map.get(key);
+      if (g) { g.total_days = r2(g.total_days + days); g.total_sqft = r2(g.total_sqft + sqft); g.cost = r2(g.cost + cost); }
+      else map.set(key, { ...row, total_days: days, total_sqft: sqft, cost });
+    });
+    return [...map.values()];
+  }
+
   async function renderVendorBoq(container) {
     container.textContent = "";
     container.appendChild(el("p", "dash-note", "Loading…"));
@@ -2003,14 +2038,16 @@
     });
     [["Civil work", civil], ["Electrical work", electrical]].forEach(([label, units]) => {
       units.forEach((u) => {
+        // Detail stays category-level (no per-unit name) so the same product
+        // across several Civil/Electrical units clubs into one procurement line.
         (u.material_lines || []).forEach((r) => {
           const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
-          lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: `${label}${u.unit_name ? " · " + u.unit_name : ""}`, qty, unit_price: up, total: round2(qty * up) });
+          lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: label, qty, unit_price: up, total: round2(qty * up) });
         });
         (u.special_additions || []).forEach((r) => {
           const qty = Number(r.quantity) || 0, up = Number(r.unit_price) || 0;
           if (!qty && !r.hardware_id) return;
-          lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: `${label} · special${u.unit_name ? " · " + u.unit_name : ""}`, qty, unit_price: up, total: round2(qty * up) });
+          lines.push({ supplier: r.supplier || NO_SUPPLIER, product: r.product_name || "—", detail: `${label} · special`, qty, unit_price: up, total: round2(qty * up) });
         });
       });
     });
@@ -2023,8 +2060,9 @@
     });
     const suppliers = [...groups.entries()]
       .map(([supplier, rows]) => {
-        const total = round2(rows.reduce((a, r) => a + r.total, 0));
-        return { supplier, rows, total, totalWithGst: round2(total * (1 + gst / 100)) };
+        const merged = mergeBoqRows(rows);
+        const total = round2(merged.reduce((a, r) => a + r.total, 0));
+        return { supplier, rows: merged, total, totalWithGst: round2(total * (1 + gst / 100)) };
       })
       .sort((a, b) => (a.supplier === NO_SUPPLIER ? 1 : b.supplier === NO_SUPPLIER ? -1 : a.supplier.localeCompare(b.supplier)));
 
@@ -2404,12 +2442,15 @@
       groups.get(name).push(l);
     });
     const labourers = [...groups.entries()]
-      .map(([name, rows]) => ({
-        name, rows,
-        days: round2(rows.reduce((a, r) => a + (Number(r.total_days) || 0), 0)),
-        sqft: round2(rows.reduce((a, r) => a + (Number(r.total_sqft) || 0), 0)),
-        price: round2(rows.reduce((a, r) => a + (Number(r.cost) || 0), 0)),
-      }))
+      .map(([name, rows]) => {
+        const merged = mergeLabourRows(rows);
+        return {
+          name, rows: merged,
+          days: round2(merged.reduce((a, r) => a + (Number(r.total_days) || 0), 0)),
+          sqft: round2(merged.reduce((a, r) => a + (Number(r.total_sqft) || 0), 0)),
+          price: round2(merged.reduce((a, r) => a + (Number(r.cost) || 0), 0)),
+        };
+      })
       .sort((a, b) => (a.name === NO_NAME ? 1 : b.name === NO_NAME ? -1 : a.name.localeCompare(b.name)));
 
     const head = el("div", "admin-package");

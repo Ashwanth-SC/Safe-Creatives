@@ -262,6 +262,7 @@ Deno.serve(async (req) => {
     const row = {
       project_id: String(body.project_id),
       space: body.space ? String(body.space) : null,
+      unit_name: body.unit_name ? String(body.unit_name).trim() || null : null,
       panel_type: typeLabel,
       plywood_brand: plyBrand,
       plywood_sub_category: plySub,
