@@ -1781,17 +1781,18 @@
     const computeSegments = () => {
       segments = EXPORT_SEGMENTS.map((s, i) => {
         const rows = segData[i] || [];
-        const totals = { price: 0, disc: 0, gst: 0 };
+        const totals = { base: 0, price: 0, disc: 0, gst: 0 };
         rows.forEach((r) => {
           const mny = rowMoney(r, s);
           r._price = mny.price; r._disc = mny.disc; r._gst = mny.gst;
+          totals.base += Number(r.total_price) || 0;
           totals.price += mny.price; totals.disc += mny.disc; totals.gst += mny.gst;
         });
-        totals.price = round2(totals.price); totals.disc = round2(totals.disc); totals.gst = round2(totals.gst);
+        totals.base = round2(totals.base); totals.price = round2(totals.price); totals.disc = round2(totals.disc); totals.gst = round2(totals.gst);
         return { title: s.title, cols: s.cols, rows, totals };
       }).filter((s) => s.rows.length);
-      grand = segments.reduce((a, s) => { a.price += s.totals.price; a.disc += s.totals.disc; a.gst += s.totals.gst; return a; }, { price: 0, disc: 0, gst: 0 });
-      grand.price = round2(grand.price); grand.disc = round2(grand.disc); grand.gst = round2(grand.gst);
+      grand = segments.reduce((a, s) => { a.base += s.totals.base; a.price += s.totals.price; a.disc += s.totals.disc; a.gst += s.totals.gst; return a; }, { base: 0, price: 0, disc: 0, gst: 0 });
+      grand.base = round2(grand.base); grand.price = round2(grand.price); grand.disc = round2(grand.disc); grand.gst = round2(grand.gst);
     };
     computeSegments();
 
@@ -1818,7 +1819,13 @@
 
     const exportBtn = el("button", "admin-primary", "Open printable quotation");
     exportBtn.type = "button";
-    exportBtn.addEventListener("click", () => openQuotationWindow(seller, project, segments, grand));
+    exportBtn.addEventListener("click", async () => {
+      // Draft number = the next version's number (advances when you freeze).
+      let latest = 0;
+      try { const vs = await loadQuoteVersions(currentProject); latest = vs[0]?.version_no || 0; } catch (_e) { /* no versions yet */ }
+      const number = quoteNumberStr(project.project_number, latest + 1, new Date());
+      openQuotationWindow(seller, project, liveToPrintSegs(segments), grand, { quoteNumber: number, dateLabel: longDate() });
+    });
     head.appendChild(exportBtn);
     if (!project.client_email) head.appendChild(el("p", "dash-note", "Note: this project has no client email — add one in the dashboard to email the quotation."));
     container.appendChild(head);
@@ -1841,7 +1848,7 @@
     // saved one. Reads the live segments/grand/pct at click time.
     const versionsWrap = el("div");
     container.appendChild(versionsWrap);
-    renderQuoteVersions(versionsWrap, currentProject, () => ({ segments, grand, pct }));
+    renderQuoteVersions(versionsWrap, project, seller, () => ({ segments, grand, pct }));
 
     const onPctInput = () => {
       pct.margin = Number(marginInp.value) || 0;
@@ -1913,10 +1920,10 @@
   function buildQuoteSnapshot(cur) {
     return {
       pct: { margin: cur.pct.margin, discount: cur.pct.discount, gst: cur.pct.gst },
-      grand: { price: cur.grand.price, disc: cur.grand.disc, gst: cur.grand.gst },
+      grand: { base: cur.grand.base, price: cur.grand.price, disc: cur.grand.disc, gst: cur.grand.gst },
       segments: cur.segments.map((s) => ({
         title: s.title,
-        totals: { price: s.totals.price, disc: s.totals.disc, gst: s.totals.gst },
+        totals: { base: s.totals.base, price: s.totals.price, disc: s.totals.disc, gst: s.totals.gst },
         rows: s.rows.map((r) => ({
           id: r.id ?? null,
           cells: s.cols.map((c) => { const v = c.get(r); return [c.label, v == null ? "" : String(v)]; }),
@@ -1926,7 +1933,8 @@
     };
   }
 
-  async function renderQuoteVersions(wrap, projectId, getCurrent) {
+  async function renderQuoteVersions(wrap, project, seller, getCurrent) {
+    const projectId = project.id;
     const section = el("div", "tk-box-section");
     section.appendChild(el("div", "tk-box-section-head", "Quote versions"));
     section.appendChild(el("p", "dash-note", "Freeze the current quotation as a numbered version, then compare a saved version against the current one (totals per category)."));
@@ -1961,11 +1969,21 @@
       const scroll = el("div", "table-scroll");
       const t = el("table", "dash-table");
       const thead = el("thead"); const hr = el("tr");
-      ["Version", "Label", "Saved", "Margin", "Discount", "GST", "Grand (with GST)", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+      ["Version", "Quotation no.", "Label", "Saved", "Margin", "Discount", "GST", "Grand (with GST)", ""].forEach((h) => hr.appendChild(el("th", null, h)));
       thead.appendChild(hr);
       const tb = el("tbody");
       versions.forEach((v) => {
         const when = v.created_at ? new Date(v.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+        const quoteNo = quoteNumberStr(project.project_number, v.version_no, v.created_at);
+        const prn = el("button", "tk-email-link", "Open printable");
+        prn.type = "button";
+        prn.addEventListener("click", async () => {
+          let full;
+          try { full = await loadQuoteVersion(v.id); }
+          catch (e) { message(`Could not open: ${e.message}`, true); return; }
+          const snap = full.snapshot || {};
+          openQuotationWindow(seller, project, snapshotToPrintSegs(snap), snap.grand || { price: 0, disc: 0, gst: 0 }, { quoteNumber: quoteNo, dateLabel: longDate(v.created_at) });
+        });
         const cmp = el("button", "tk-email-link", "Compare with current");
         cmp.type = "button";
         cmp.addEventListener("click", () => showQuoteCompare(compareWrap, v, getCurrent));
@@ -1978,9 +1996,9 @@
           compareWrap.textContent = "";
           await refresh();
         });
-        const actions = el("div", "tk-cell-actions"); actions.append(cmp, del);
+        const actions = el("div", "tk-cell-actions"); actions.append(prn, cmp, del);
         const cells = [
-          `#${v.version_no}`, v.label || "—", when,
+          `#${v.version_no}`, quoteNo, v.label || "—", when,
           v.margin_percent == null ? "—" : `${v.margin_percent}%`,
           v.discount_percent == null ? "—" : `${v.discount_percent}%`,
           v.gst_percent == null ? "—" : `${v.gst_percent}%`,
@@ -2109,39 +2127,77 @@
 
   function exportSummaryTable(segments, grand) {
     const wrap = el("div", "tk-box-section");
-    wrap.appendChild(el("div", "tk-box-section-head", "Summary — by category"));
+    wrap.appendChild(el("div", "tk-box-section-head", "Summary — by category (internal reference)"));
+    wrap.appendChild(el("p", "dash-note", "For your reference only — includes the base price and the margin. The printable customer quotation still shows only Price, Price with discount and Price with GST."));
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
     const hr = el("tr");
-    ["Category", "Total", "Total with discount", "Total with GST"].forEach((h) => hr.appendChild(el("th", null, h)));
+    ["Category", "Price", "Price with margin", "Margin", "Price with discount", "Price with GST"].forEach((h) => hr.appendChild(el("th", null, h)));
     t.appendChild(hr);
+    const rowCells = (title, tt) => [title, money(tt.base), money(tt.price), money(tt.price - tt.base), money(tt.disc), money(tt.gst)];
     segments.forEach((s) => {
       const tr = el("tr");
-      [s.title, money(s.totals.price), money(s.totals.disc), money(s.totals.gst)].forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
+      rowCells(s.title, s.totals).forEach((c) => { const td = el("td"); td.textContent = c; tr.appendChild(td); });
       t.appendChild(tr);
     });
     const trG = el("tr", "tk-cat-sqft-total");
-    ["Grand total", money(grand.price), money(grand.disc), money(grand.gst)].forEach((c) => { const td = el("td"); td.textContent = c; trG.appendChild(td); });
+    rowCells("Grand total", grand).forEach((c) => { const td = el("td"); td.textContent = c; trG.appendChild(td); });
     t.appendChild(trG);
     scroll.appendChild(t);
     wrap.appendChild(scroll);
     return wrap;
   }
 
-  function quotationHtml(seller, project, segments, grand) {
-    const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+  // Quotation number: {project number}/4.1.{version}/DD/MM/YYYY. The "4.1" is a
+  // fixed prefix; the last digit is the version number (advances on each freeze).
+  function quoteNumberStr(projectNumber, versionNo, dateInput) {
+    const d = dateInput ? new Date(dateInput) : new Date();
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${projectNumber || ""}/4.1.${versionNo}/${dd}/${mm}/${d.getFullYear()}`;
+  }
+  const longDate = (dateInput) => new Date(dateInput || Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+
+  // Normalise the live export state / a saved snapshot to a single print model:
+  // [{ title, colLabels:[str], rows:[{ cells:[str], price, disc, gst }], totals }].
+  function liveToPrintSegs(segments) {
+    return segments.map((s) => ({
+      title: s.title,
+      colLabels: s.cols.map((c) => c.label),
+      rows: s.rows.map((r) => ({
+        cells: s.cols.map((c) => { const v = c.get(r); return v == null || v === "" ? "" : String(v); }),
+        price: r._price, disc: r._disc, gst: r._gst,
+      })),
+      totals: s.totals,
+    }));
+  }
+  function snapshotToPrintSegs(snap) {
+    return (snap.segments || []).map((s) => ({
+      title: s.title,
+      colLabels: ((s.rows && s.rows[0] && s.rows[0].cells) || []).map((c) => c[0]),
+      rows: (s.rows || []).map((r) => ({
+        cells: (r.cells || []).map((c) => (c[1] == null ? "" : String(c[1]))),
+        price: r.price, disc: r.disc, gst: r.gst,
+      })),
+      totals: s.totals || { price: 0, disc: 0, gst: 0 },
+    }));
+  }
+
+  function quotationHtml(seller, project, printSegs, grand, opts) {
+    const dateLabel = (opts && opts.dateLabel) || longDate();
+    const quoteNumber = (opts && opts.quoteNumber) || "";
     const sellerName = seller.trade_name || seller.legal_name || "Safe Creatives";
     const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
-    const seg = segments.map((s) => {
-      const heads = [...s.cols.map((c) => `<th>${escHtml(c.label)}</th>`), `<th class="num">Price</th>`, `<th class="num">Price with discount</th>`, `<th class="num">Price with GST</th>`].join("");
+    const seg = printSegs.map((s) => {
+      const heads = [...s.colLabels.map((l) => `<th>${escHtml(l)}</th>`), `<th class="num">Price</th>`, `<th class="num">Price with discount</th>`, `<th class="num">Price with GST</th>`].join("");
       const body = s.rows.map((r) => {
-        const tds = s.cols.map((c) => { const v = c.get(r); return `<td>${escHtml(v == null || v === "" ? "—" : v)}</td>`; }).join("");
-        return `<tr>${tds}<td class="num">${escHtml(money(r._price))}</td><td class="num">${escHtml(money(r._disc))}</td><td class="num">${escHtml(money(r._gst))}</td></tr>`;
+        const tds = r.cells.map((v) => `<td>${escHtml(v == null || v === "" ? "—" : v)}</td>`).join("");
+        return `<tr>${tds}<td class="num">${escHtml(money(r.price))}</td><td class="num">${escHtml(money(r.disc))}</td><td class="num">${escHtml(money(r.gst))}</td></tr>`;
       }).join("");
-      const total = `<tr class="total"><td colspan="${s.cols.length}">Total</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`;
+      const total = `<tr class="total"><td colspan="${s.colLabels.length}">Total</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`;
       return `<h2>${escHtml(s.title)}</h2><table><thead><tr>${heads}</tr></thead><tbody>${body}${total}</tbody></table>`;
     }).join("");
-    const summary = segments.map((s) => `<tr><td>${escHtml(s.title)}</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`).join("");
+    const summary = printSegs.map((s) => `<tr><td>${escHtml(s.title)}</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`).join("");
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>Quotation — ${escHtml(project.client_name)} (#${escHtml(project.project_number)})</title>
 <style>
@@ -2177,7 +2233,7 @@
   <div class="doc">
     <header>
       <div class="seller"><h1>${escHtml(sellerName)}</h1><p>${escHtml(sellerAddr)}</p>${seller.gstin ? `<p>GSTIN: ${escHtml(seller.gstin)}</p>` : ""}${seller.phone || seller.email ? `<p>${escHtml([seller.phone, seller.email].filter(Boolean).join(" · "))}</p>` : ""}</div>
-      <div class="meta"><h3>QUOTATION</h3><p>Project #${escHtml(project.project_number)}</p><p>${escHtml(today)}</p></div>
+      <div class="meta"><h3>QUOTATION</h3>${quoteNumber ? `<p><strong>No. ${escHtml(quoteNumber)}</strong></p>` : ""}<p>Project #${escHtml(project.project_number)}</p><p>${escHtml(dateLabel)}</p></div>
     </header>
     <section class="cust"><h4>Prepared for</h4><p><strong>${escHtml(project.client_name)}</strong></p>${project.client_phone ? `<p>${escHtml(project.client_phone)}</p>` : ""}${project.client_email ? `<p>${escHtml(project.client_email)}</p>` : ""}${project.site_address ? `<p>${escHtml(project.site_address)}</p>` : ""}${project.project_name ? `<p>Project: ${escHtml(project.project_name)}</p>` : ""}</section>
     ${seg}
@@ -2216,11 +2272,11 @@
 </body></html>`;
   }
 
-  function openQuotationWindow(seller, project, segments, grand) {
+  function openQuotationWindow(seller, project, printSegs, grand, opts) {
     const w = window.open("", "_blank");
     if (!w) { message("Pop-up blocked — allow pop-ups for this site to open the quotation.", true); return; }
     w.document.open();
-    w.document.write(quotationHtml(seller, project, segments, grand));
+    w.document.write(quotationHtml(seller, project, printSegs, grand, opts));
     w.document.close();
     w.focus();
   }
