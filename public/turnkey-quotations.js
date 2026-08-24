@@ -1837,6 +1837,12 @@
     };
     renderBody();
 
+    // Quote versions — freeze the current quotation and compare it against a
+    // saved one. Reads the live segments/grand/pct at click time.
+    const versionsWrap = el("div");
+    container.appendChild(versionsWrap);
+    renderQuoteVersions(versionsWrap, currentProject, () => ({ segments, grand, pct }));
+
     const onPctInput = () => {
       pct.margin = Number(marginInp.value) || 0;
       pct.discount = Number(discountInp.value) || 0;
@@ -1882,6 +1888,196 @@
         return { ok: false, message: `Send failed: ${e.message}` };
       }
     };
+  }
+
+  // ------------------------------------------------------------------
+  // Quote versions — freeze the computed quotation, compare vs current
+  // ------------------------------------------------------------------
+  async function loadQuoteVersions(projectId) {
+    const { data, error } = await sb
+      .from("turnkey_quote_versions")
+      .select("id, version_no, label, margin_percent, discount_percent, gst_percent, grand_price, grand_disc, grand_gst, created_at")
+      .eq("project_id", projectId)
+      .order("version_no", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+  async function loadQuoteVersion(id) {
+    const { data, error } = await sb.from("turnkey_quote_versions").select("*").eq("id", id).single();
+    if (error) throw error;
+    return data;
+  }
+  // The JSON snapshot frozen with a version, built from the live export state.
+  // Stores per-line descriptive cells + money so a line-level diff can be added
+  // later without re-migrating.
+  function buildQuoteSnapshot(cur) {
+    return {
+      pct: { margin: cur.pct.margin, discount: cur.pct.discount, gst: cur.pct.gst },
+      grand: { price: cur.grand.price, disc: cur.grand.disc, gst: cur.grand.gst },
+      segments: cur.segments.map((s) => ({
+        title: s.title,
+        totals: { price: s.totals.price, disc: s.totals.disc, gst: s.totals.gst },
+        rows: s.rows.map((r) => ({
+          id: r.id ?? null,
+          cells: s.cols.map((c) => { const v = c.get(r); return [c.label, v == null ? "" : String(v)]; }),
+          price: r._price, disc: r._disc, gst: r._gst,
+        })),
+      })),
+    };
+  }
+
+  async function renderQuoteVersions(wrap, projectId, getCurrent) {
+    const section = el("div", "tk-box-section");
+    section.appendChild(el("div", "tk-box-section-head", "Quote versions"));
+    section.appendChild(el("p", "dash-note", "Freeze the current quotation as a numbered version, then compare a saved version against the current one (totals per category)."));
+
+    const saveRow = el("div", "admin-inline");
+    const labelInp = document.createElement("input");
+    labelInp.type = "text"; labelInp.placeholder = "e.g. Sent to client"; labelInp.className = "grid-input";
+    const saveBtn = el("button", "admin-primary-small", "Save current as version");
+    saveBtn.type = "button";
+    const saveMsg = el("span", "admin-hint", "");
+    saveRow.append(field("New version label (optional)", labelInp), saveBtn, saveMsg);
+    section.appendChild(saveRow);
+
+    const listWrap = el("div");
+    const compareWrap = el("div");
+    section.append(listWrap, compareWrap);
+    wrap.appendChild(section);
+
+    const refresh = async () => {
+      listWrap.textContent = "";
+      listWrap.appendChild(el("p", "dash-note", "Loading versions…"));
+      let versions;
+      try { versions = await loadQuoteVersions(projectId); }
+      catch (e) {
+        listWrap.textContent = "";
+        listWrap.appendChild(el("p", "admin-message is-error", `Could not load versions: ${e.message}. If the table is missing, run migration 044.`));
+        return;
+      }
+      listWrap.textContent = "";
+      if (!versions.length) { listWrap.appendChild(el("p", "dash-note", "No versions saved yet.")); return; }
+
+      const scroll = el("div", "table-scroll");
+      const t = el("table", "dash-table");
+      const thead = el("thead"); const hr = el("tr");
+      ["Version", "Label", "Saved", "Margin", "Discount", "GST", "Grand (with GST)", ""].forEach((h) => hr.appendChild(el("th", null, h)));
+      thead.appendChild(hr);
+      const tb = el("tbody");
+      versions.forEach((v) => {
+        const when = v.created_at ? new Date(v.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+        const cmp = el("button", "tk-email-link", "Compare with current");
+        cmp.type = "button";
+        cmp.addEventListener("click", () => showQuoteCompare(compareWrap, v, getCurrent));
+        const del = el("button", "tk-delete-link", "Delete");
+        del.type = "button";
+        del.addEventListener("click", async () => {
+          if (!window.confirm(`Delete version ${v.version_no}? This cannot be undone.`)) return;
+          const { error } = await sb.from("turnkey_quote_versions").delete().eq("id", v.id);
+          if (error) return void message(`Could not delete: ${error.message}`, true);
+          compareWrap.textContent = "";
+          await refresh();
+        });
+        const actions = el("div", "tk-cell-actions"); actions.append(cmp, del);
+        const cells = [
+          `#${v.version_no}`, v.label || "—", when,
+          v.margin_percent == null ? "—" : `${v.margin_percent}%`,
+          v.discount_percent == null ? "—" : `${v.discount_percent}%`,
+          v.gst_percent == null ? "—" : `${v.gst_percent}%`,
+          money(v.grand_gst), actions,
+        ];
+        const tr = el("tr");
+        cells.forEach((c) => { const td = el("td"); if (c instanceof Node) td.appendChild(c); else td.textContent = c; tr.appendChild(td); });
+        tb.appendChild(tr);
+      });
+      t.append(thead, tb); scroll.appendChild(t); listWrap.appendChild(scroll);
+    };
+
+    saveBtn.addEventListener("click", async () => {
+      const cur = getCurrent();
+      if (!cur.segments.length) { saveMsg.textContent = "Nothing to save — no quotation lines yet."; return; }
+      saveBtn.disabled = true; saveMsg.textContent = "Saving…";
+      try {
+        const existing = await loadQuoteVersions(projectId);
+        const nextNo = (existing[0]?.version_no || 0) + 1;
+        const rec = {
+          project_id: projectId, version_no: nextNo, label: labelInp.value.trim() || null,
+          margin_percent: cur.pct.margin, discount_percent: cur.pct.discount, gst_percent: cur.pct.gst,
+          grand_price: cur.grand.price, grand_disc: cur.grand.disc, grand_gst: cur.grand.gst,
+          snapshot: buildQuoteSnapshot(cur),
+        };
+        const { error } = await sb.from("turnkey_quote_versions").insert(rec);
+        if (error) throw error;
+        labelInp.value = "";
+        saveMsg.textContent = `Saved as version ${nextNo}.`;
+        await refresh();
+      } catch (e) { saveMsg.textContent = `Save failed: ${e.message}`; }
+      finally { saveBtn.disabled = false; }
+    });
+
+    await refresh();
+  }
+
+  // Totals-level comparison: a saved version vs the current live quotation.
+  async function showQuoteCompare(wrap, versionRow, getCurrent) {
+    wrap.textContent = "";
+    wrap.appendChild(el("p", "dash-note", "Loading comparison…"));
+    let full;
+    try { full = await loadQuoteVersion(versionRow.id); }
+    catch (e) { wrap.textContent = ""; wrap.appendChild(el("p", "admin-message is-error", `Could not load version: ${e.message}`)); return; }
+    wrap.textContent = "";
+
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const fmtPct = (n) => (n == null ? "—" : `${n}%`);
+    const snap = full.snapshot || {};
+    const cur = getCurrent();
+    const verSegs = new Map((snap.segments || []).map((s) => [s.title, s.totals || { price: 0, disc: 0, gst: 0 }]));
+    const curSegs = new Map(cur.segments.map((s) => [s.title, s.totals]));
+    const order = [];
+    cur.segments.forEach((s) => order.push(s.title));
+    (snap.segments || []).forEach((s) => { if (!order.includes(s.title)) order.push(s.title); });
+
+    const block = el("div", "tk-box-section");
+    block.appendChild(el("div", "tk-box-section-head", `Compare — version #${versionRow.version_no} vs current`));
+    const verPct = `margin ${fmtPct(full.margin_percent)} · discount ${fmtPct(full.discount_percent)} · GST ${fmtPct(full.gst_percent)}`;
+    const curPct = `margin ${fmtPct(cur.pct.margin)} · discount ${fmtPct(cur.pct.discount)} · GST ${fmtPct(cur.pct.gst)}`;
+    block.appendChild(el("p", "dash-note", `Version #${versionRow.version_no}${versionRow.label ? ` (${versionRow.label})` : ""}: ${verPct}.  Current: ${curPct}. Figures are the customer price with GST per category.`));
+
+    const deltaCell = (d) => {
+      const td = el("td");
+      const sign = d > 0 ? "+" : d < 0 ? "−" : "";
+      td.textContent = d === 0 ? "—" : `${sign}₹${Math.abs(Math.round(d)).toLocaleString("en-IN")}`;
+      if (d > 0) td.style.color = "#6f222a"; else if (d < 0) td.style.color = "#0c4444";
+      return td;
+    };
+
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead"); const hr = el("tr");
+    ["Category", `Version #${versionRow.version_no} (with GST)`, "Current (with GST)", "Change"].forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tb = el("tbody");
+    order.forEach((title) => {
+      const v = (verSegs.get(title) || { gst: 0 }).gst || 0;
+      const c = (curSegs.get(title) || { gst: 0 }).gst || 0;
+      const tr = el("tr");
+      [title, money(v), money(c)].forEach((x) => { const td = el("td"); td.textContent = x; tr.appendChild(td); });
+      tr.appendChild(deltaCell(round2(c - v)));
+      tb.appendChild(tr);
+    });
+    const vG = (snap.grand || {}).gst || 0;
+    const cG = (cur.grand || {}).gst || 0;
+    const trT = el("tr", "tk-cat-sqft-total");
+    ["Grand total", money(vG), money(cG)].forEach((x) => { const td = el("td"); td.textContent = x; trT.appendChild(td); });
+    trT.appendChild(deltaCell(round2(cG - vG)));
+    tb.appendChild(trT);
+    t.append(thead, tb); scroll.appendChild(t); block.appendChild(scroll);
+
+    const closeBtn = el("button", "admin-primary-small", "Close comparison");
+    closeBtn.type = "button";
+    closeBtn.addEventListener("click", () => { wrap.textContent = ""; });
+    block.appendChild(closeBtn);
+    wrap.appendChild(block);
   }
 
   function exportPreviewTable(s) {
