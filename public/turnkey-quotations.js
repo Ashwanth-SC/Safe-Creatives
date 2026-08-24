@@ -327,7 +327,7 @@
   async function loadPaint(projectId) {
     const { data, error } = await sb
       .from("turnkey_quote_paint")
-      .select("id, supplier, product_id, description, sqft, unit_price, total_price, margin_price, margin_amount, discount_price, gst_price, sort_order")
+      .select("id, supplier, space, product_id, description, sqft, unit_price, total_price, margin_price, margin_amount, discount_price, gst_price, sort_order")
       .eq("project_id", projectId)
       .order("sort_order", { ascending: true });
     if (error) throw error;
@@ -1444,12 +1444,13 @@
   };
 
   const PAINT_SEG = {
-    table: "turnkey_quote_paint", load: loadPaint, migration: "036",
+    table: "turnkey_quote_paint", load: loadPaint, migration: "043",
     title: "Paint work", addLabel: "+ Add paint work", saveLabel: "Save paint work",
     totalLabel: "Price", qtyKey: "sqft",
-    note: "Pick a supplier, then a paint from the products database; enter the total applicable sqft. Price = Sqft × the product's per-sqft cost. The totals below carry the project margin, discount & GST.",
+    note: "Pick a supplier and the area, then a paint from the products database; enter the total applicable sqft. Price = Sqft × the product's per-sqft cost. The totals below carry the project margin, discount & GST.",
     cols: [
       { key: "supplier", label: "Supplier", kind: "supplier" },
+      { key: "space", label: "Space", kind: "space" },
       { key: "product_id", label: "Description", kind: "product", category: "paint", filterBy: "supplier", nameKey: "description" },
       { key: "sqft", label: "Sqft", kind: "number" },
     ],
@@ -1722,6 +1723,7 @@
       { label: "Unit", get: (r) => r.unit_name }, { label: "Specification", get: (r) => r.specification }, { label: "Qty", get: (r) => r.quantity },
     ] },
     { title: "Paint work", load: loadPaint, cols: [
+      { label: "Space", get: (r) => r.space },
       { label: "Description", get: (r) => r.description }, { label: "Sqft", get: (r) => r.sqft },
     ] },
     { title: "Civil Work", load: (pid) => loadCompositeUnits("turnkey_quote_civil", pid), cols: [
