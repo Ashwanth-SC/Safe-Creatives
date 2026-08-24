@@ -361,7 +361,7 @@
   async function loadProjectFull(id) {
     const { data, error } = await sb
       .from("turnkey_projects")
-      .select("project_number, client_name, client_phone, client_email, project_name, site_address")
+      .select("id, project_number, client_name, client_phone, client_email, project_name, site_address, margin_percent, gst_percent, discount_percent")
       .eq("id", id)
       .single();
     if (error) throw error;
@@ -1719,7 +1719,7 @@
       { label: "Material specifications", get: (r) => r.material_spec }, { label: "Design specifications", get: (r) => r.design_spec },
       { label: "Qty", get: (r) => r.quantity },
     ] },
-    { title: "Accessories", load: loadAccessories, cols: [
+    { title: "Accessories", load: loadAccessories, marginKey: "margin_percent", cols: [
       { label: "Unit", get: (r) => r.unit_name }, { label: "Specification", get: (r) => r.specification }, { label: "Qty", get: (r) => r.quantity },
     ] },
     { title: "Paint work", load: loadPaint, cols: [
@@ -1757,29 +1757,110 @@
     }
     container.textContent = "";
 
-    const segments = EXPORT_SEGMENTS.map((s, i) => {
-      const rows = segData[i] || [];
-      const totals = rows.reduce((a, r) => {
-        a.price += Number(r.margin_price) || 0;
-        a.disc += Number(r.discount_price) || 0;
-        a.gst += Number(r.gst_price) || 0;
-        return a;
-      }, { price: 0, disc: 0, gst: 0 });
-      return { title: s.title, cols: s.cols, rows, totals };
-    }).filter((s) => s.rows.length);
+    // The customer money columns are computed LIVE here from each line's base
+    // total_price × the current margin/discount/GST (accessories keep their own
+    // per-line margin). Editing the percentage inputs re-renders instantly and
+    // saves back to the project — no need to re-save every unit.
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const pct = {
+      margin: Number(project.margin_percent) || 0,
+      discount: Number(project.discount_percent) || 0,
+      gst: Number(project.gst_percent) || 0,
+    };
+    const rowMoney = (r, seg) => {
+      const base = Number(r.total_price) || 0;
+      const mPct = (seg.marginKey && r[seg.marginKey] != null && r[seg.marginKey] !== "")
+        ? (Number(r[seg.marginKey]) || 0) : pct.margin;
+      const price = round2(base * (1 + mPct / 100));
+      const disc = round2(price * (1 - pct.discount / 100));
+      const gst = round2(disc * (1 + pct.gst / 100));
+      return { price, disc, gst };
+    };
 
-    const grand = segments.reduce((a, s) => { a.price += s.totals.price; a.disc += s.totals.disc; a.gst += s.totals.gst; return a; }, { price: 0, disc: 0, gst: 0 });
+    let segments = [], grand = { price: 0, disc: 0, gst: 0 };
+    const computeSegments = () => {
+      segments = EXPORT_SEGMENTS.map((s, i) => {
+        const rows = segData[i] || [];
+        const totals = { price: 0, disc: 0, gst: 0 };
+        rows.forEach((r) => {
+          const mny = rowMoney(r, s);
+          r._price = mny.price; r._disc = mny.disc; r._gst = mny.gst;
+          totals.price += mny.price; totals.disc += mny.disc; totals.gst += mny.gst;
+        });
+        totals.price = round2(totals.price); totals.disc = round2(totals.disc); totals.gst = round2(totals.gst);
+        return { title: s.title, cols: s.cols, rows, totals };
+      }).filter((s) => s.rows.length);
+      grand = segments.reduce((a, s) => { a.price += s.totals.price; a.disc += s.totals.disc; a.gst += s.totals.gst; return a; }, { price: 0, disc: 0, gst: 0 });
+      grand.price = round2(grand.price); grand.disc = round2(grand.disc); grand.gst = round2(grand.gst);
+    };
+    computeSegments();
 
     const head = el("div", "admin-package");
     head.appendChild(el("p", "eyebrow", "QUOTATION EXPORT"));
     head.appendChild(el("p", "dash-note", `Project #${project.project_number} — ${project.client_name}. The customer quotation: each category as its own table, showing Price, Price with discount and Price with GST. Supplier and cost are not shown.`));
+
+    // Live margin / discount / GST — edits update every table instantly and save
+    // to the project (same source of truth as the dashboard).
+    const pctRow = el("div", "admin-inline");
+    const mkPctInput = (val) => {
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.min = "0"; inp.step = "0.01"; inp.placeholder = "0";
+      inp.value = (val == null ? "" : val);
+      return inp;
+    };
+    const marginInp = mkPctInput(project.margin_percent);
+    const discountInp = mkPctInput(project.discount_percent);
+    const gstInp = mkPctInput(project.gst_percent);
+    pctRow.append(field("Margin (%)", marginInp), field("Discount (%)", discountInp), field("GST (%)", gstInp));
+    const pctHint = el("span", "admin-hint", "");
+    pctRow.appendChild(pctHint);
+    head.appendChild(pctRow);
+
     const exportBtn = el("button", "admin-primary", "Open printable quotation");
     exportBtn.type = "button";
-    exportBtn.disabled = !segments.length;
     exportBtn.addEventListener("click", () => openQuotationWindow(seller, project, segments, grand));
     head.appendChild(exportBtn);
     if (!project.client_email) head.appendChild(el("p", "dash-note", "Note: this project has no client email — add one in the dashboard to email the quotation."));
     container.appendChild(head);
+
+    const bodyWrap = el("div");
+    container.appendChild(bodyWrap);
+    const renderBody = () => {
+      bodyWrap.textContent = "";
+      exportBtn.disabled = !segments.length;
+      if (!segments.length) {
+        bodyWrap.appendChild(el("p", "dash-note", "No saved quotation lines in any category yet."));
+        return;
+      }
+      segments.forEach((s) => bodyWrap.appendChild(exportPreviewTable(s)));
+      bodyWrap.appendChild(exportSummaryTable(segments, grand));
+    };
+    renderBody();
+
+    const onPctInput = () => {
+      pct.margin = Number(marginInp.value) || 0;
+      pct.discount = Number(discountInp.value) || 0;
+      pct.gst = Number(gstInp.value) || 0;
+      computeSegments();
+      renderBody();
+      pctHint.textContent = "Unsaved — the printable quotation already uses these.";
+    };
+    const persistPct = async () => {
+      const margin = marginInp.value === "" ? null : Number(marginInp.value) || 0;
+      const discount = discountInp.value === "" ? null : Number(discountInp.value) || 0;
+      const gst = gstInp.value === "" ? null : Number(gstInp.value) || 0;
+      pctHint.textContent = "Saving…";
+      const { error } = await sb.from("turnkey_projects").update({ margin_percent: margin, gst_percent: gst, discount_percent: discount }).eq("id", currentProject);
+      if (error) { pctHint.textContent = `Save failed: ${error.message}`; return; }
+      project.margin_percent = margin; project.discount_percent = discount; project.gst_percent = gst;
+      const cached = projectsById.get(currentProject);
+      if (cached) { cached.margin_percent = margin; cached.gst_percent = gst; cached.discount_percent = discount; }
+      pctHint.textContent = "Saved.";
+    };
+    [marginInp, discountInp, gstInp].forEach((inp) => {
+      inp.addEventListener("input", onPctInput);
+      inp.addEventListener("change", persistPct);
+    });
 
     // Called back by the printable window's "Email to customer" button: it hands
     // us the generated PDF (base64); we email it via the edge function (auth here).
@@ -1801,13 +1882,6 @@
         return { ok: false, message: `Send failed: ${e.message}` };
       }
     };
-
-    if (!segments.length) {
-      container.appendChild(el("p", "dash-note", "No saved quotation lines in any category yet."));
-      return;
-    }
-    segments.forEach((s) => container.appendChild(exportPreviewTable(s)));
-    container.appendChild(exportSummaryTable(segments, grand));
   }
 
   function exportPreviewTable(s) {
@@ -1823,7 +1897,7 @@
     s.rows.forEach((r) => {
       const tr = el("tr");
       s.cols.forEach((c) => { const td = el("td"); const v = c.get(r); td.textContent = (v == null || v === "") ? "—" : v; tr.appendChild(td); });
-      [r.margin_price, r.discount_price, r.gst_price].forEach((v) => { const td = el("td"); td.textContent = money(v); tr.appendChild(td); });
+      [r._price, r._disc, r._gst].forEach((v) => { const td = el("td"); td.textContent = money(v); tr.appendChild(td); });
       tb.appendChild(tr);
     });
     const trT = el("tr", "tk-cat-sqft-total");
@@ -1866,7 +1940,7 @@
       const heads = [...s.cols.map((c) => `<th>${escHtml(c.label)}</th>`), `<th class="num">Price</th>`, `<th class="num">Price with discount</th>`, `<th class="num">Price with GST</th>`].join("");
       const body = s.rows.map((r) => {
         const tds = s.cols.map((c) => { const v = c.get(r); return `<td>${escHtml(v == null || v === "" ? "—" : v)}</td>`; }).join("");
-        return `<tr>${tds}<td class="num">${escHtml(money(r.margin_price))}</td><td class="num">${escHtml(money(r.discount_price))}</td><td class="num">${escHtml(money(r.gst_price))}</td></tr>`;
+        return `<tr>${tds}<td class="num">${escHtml(money(r._price))}</td><td class="num">${escHtml(money(r._disc))}</td><td class="num">${escHtml(money(r._gst))}</td></tr>`;
       }).join("");
       const total = `<tr class="total"><td colspan="${s.cols.length}">Total</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`;
       return `<h2>${escHtml(s.title)}</h2><table><thead><tr>${heads}</tr></thead><tbody>${body}${total}</tbody></table>`;
