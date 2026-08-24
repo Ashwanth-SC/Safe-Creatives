@@ -2059,7 +2059,7 @@
     block.appendChild(el("div", "tk-box-section-head", `Compare — version #${versionRow.version_no} vs current`));
     const verPct = `margin ${fmtPct(full.margin_percent)} · discount ${fmtPct(full.discount_percent)} · GST ${fmtPct(full.gst_percent)}`;
     const curPct = `margin ${fmtPct(cur.pct.margin)} · discount ${fmtPct(cur.pct.discount)} · GST ${fmtPct(cur.pct.gst)}`;
-    block.appendChild(el("p", "dash-note", `Version #${versionRow.version_no}${versionRow.label ? ` (${versionRow.label})` : ""}: ${verPct}.  Current: ${curPct}. Figures are the customer price with GST per category.`));
+    block.appendChild(el("p", "dash-note", `Version #${versionRow.version_no}${versionRow.label ? ` (${versionRow.label})` : ""}: ${verPct}.  Current: ${curPct}. Figures are the price with margin per category.`));
 
     const deltaCell = (d) => {
       const td = el("td");
@@ -2072,19 +2072,19 @@
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
     const thead = el("thead"); const hr = el("tr");
-    ["Category", `Version #${versionRow.version_no} (with GST)`, "Current (with GST)", "Change"].forEach((h) => hr.appendChild(el("th", null, h)));
+    ["Category", `Version #${versionRow.version_no} (with margin)`, "Current (with margin)", "Change"].forEach((h) => hr.appendChild(el("th", null, h)));
     thead.appendChild(hr);
     const tb = el("tbody");
     order.forEach((title) => {
-      const v = (verSegs.get(title) || { gst: 0 }).gst || 0;
-      const c = (curSegs.get(title) || { gst: 0 }).gst || 0;
+      const v = (verSegs.get(title) || { price: 0 }).price || 0;
+      const c = (curSegs.get(title) || { price: 0 }).price || 0;
       const tr = el("tr");
       [title, money(v), money(c)].forEach((x) => { const td = el("td"); td.textContent = x; tr.appendChild(td); });
       tr.appendChild(deltaCell(round2(c - v)));
       tb.appendChild(tr);
     });
-    const vG = (snap.grand || {}).gst || 0;
-    const cG = (cur.grand || {}).gst || 0;
+    const vG = (snap.grand || {}).price || 0;
+    const cG = (cur.grand || {}).price || 0;
     const trT = el("tr", "tk-cat-sqft-total");
     ["Grand total", money(vG), money(cG)].forEach((x) => { const td = el("td"); td.textContent = x; trT.appendChild(td); });
     trT.appendChild(deltaCell(round2(cG - vG)));
