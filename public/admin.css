@@ -267,6 +267,12 @@ button:disabled { opacity: .5; cursor: progress; }
 /* Editable inputs inside the quotation mini-tables sit tighter than the grid */
 .tk-box-section .dash-table .grid-input { min-width:90px; }
 .tk-box-section .dash-table td { vertical-align:middle; }
+/* Project-tracking progress photos */
+.tk-photo-gallery { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-width:150px; }
+.tk-photo-item { position:relative; display:inline-flex; }
+.tk-photo-thumb { width:44px; height:44px; object-fit:cover; border-radius:6px; border:1px solid rgba(23,23,23,.14); display:block; }
+.tk-photo-del { position:absolute; top:-6px; right:-6px; width:18px; height:18px; padding:0; border:0; border-radius:50%; background:#6f222a; color:#fff; font-size:11px; line-height:18px; cursor:pointer; }
+.tk-photo-del:hover { background:#8a2b34; }
 /* Per-row sqft category picker (narrower than the default multi-select) */
 .tk-sqft-pick { min-width:170px; max-width:240px; margin-top:0; }
 
