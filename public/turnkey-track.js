@@ -227,7 +227,7 @@
     panel.appendChild(el("div", "admin-package"));
     const box = panel.firstChild;
     box.appendChild(el("p", "eyebrow", "TRACKING NOT AVAILABLE YET"));
-    box.appendChild(el("p", "dash-note", "We couldn't find an unlocked project for your account. Project tracking unlocks once your advance payment is received. If you've already paid your advance, please contact us so we can link your project."));
+    box.appendChild(el("p", "dash-note", "We couldn't find an unlocked project for your account. Project tracking becomes available once your project moves into execution (after your design sign-off). If you think this is a mistake, please contact us."));
     return;
   }
 

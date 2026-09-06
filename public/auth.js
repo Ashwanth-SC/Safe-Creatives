@@ -345,7 +345,7 @@ window.SC = (function () {
         const link = document.createElement("a");
         link.className = "account-admin-link";
         link.href = "turnkey-track.html";
-        link.textContent = "Track your Project";
+        link.textContent = "Track my project";
         const logoutBtn = dropdown.querySelector(".logout-button");
         dropdown.insertBefore(link, logoutBtn);
       } catch (_ignored) {
