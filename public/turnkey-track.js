@@ -226,8 +226,8 @@
   if (!projects.length) {
     panel.appendChild(el("div", "admin-package"));
     const box = panel.firstChild;
-    box.appendChild(el("p", "eyebrow", "NO PROJECT FOUND"));
-    box.appendChild(el("p", "dash-note", "We couldn't find a project linked to your email. If you have a project with Safe Creatives, please contact us so we can link it to your account."));
+    box.appendChild(el("p", "eyebrow", "TRACKING NOT AVAILABLE YET"));
+    box.appendChild(el("p", "dash-note", "We couldn't find an unlocked project for your account. Project tracking unlocks once your advance payment is received. If you've already paid your advance, please contact us so we can link your project."));
     return;
   }
 
