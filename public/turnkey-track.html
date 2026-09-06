@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="./ASSET/SC_Logo_Logomark_Secondary.png" />
+    <title>Track your Project | Safe Creatives</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body data-requires-auth="true">
+    <header class="site-header admin-header">
+      <a class="brand" href="index.html"><img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" /><span>SAFE CREATIVES</span></a>
+      <div class="admin-header-mid"><span class="admin-badge">PROJECT TRACKING</span></div>
+    </header>
+
+    <main class="admin-page">
+      <div id="ctrk-body">
+        <section class="admin-intro">
+          <p class="eyebrow">YOUR PROJECT</p>
+          <h1>Track your project<span>.</span></h1>
+          <p>Live progress on your turnkey project — phase by phase, with photos from site.</p>
+        </section>
+
+        <div class="admin-inline" id="ctrk-project-row"></div>
+        <p id="ctrk-message" class="admin-message" role="status"></p>
+        <section id="ctrk-panel" class="dash-panel"></section>
+      </div>
+
+      <!-- Full-size photo overlay -->
+      <div id="ctrk-lightbox" class="ctrk-lightbox" hidden>
+        <button type="button" class="ctrk-lightbox-close" aria-label="Close">✕</button>
+        <img alt="progress photo" />
+      </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="auth.js"></script>
+    <script src="turnkey-track.js"></script>
+  </body>
+</html>

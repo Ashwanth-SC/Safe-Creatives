@@ -336,6 +336,23 @@ window.SC = (function () {
     dropdown.querySelector(".account-status").textContent =
       state.profile?.full_name || state.session.user.email;
 
+    // Turnkey customers get a link to their project tracking — shown only when
+    // their login email matches a project in the turnkey dashboard.
+    (async () => {
+      try {
+        const { data, error } = await sb.rpc("turnkey_my_projects");
+        if (error || !data || !data.length) return;
+        const link = document.createElement("a");
+        link.className = "account-admin-link";
+        link.href = "turnkey-track.html";
+        link.textContent = "Track your Project";
+        const logoutBtn = dropdown.querySelector(".logout-button");
+        dropdown.insertBefore(link, logoutBtn);
+      } catch (_ignored) {
+        // No tracking link — the rest of the menu is unaffected.
+      }
+    })();
+
     trigger.addEventListener("click", (event) => {
       event.preventDefault();
       dropdown.hidden = !dropdown.hidden;
