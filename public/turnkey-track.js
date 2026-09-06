@@ -34,8 +34,19 @@
   const money = (n) => (n == null ? "—" : "₹" + Math.round(Number(n)).toLocaleString("en-IN"));
   const round1 = (n) => Math.round(n * 10) / 10;
   const photoUrl = (path) => sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-  // The project's stage, shown verbatim from the turnkey dashboard status.
-  const statusLabel = (s) => (s && String(s).trim()) || "In progress";
+  // Customer-friendly labels for the turnkey dashboard status values.
+  const STATUS_FRIENDLY = {
+    "lead": "Enquiry received",
+    "closed": "Confirmed",
+    "design initiated": "Design in progress",
+    "dso": "Design sign-off",
+    "execution commenced": "Execution in progress",
+    "handed over": "Handed over",
+  };
+  const statusLabel = (s) => {
+    const key = (s || "").trim().toLowerCase();
+    return STATUS_FRIENDLY[key] || (s && String(s).trim()) || "In progress";
+  };
   function message(text, isError) {
     messageEl.textContent = text || "";
     messageEl.className = `admin-message${isError ? " is-error" : text ? " is-ok" : ""}`;
