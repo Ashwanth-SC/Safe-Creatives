@@ -178,8 +178,18 @@ window.SC = (function () {
     // must not skip this: create-order needs a name and phone, and the
     // checkout would otherwise render a profile card full of blanks.
     if (isGuarded && !allowIncomplete && !isRegistered(state.profile)) {
-      toRegister();
-      return new Promise(() => {});
+      // Turnkey customers already gave their details on the enquiry form — pull
+      // them into the profile so they don't have to register again.
+      try {
+        const { data: claimed } = await sb.rpc("turnkey_claim_lead_profile");
+        if (claimed === true) state.profile = await loadProfile(session.user.id);
+      } catch (_ignored) {
+        // Fall through to registration.
+      }
+      if (!isRegistered(state.profile)) {
+        toRegister();
+        return new Promise(() => {});
+      }
     }
 
     reveal();

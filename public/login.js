@@ -68,7 +68,18 @@ async function destinationFor(userId) {
         .eq("id", userId)
         .maybeSingle();
 
-    const registered = Boolean(profile?.full_name?.trim());
+    let registered = Boolean(profile?.full_name?.trim());
+
+    // Turnkey customers already gave their name + phone on the enquiry form, so
+    // pull those into the profile and skip the registration form.
+    if (!registered) {
+        try {
+            const { data: claimed } = await sb.rpc("turnkey_claim_lead_profile");
+            if (claimed === true) registered = true;
+        } catch (_ignored) {
+            // Fall through to registration.
+        }
+    }
 
     return registered
         ? nextPage

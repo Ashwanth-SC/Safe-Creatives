@@ -34,6 +34,8 @@
   const money = (n) => (n == null ? "—" : "₹" + Math.round(Number(n)).toLocaleString("en-IN"));
   const round1 = (n) => Math.round(n * 10) / 10;
   const photoUrl = (path) => sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  // The project's stage, shown verbatim from the turnkey dashboard status.
+  const statusLabel = (s) => (s && String(s).trim()) || "In progress";
   function message(text, isError) {
     messageEl.textContent = text || "";
     messageEl.className = `admin-message${isError ? " is-error" : text ? " is-ok" : ""}`;
@@ -87,11 +89,19 @@
     catch (error) { panel.textContent = ""; panel.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}`)); return; }
     panel.textContent = "";
 
+    // ---- Project header (always shown, carries the dashboard status) -------
+    const summary = el("div", "admin-package ctrk-summary");
+    const headRow = el("div", "ctrk-summary-head");
+    headRow.appendChild(el("p", "eyebrow", "YOUR PROJECT"));
+    headRow.appendChild(el("span", "ctrk-pill ctrk-pill-status", statusLabel(project.status)));
+    summary.appendChild(headRow);
+    summary.appendChild(el("h2", "ctrk-project-title", project.project_name || project.client_name || "Your project"));
+
+    // Before any site work is logged: show the current stage only.
     if (!rows.length) {
-      const empty = el("div", "admin-package");
-      empty.appendChild(el("p", "eyebrow", "NOT STARTED YET"));
-      empty.appendChild(el("p", "dash-note", "Your project tracking will appear here once work begins on site. Check back soon."));
-      panel.appendChild(empty);
+      summary.appendChild(el("p", "dash-note", `Project #${project.project_number}`));
+      summary.appendChild(el("p", "dash-note", `Your project is currently at the “${statusLabel(project.status)}” stage. Detailed tracking — phases, site photos and progress updates — will appear here once work begins on site.`));
+      panel.appendChild(summary);
       return;
     }
 
@@ -115,16 +125,6 @@
       if (a === null) return 1; if (b === null) return -1; return a - b;
     });
 
-    // ---- Summary -----------------------------------------------------------
-    const summary = el("div", "admin-package ctrk-summary");
-    const headRow = el("div", "ctrk-summary-head");
-    headRow.appendChild(el("p", "eyebrow", "SUMMARY"));
-    const statusPill = el("span", `ctrk-pill ctrk-pill-status`, project.status || "In progress");
-    headRow.appendChild(statusPill);
-    summary.appendChild(headRow);
-
-    const title = el("h2", "ctrk-project-title", `${project.project_name || project.client_name || "Your project"}`);
-    summary.appendChild(title);
     summary.appendChild(el("p", "dash-note", `Project #${project.project_number}${lastUpdated ? " · Last updated " + new Date(lastUpdated).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}`));
 
     // Overall bar
@@ -226,8 +226,8 @@
   if (!projects.length) {
     panel.appendChild(el("div", "admin-package"));
     const box = panel.firstChild;
-    box.appendChild(el("p", "eyebrow", "TRACKING NOT AVAILABLE YET"));
-    box.appendChild(el("p", "dash-note", "We couldn't find an unlocked project for your account. Project tracking becomes available once your project moves into execution (after your design sign-off). If you think this is a mistake, please contact us."));
+    box.appendChild(el("p", "eyebrow", "NO PROJECT FOUND"));
+    box.appendChild(el("p", "dash-note", "We couldn't find a project linked to your email. If you've enquired with Safe Creatives using a different email, please contact us so we can link your project to this account."));
     return;
   }
 
