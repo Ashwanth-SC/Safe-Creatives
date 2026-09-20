@@ -273,6 +273,16 @@ button:disabled { opacity: .5; cursor: progress; }
 .tk-photo-thumb { width:44px; height:44px; object-fit:cover; border-radius:6px; border:1px solid rgba(23,23,23,.14); display:block; }
 .tk-photo-del { position:absolute; top:-6px; right:-6px; width:18px; height:18px; padding:0; border:0; border-radius:50%; background:#6f222a; color:#fff; font-size:11px; line-height:18px; cursor:pointer; }
 .tk-photo-del:hover { background:#8a2b34; }
+/* Gallery admin — photo grid with a chosen cover */
+.ga-photo-grid { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px; }
+.ga-photo-item { position:relative; }
+.ga-photo-thumb { width:96px; height:72px; object-fit:cover; border-radius:8px; border:2px solid transparent; cursor:pointer; display:block; }
+.ga-photo-item.is-cover .ga-photo-thumb { border-color:#0c4444; }
+.ga-cover-tag { position:absolute; bottom:4px; left:4px; background:#0c4444; color:#fff; font:600 9px "DM Mono",monospace; letter-spacing:.06em; text-transform:uppercase; padding:2px 6px; border-radius:4px; }
+.ga-check { flex-direction:row; align-items:center; gap:8px; }
+.ga-check input { width:auto; }
+/* small cover thumb in the gallery list */
+.dash-table .ga-photo-thumb { width:64px; height:44px; cursor:default; }
 /* Per-row sqft category picker (narrower than the default multi-select) */
 .tk-sqft-pick { min-width:170px; max-width:240px; margin-top:0; }
 

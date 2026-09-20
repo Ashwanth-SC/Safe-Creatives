@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="./ASSET/SC_Logo_Logomark_Secondary.png" />
+    <title>Gallery — Turnkey Interior Projects in Chennai | Safe Creatives</title>
+    <meta name="description" content="A portfolio of turnkey interior projects by Safe Creatives — bespoke residential and commercial spaces designed and delivered in Chennai." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://safecreatives.com/gallery.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Safe Creatives" />
+    <meta property="og:title" content="Gallery — Turnkey Interior Projects | Safe Creatives" />
+    <meta property="og:description" content="Bespoke residential and commercial interiors, designed and delivered end to end in Chennai." />
+    <meta property="og:url" content="https://safecreatives.com/gallery.html" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="gallery.css" />
+  </head>
+  <body>
+    <main id="home">
+      <header class="site-header" aria-label="Primary navigation">
+        <a class="brand" href="index.html" aria-label="Safe Creatives home">
+          <img class="brand-logo" src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" />
+          <span>SAFE CREATIVES</span>
+        </a>
+        <nav class="primary-nav" aria-label="Main links">
+          <a href="turnkey-solutions.html">Turnkey</a>
+          <a href="gallery.html" aria-current="page">Gallery</a>
+        </nav>
+        <a class="account-link" href="login.html" aria-label="Open login and registration">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20c.5-4 3.4-6.5 7.5-6.5s7 2.5 7.5 6.5"></path></svg>
+        </a>
+      </header>
+
+      <section class="gallery-intro" aria-labelledby="gallery-title">
+        <p class="eyebrow">SELECTED WORK · TURNKEY</p>
+        <h1 id="gallery-title">Projects we've<br /><em>designed &amp; delivered.</em></h1>
+        <p class="gallery-lede">Bespoke residential and commercial interiors, taken from concept to handover by one team in Chennai.</p>
+        <div class="gallery-filters" id="gallery-filters" role="tablist" aria-label="Filter projects"></div>
+      </section>
+
+      <section class="gallery-wrap" aria-label="Project gallery">
+        <div id="gallery-grid" class="gallery-grid"></div>
+        <p id="gallery-status" class="gallery-status">Loading projects…</p>
+      </section>
+
+      <section class="gallery-cta">
+        <p class="eyebrow">HAVE A PROJECT IN MIND?</p>
+        <h2>Let's design your space<span>.</span></h2>
+        <a class="gallery-btn" href="turnkey-solutions.html">Start your project <span aria-hidden="true">↗︎</span></a>
+      </section>
+
+      <footer class="site-footer" aria-label="Footer">
+        <div class="footer-top">
+          <a class="footer-brand" href="index.html">SAFE CREATIVES<span>.</span></a>
+          <p>Spaces with purpose.<br />Built with care.</p>
+        </div>
+        <div class="footer-bottom"><span>© 2026 Safe Creatives</span><span>Made for more inclusive spaces</span></div>
+      </footer>
+    </main>
+
+    <!-- Project detail modal -->
+    <div id="gallery-modal" class="gallery-modal" hidden>
+      <div class="gallery-modal-inner" role="dialog" aria-modal="true" aria-labelledby="gm-title">
+        <button type="button" class="gallery-modal-close" aria-label="Close">✕</button>
+        <div class="gm-media"><img id="gm-photo" alt="" /></div>
+        <div class="gm-thumbs" id="gm-thumbs"></div>
+        <div class="gm-meta">
+          <p class="eyebrow" id="gm-cat"></p>
+          <h3 id="gm-title"></h3>
+          <p class="gm-loc" id="gm-loc"></p>
+          <p class="gm-blurb" id="gm-blurb"></p>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="gallery.js"></script>
+  </body>
+</html>

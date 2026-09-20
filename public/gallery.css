@@ -1,0 +1,93 @@
+/* ============================================================================
+   Public turnkey gallery (gallery.html)
+   Uses the site tokens from styles.css: --ink, --canvas, --burgundy, --sand.
+   ========================================================================== */
+
+.gallery-intro {
+  padding: calc(var(--header-h, 86px) + 56px) 4.1vw 10px;
+  text-align: center;
+  max-width: 880px;
+  margin: 0 auto;
+}
+.gallery-intro h1 {
+  margin: 0 0 18px;
+  font-family: "Playfair Display", Georgia, serif;
+  font-weight: 500;
+  font-size: clamp(34px, 5vw, 62px);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  color: var(--ink);
+}
+.gallery-intro h1 em { font-style: italic; color: var(--burgundy); }
+.gallery-lede {
+  margin: 0 auto;
+  max-width: 620px;
+  font-size: clamp(15px, 1.6vw, 18px);
+  line-height: 1.55;
+  color: #5b6360;
+}
+
+/* Filters */
+.gallery-filters { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 30px 0 4px; }
+.gallery-filter {
+  border: 1px solid var(--line); background: transparent; color: var(--ink);
+  font: 600 11px "DM Mono", monospace; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 9px 18px; border-radius: 999px; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.gallery-filter:hover { border-color: var(--ink); }
+.gallery-filter.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* Grid */
+.gallery-wrap { padding: 30px 4.1vw 40px; max-width: 1240px; margin: 0 auto; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 26px; }
+.gallery-card {
+  display: flex; flex-direction: column; text-align: left; padding: 0; border: 0; background: none;
+  cursor: pointer; font: inherit; color: inherit;
+}
+.gallery-card-media {
+  position: relative; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--r-media, 16px);
+  background: #ece4d8; display: grid; place-items: center;
+}
+.gallery-card-media img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s var(--ease-calm, ease); display: block; }
+.gallery-card:hover .gallery-card-media img { transform: scale(1.05); }
+.gallery-card-ph { font: 500 14px "Playfair Display", Georgia, serif; letter-spacing: 0.02em; color: #9a8f7d; }
+.gallery-card-body { padding: 14px 4px 0; }
+.gallery-card-cat { display: block; font: 600 10px "DM Mono", monospace; letter-spacing: 0.14em; text-transform: uppercase; color: var(--burgundy); margin-bottom: 6px; }
+.gallery-card-title { margin: 0; font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: clamp(19px, 2.2vw, 24px); line-height: 1.1; letter-spacing: -0.03em; color: var(--ink); }
+.gallery-card-loc { display: block; margin-top: 5px; font-size: 13px; color: #6f7671; }
+.gallery-status { text-align: center; color: #7a8079; font: 500 12px "DM Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase; padding: 40px 0; }
+
+/* CTA band */
+.gallery-cta { text-align: center; padding: 64px 4.1vw 40px; }
+.gallery-cta h2 { margin: 6px 0 22px; font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: clamp(28px, 4vw, 46px); letter-spacing: -0.04em; color: var(--ink); }
+.gallery-cta h2 span { color: var(--sand); }
+.gallery-btn {
+  display: inline-flex; align-items: center; gap: 16px; padding: 15px 26px; border-radius: 999px;
+  background: var(--ink); color: #fff; font-size: 13px; text-decoration: none; transition: background 0.2s;
+}
+.gallery-btn:hover { background: #0a3838; }
+
+/* Project modal */
+.gallery-modal { position: fixed; inset: 0; z-index: 100; background: rgba(12, 34, 34, 0.82); padding: 24px; align-items: center; justify-content: center; }
+.gallery-modal:not([hidden]) { display: flex; }
+.gallery-modal-inner { position: relative; background: var(--canvas, #fffaf3); border-radius: 16px; max-width: 900px; width: 100%; max-height: 90vh; overflow: auto; padding: 18px; }
+.gallery-modal-close { position: absolute; top: 12px; right: 12px; z-index: 2; width: 38px; height: 38px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 16px; cursor: pointer; }
+.gallery-modal-close:hover { background: rgba(0, 0, 0, 0.75); }
+.gm-media { border-radius: 12px; overflow: hidden; background: #ece4d8; }
+.gm-media img { width: 100%; max-height: 62vh; object-fit: contain; display: block; background: #1c1c1c; }
+.gm-thumbs { gap: 8px; margin-top: 10px; overflow-x: auto; }
+.gm-thumbs:not([hidden]) { display: flex; }
+.gm-thumb { width: 64px; height: 48px; object-fit: cover; border-radius: 6px; cursor: pointer; opacity: 0.6; border: 2px solid transparent; flex: 0 0 auto; }
+.gm-thumb:hover { opacity: 1; }
+.gm-thumb.is-active { opacity: 1; border-color: var(--ink); }
+.gm-meta { padding: 16px 6px 6px; }
+.gm-meta .eyebrow { color: var(--burgundy); margin: 0 0 6px; }
+.gm-meta h3 { margin: 0; font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: clamp(24px, 3vw, 34px); letter-spacing: -0.035em; color: var(--ink); }
+.gm-loc { margin: 6px 0 0; font-size: 14px; color: #6f7671; }
+.gm-blurb { margin: 12px 0 0; font-size: 15px; line-height: 1.6; color: #4b524e; }
+
+@media (max-width: 640px) {
+  .gallery-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
+  .gallery-card-title { font-size: 16px; }
+  .gallery-intro { padding-top: calc(var(--header-h, 72px) + 70px); }
+}
