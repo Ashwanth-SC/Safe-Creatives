@@ -1798,7 +1798,7 @@
 
     const head = el("div", "admin-package");
     head.appendChild(el("p", "eyebrow", "QUOTATION EXPORT"));
-    head.appendChild(el("p", "dash-note", `Project #${project.project_number} — ${project.client_name}. The customer quotation: each category as its own table, showing Price, Price with discount and Price with GST. Supplier and cost are not shown.`));
+    head.appendChild(el("p", "dash-note", `Project #${project.project_number} — ${project.client_name}. The customer quotation: one table per space (A→Z), with the category in the first column, showing Price, Price with discount and Price with GST. Supplier and cost are not shown.`));
 
     // Live margin / discount / GST — edits update every table instantly and save
     // to the project (same source of truth as the dashboard).
@@ -1824,7 +1824,7 @@
       let latest = 0;
       try { const vs = await loadQuoteVersions(currentProject); latest = vs[0]?.version_no || 0; } catch (_e) { /* no versions yet */ }
       const number = quoteNumberStr(project.project_number, latest + 1, new Date());
-      openQuotationWindow(seller, project, liveToPrintSegs(segments), grand, { quoteNumber: number, dateLabel: longDate() });
+      openQuotationWindow(seller, project, liveToPrintSegs(buildSpaceGroups(segments)), grand, { quoteNumber: number, dateLabel: longDate() });
     });
     head.appendChild(exportBtn);
     if (!project.client_email) head.appendChild(el("p", "dash-note", "Note: this project has no client email — add one in the dashboard to email the quotation."));
@@ -1839,8 +1839,9 @@
         bodyWrap.appendChild(el("p", "dash-note", "No saved quotation lines in any category yet."));
         return;
       }
-      segments.forEach((s) => bodyWrap.appendChild(exportPreviewTable(s)));
-      bodyWrap.appendChild(exportSummaryTable(segments, grand));
+      const spaceGroups = buildSpaceGroups(segments);
+      spaceGroups.forEach((g) => bodyWrap.appendChild(exportPreviewTable(g)));
+      bodyWrap.appendChild(exportSummaryTable(spaceGroups, grand));
     };
     renderBody();
 
@@ -2127,12 +2128,12 @@
 
   function exportSummaryTable(segments, grand) {
     const wrap = el("div", "tk-box-section");
-    wrap.appendChild(el("div", "tk-box-section-head", "Summary — by category (internal reference)"));
+    wrap.appendChild(el("div", "tk-box-section-head", "Summary — by space (internal reference)"));
     wrap.appendChild(el("p", "dash-note", "For your reference only — includes the base price and the margin. The printable customer quotation still shows only Price, Price with discount and Price with GST."));
     const scroll = el("div", "table-scroll");
     const t = el("table", "dash-table");
     const hr = el("tr");
-    ["Category", "Price", "Price with margin", "Margin", "Price with discount", "Price with GST"].forEach((h) => hr.appendChild(el("th", null, h)));
+    ["Space", "Price", "Price with margin", "Margin", "Price with discount", "Price with GST"].forEach((h) => hr.appendChild(el("th", null, h)));
     t.appendChild(hr);
     const rowCells = (title, tt) => [title, money(tt.base), money(tt.price), money(tt.price - tt.base), money(tt.disc), money(tt.gst)];
     segments.forEach((s) => {
@@ -2158,6 +2159,68 @@
   }
   const longDate = (dateInput) => new Date(dateInput || Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 
+  // The export is organised by SPACE: one table per space (A→Z, unspaced last),
+  // Category as the first column (it varies per row), then a unified column set
+  // folding every category's own columns. These helpers regroup the per-category
+  // segments (live) or a saved snapshot into that space-grouped, segment-shaped
+  // structure, which the same table/print functions then render.
+  const SPACE_COLS = [
+    { label: "Category", get: (r) => r._category },
+    { label: "Unit", get: (r) => r._unit },
+    { label: "Material specifications", get: (r) => r._material },
+    { label: "Design specifications", get: (r) => r._design },
+    { label: "Qty", get: (r) => r._qty },
+    { label: "Sqft", get: (r) => r._sqft },
+  ];
+  // Map one line to the unified fields, reading its native columns by label.
+  function unifyLine(category, byLabel, money) {
+    const panel = byLabel(["Panel"]);
+    let unit = byLabel(["Unit", "Description"]);
+    if (panel) unit = [unit, panel].filter(Boolean).join(" · ");
+    return {
+      _category: category,
+      _unit: unit,
+      _material: byLabel(["Material specifications", "Specification"]),
+      _design: byLabel(["Design specifications"]),
+      _qty: byLabel(["Qty"]),
+      _sqft: byLabel(["Sqft"]),
+      ...money,
+    };
+  }
+  function groupLinesBySpace(lines) {
+    const r2 = (n) => Math.round(n * 100) / 100;
+    const map = new Map();
+    lines.forEach((ln) => { const k = (ln._space && String(ln._space).trim()) || ""; if (!map.has(k)) map.set(k, []); map.get(k).push(ln); });
+    const keys = [...map.keys()].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.toLowerCase().localeCompare(b.toLowerCase())));
+    return keys.map((k) => {
+      const rows = map.get(k);
+      const totals = rows.reduce((t, r) => { t.base += (r._base || 0); t.price += (r._price || 0); t.disc += (r._disc || 0); t.gst += (r._gst || 0); return t; }, { base: 0, price: 0, disc: 0, gst: 0 });
+      Object.keys(totals).forEach((x) => (totals[x] = r2(totals[x])));
+      return { title: k || "No space assigned", cols: SPACE_COLS, rows, totals };
+    });
+  }
+  function buildSpaceGroups(segments) {
+    const lines = [];
+    segments.forEach((s) => s.rows.forEach((r) => {
+      const byLabel = (labels) => { const c = s.cols.find((c) => labels.includes(c.label)); const v = c ? c.get(r) : ""; return v == null ? "" : String(v); };
+      const line = unifyLine(s.title, byLabel, { _price: r._price, _disc: r._disc, _gst: r._gst, _base: Number(r.total_price) || 0 });
+      line._space = (r.space && String(r.space).trim()) || "";
+      lines.push(line);
+    }));
+    return groupLinesBySpace(lines);
+  }
+  function snapshotToSpaceGroups(snap) {
+    const lines = [];
+    (snap.segments || []).forEach((s) => (s.rows || []).forEach((row) => {
+      const cells = row.cells || [];
+      const byLabel = (labels) => { const c = cells.find((c) => labels.includes(c[0])); return c ? (c[1] == null ? "" : String(c[1])) : ""; };
+      const line = unifyLine(s.title, byLabel, { _price: row.price, _disc: row.disc, _gst: row.gst, _base: 0 });
+      line._space = byLabel(["Space"]);
+      lines.push(line);
+    }));
+    return groupLinesBySpace(lines);
+  }
+
   // Normalise the live export state / a saved snapshot to a single print model:
   // [{ title, colLabels:[str], rows:[{ cells:[str], price, disc, gst }], totals }].
   function liveToPrintSegs(segments) {
@@ -2171,16 +2234,9 @@
       totals: s.totals,
     }));
   }
+  // A saved version prints the same way — grouped by space.
   function snapshotToPrintSegs(snap) {
-    return (snap.segments || []).map((s) => ({
-      title: s.title,
-      colLabels: ((s.rows && s.rows[0] && s.rows[0].cells) || []).map((c) => c[0]),
-      rows: (s.rows || []).map((r) => ({
-        cells: (r.cells || []).map((c) => (c[1] == null ? "" : String(c[1]))),
-        price: r.price, disc: r.disc, gst: r.gst,
-      })),
-      totals: s.totals || { price: 0, disc: 0, gst: 0 },
-    }));
+    return liveToPrintSegs(snapshotToSpaceGroups(snap));
   }
 
   function quotationHtml(seller, project, printSegs, grand, opts) {
@@ -2238,7 +2294,7 @@
     <section class="cust"><h4>Prepared for</h4><p><strong>${escHtml(project.client_name)}</strong></p>${project.client_phone ? `<p>${escHtml(project.client_phone)}</p>` : ""}${project.client_email ? `<p>${escHtml(project.client_email)}</p>` : ""}${project.site_address ? `<p>${escHtml(project.site_address)}</p>` : ""}${project.project_name ? `<p>Project: ${escHtml(project.project_name)}</p>` : ""}</section>
     ${seg}
     <h2>Summary</h2>
-    <table><thead><tr><th>Category</th><th class="num">Total</th><th class="num">Total with discount</th><th class="num">Total with GST</th></tr></thead><tbody>${summary}<tr class="total"><td>Grand total</td><td class="num">${escHtml(money(grand.price))}</td><td class="num">${escHtml(money(grand.disc))}</td><td class="num">${escHtml(money(grand.gst))}</td></tr></tbody></table>
+    <table><thead><tr><th>Space</th><th class="num">Total</th><th class="num">Total with discount</th><th class="num">Total with GST</th></tr></thead><tbody>${summary}<tr class="total"><td>Grand total</td><td class="num">${escHtml(money(grand.price))}</td><td class="num">${escHtml(money(grand.disc))}</td><td class="num">${escHtml(money(grand.gst))}</td></tr></tbody></table>
     <p class="note">This is a quotation, not a tax invoice. Amounts shown as Price include the applicable margin; GST is shown where applicable. Valid subject to confirmation.</p>
   </div>
   <script>
