@@ -2187,9 +2187,17 @@
       ...money,
     };
   }
-  // Accessories carry no space of their own, so they are never grouped by space —
-  // they always render as a single dedicated "Accessories" table, placed last.
-  const isAccessoryLine = (ln) => /accessor/i.test(ln._category || "");
+  // Some categories are NOT grouped by space — each renders as its own table,
+  // named after the category, placed after the space tables (in this order).
+  // Accessories carry no space of their own; Paint work is quoted as a single
+  // consolidated category. Everything else groups by the line's space.
+  const OWN_TABLE_CATEGORIES = ["Accessories", "Paint work"];
+  const ownTableTitle = (ln) => {
+    const c = String(ln._category || "");
+    if (/accessor/i.test(c)) return "Accessories";
+    if (/paint/i.test(c)) return "Paint work";
+    return null;
+  };
   function groupLinesBySpace(lines) {
     const r2 = (n) => Math.round(n * 100) / 100;
     const mkTotals = (rows) => {
@@ -2197,13 +2205,21 @@
       Object.keys(totals).forEach((x) => (totals[x] = r2(totals[x])));
       return totals;
     };
-    const spaceLines = lines.filter((ln) => !isAccessoryLine(ln));
-    const accessoryLines = lines.filter((ln) => isAccessoryLine(ln));
+    const spaceLines = [];
+    const ownLines = new Map(); // category title -> rows
+    lines.forEach((ln) => {
+      const own = ownTableTitle(ln);
+      if (own) { if (!ownLines.has(own)) ownLines.set(own, []); ownLines.get(own).push(ln); }
+      else spaceLines.push(ln);
+    });
     const map = new Map();
     spaceLines.forEach((ln) => { const k = (ln._space && String(ln._space).trim()) || ""; if (!map.has(k)) map.set(k, []); map.get(k).push(ln); });
     const keys = [...map.keys()].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.toLowerCase().localeCompare(b.toLowerCase())));
     const groups = keys.map((k) => { const rows = map.get(k); return { title: k || "No space assigned", cols: SPACE_COLS, rows, totals: mkTotals(rows) }; });
-    if (accessoryLines.length) groups.push({ title: "Accessories", cols: SPACE_COLS, rows: accessoryLines, totals: mkTotals(accessoryLines) });
+    OWN_TABLE_CATEGORIES.forEach((title) => {
+      const rows = ownLines.get(title);
+      if (rows && rows.length) groups.push({ title, cols: SPACE_COLS, rows, totals: mkTotals(rows) });
+    });
     return groups;
   }
   function buildSpaceGroups(segments) {
