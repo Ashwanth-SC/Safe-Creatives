@@ -2172,6 +2172,17 @@
     { label: "Qty", get: (r) => r._qty },
     { label: "Sqft", get: (r) => r._sqft },
   ];
+  // Paint work is its own table, but still shows the line's space. The table is
+  // already titled "Paint work", so the first column is Space (not the redundant
+  // per-row Category); the rest matches the unified set.
+  const PAINT_COLS = [
+    { label: "Space", get: (r) => r._space },
+    { label: "Unit", get: (r) => r._unit },
+    { label: "Material specifications", get: (r) => r._material },
+    { label: "Design specifications", get: (r) => r._design },
+    { label: "Qty", get: (r) => r._qty },
+    { label: "Sqft", get: (r) => r._sqft },
+  ];
   // Map one line to the unified fields, reading its native columns by label.
   function unifyLine(category, byLabel, money) {
     const panel = byLabel(["Panel"]);
@@ -2192,6 +2203,7 @@
   // Accessories carry no space of their own; Paint work is quoted as a single
   // consolidated category. Everything else groups by the line's space.
   const OWN_TABLE_CATEGORIES = ["Accessories", "Paint work"];
+  const OWN_TABLE_COLS = { "Accessories": SPACE_COLS, "Paint work": PAINT_COLS };
   const ownTableTitle = (ln) => {
     const c = String(ln._category || "");
     if (/accessor/i.test(c)) return "Accessories";
@@ -2218,7 +2230,7 @@
     const groups = keys.map((k) => { const rows = map.get(k); return { title: k || "No space assigned", cols: SPACE_COLS, rows, totals: mkTotals(rows) }; });
     OWN_TABLE_CATEGORIES.forEach((title) => {
       const rows = ownLines.get(title);
-      if (rows && rows.length) groups.push({ title, cols: SPACE_COLS, rows, totals: mkTotals(rows) });
+      if (rows && rows.length) groups.push({ title, cols: OWN_TABLE_COLS[title] || SPACE_COLS, rows, totals: mkTotals(rows) });
     });
     return groups;
   }
@@ -2269,7 +2281,7 @@
     const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
     // Column widths (fixed layout) so specs get room and Qty/Sqft stay narrow;
     // the three price columns share the rest. Sums to ~100% for the 6 unified cols.
-    const COL_W = { "Category": 8, "Unit": 16, "Material specifications": 16, "Design specifications": 15, "Qty": 6, "Sqft": 6 };
+    const COL_W = { "Category": 8, "Space": 8, "Unit": 16, "Material specifications": 16, "Design specifications": 15, "Qty": 6, "Sqft": 6 };
     const seg = printSegs.map((s) => {
       const widths = [...s.colLabels.map((l) => COL_W[l] || 12), 11, 11, 11];
       const colgroup = `<colgroup>${widths.map((w) => `<col style="width:${w}%">`).join("")}</colgroup>`;
