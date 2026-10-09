@@ -2187,17 +2187,24 @@
       ...money,
     };
   }
+  // Accessories carry no space of their own, so they are never grouped by space —
+  // they always render as a single dedicated "Accessories" table, placed last.
+  const isAccessoryLine = (ln) => /accessor/i.test(ln._category || "");
   function groupLinesBySpace(lines) {
     const r2 = (n) => Math.round(n * 100) / 100;
-    const map = new Map();
-    lines.forEach((ln) => { const k = (ln._space && String(ln._space).trim()) || ""; if (!map.has(k)) map.set(k, []); map.get(k).push(ln); });
-    const keys = [...map.keys()].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.toLowerCase().localeCompare(b.toLowerCase())));
-    return keys.map((k) => {
-      const rows = map.get(k);
+    const mkTotals = (rows) => {
       const totals = rows.reduce((t, r) => { t.base += (r._base || 0); t.price += (r._price || 0); t.disc += (r._disc || 0); t.gst += (r._gst || 0); return t; }, { base: 0, price: 0, disc: 0, gst: 0 });
       Object.keys(totals).forEach((x) => (totals[x] = r2(totals[x])));
-      return { title: k || "No space assigned", cols: SPACE_COLS, rows, totals };
-    });
+      return totals;
+    };
+    const spaceLines = lines.filter((ln) => !isAccessoryLine(ln));
+    const accessoryLines = lines.filter((ln) => isAccessoryLine(ln));
+    const map = new Map();
+    spaceLines.forEach((ln) => { const k = (ln._space && String(ln._space).trim()) || ""; if (!map.has(k)) map.set(k, []); map.get(k).push(ln); });
+    const keys = [...map.keys()].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.toLowerCase().localeCompare(b.toLowerCase())));
+    const groups = keys.map((k) => { const rows = map.get(k); return { title: k || "No space assigned", cols: SPACE_COLS, rows, totals: mkTotals(rows) }; });
+    if (accessoryLines.length) groups.push({ title: "Accessories", cols: SPACE_COLS, rows: accessoryLines, totals: mkTotals(accessoryLines) });
+    return groups;
   }
   function buildSpaceGroups(segments) {
     const lines = [];
@@ -2244,14 +2251,19 @@
     const quoteNumber = (opts && opts.quoteNumber) || "";
     const sellerName = seller.trade_name || seller.legal_name || "Safe Creatives";
     const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
+    // Column widths (fixed layout) so specs get room and Qty/Sqft stay narrow;
+    // the three price columns share the rest. Sums to ~100% for the 6 unified cols.
+    const COL_W = { "Category": 8, "Unit": 16, "Material specifications": 16, "Design specifications": 15, "Qty": 6, "Sqft": 6 };
     const seg = printSegs.map((s) => {
+      const widths = [...s.colLabels.map((l) => COL_W[l] || 12), 11, 11, 11];
+      const colgroup = `<colgroup>${widths.map((w) => `<col style="width:${w}%">`).join("")}</colgroup>`;
       const heads = [...s.colLabels.map((l) => `<th>${escHtml(l)}</th>`), `<th class="num">Price</th>`, `<th class="num">Price with discount</th>`, `<th class="num">Price with GST</th>`].join("");
       const body = s.rows.map((r) => {
         const tds = r.cells.map((v) => `<td>${escHtml(v == null || v === "" ? "—" : v)}</td>`).join("");
         return `<tr>${tds}<td class="num">${escHtml(money(r.price))}</td><td class="num">${escHtml(money(r.disc))}</td><td class="num">${escHtml(money(r.gst))}</td></tr>`;
       }).join("");
       const total = `<tr class="total"><td colspan="${s.colLabels.length}">Total</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`;
-      return `<h2>${escHtml(s.title)}</h2><table><thead><tr>${heads}</tr></thead><tbody>${body}${total}</tbody></table>`;
+      return `<h2>${escHtml(s.title)}</h2><table>${colgroup}<thead><tr>${heads}</tr></thead><tbody>${body}${total}</tbody></table>`;
     }).join("");
     const summary = printSegs.map((s) => `<tr><td>${escHtml(s.title)}</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`).join("");
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -2272,10 +2284,11 @@
   .cust h4 { margin: 0 0 4px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #777; }
   .cust p { margin: 2px 0; }
   h2 { margin: 26px 0 8px; font-size: 14px; color: #6f222a; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-  th, td { padding: 8px 10px; border-bottom: 1px solid #e6e6e2; text-align: left; vertical-align: top; }
-  th { font: 600 10px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #777; background: #fafaf8; }
-  td.num, th.num { text-align: right; white-space: nowrap; }
+  table { width: 100%; max-width: 100%; border-collapse: collapse; margin-bottom: 6px; table-layout: fixed; }
+  th, td { padding: 6px 7px; border-bottom: 1px solid #e6e6e2; text-align: left; vertical-align: top; font-size: 11px; overflow-wrap: anywhere; word-break: break-word; }
+  th { font: 600 10px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #fafaf8; }
+  td.num, th.num { text-align: right; }
+  td.num { white-space: nowrap; }
   tr.total td { font-weight: 700; color: #0c4444; border-top: 2px solid #0c4444; background: #f4f6f3; }
   .note { margin-top: 24px; font-size: 11px; color: #888; }
   @media print { body { background: #fff; } .toolbar { display: none; } .doc { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
@@ -2294,7 +2307,7 @@
     <section class="cust"><h4>Prepared for</h4><p><strong>${escHtml(project.client_name)}</strong></p>${project.client_phone ? `<p>${escHtml(project.client_phone)}</p>` : ""}${project.client_email ? `<p>${escHtml(project.client_email)}</p>` : ""}${project.site_address ? `<p>${escHtml(project.site_address)}</p>` : ""}${project.project_name ? `<p>Project: ${escHtml(project.project_name)}</p>` : ""}</section>
     ${seg}
     <h2>Summary</h2>
-    <table><thead><tr><th>Space</th><th class="num">Total</th><th class="num">Total with discount</th><th class="num">Total with GST</th></tr></thead><tbody>${summary}<tr class="total"><td>Grand total</td><td class="num">${escHtml(money(grand.price))}</td><td class="num">${escHtml(money(grand.disc))}</td><td class="num">${escHtml(money(grand.gst))}</td></tr></tbody></table>
+    <table><colgroup><col style="width:40%"><col style="width:20%"><col style="width:20%"><col style="width:20%"></colgroup><thead><tr><th>Space</th><th class="num">Total</th><th class="num">Total with discount</th><th class="num">Total with GST</th></tr></thead><tbody>${summary}<tr class="total"><td>Grand total</td><td class="num">${escHtml(money(grand.price))}</td><td class="num">${escHtml(money(grand.disc))}</td><td class="num">${escHtml(money(grand.gst))}</td></tr></tbody></table>
     <p class="note">This is a quotation, not a tax invoice. Amounts shown as Price include the applicable margin; GST is shown where applicable. Valid subject to confirmation.</p>
   </div>
   <script>
