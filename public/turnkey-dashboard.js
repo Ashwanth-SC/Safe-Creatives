@@ -1378,7 +1378,7 @@
   .wfbody p { margin: 0; font-size: 12px; color: #555; line-height: 1.45; }
   .moodpage { padding: 0; }
   .moodfull { flex: 1; display: flex; align-items: center; justify-content: center; background: #15110e; }
-  .moodfull img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .moodfull img { width: 100%; height: 100%; object-fit: cover; display: block; }
   table.data { width: 100%; border-collapse: collapse; margin-bottom: 8px; table-layout: fixed; }
   table.data th, table.data td { padding: 9px 12px; border-bottom: 1px solid #eceae6; text-align: left; vertical-align: top; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   table.data th { font: 600 10px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #faf8f5; }
