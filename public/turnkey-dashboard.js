@@ -1391,9 +1391,10 @@
   @page { size: 338.667mm 190.5mm; margin: 0; }
   @media print { body { background: #fff; } .toolbar { display: none; } .doc { width: auto; margin: 0; max-width: none; } .page { box-shadow: none; margin: 0; } }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script></head><body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script></head><body>
   <div class="toolbar">
-    <button onclick="window.print()">Download / Print (PDF)</button>
+    <button id="sc-download-btn" type="button">Download (PDF)</button>
     <button id="sc-email-btn" type="button">Email to customer</button>
     <span class="muted" id="sc-email-status"></span>
   </div>
@@ -1445,18 +1446,55 @@
     (function () {
       var RECIPIENT = ${JSON.stringify(project.client_email || "")};
       var FILENAME = ${JSON.stringify(`Consultation-${project.project_number || ""}.pdf`)};
+      var PW = 338.667, PH = 190.5; // 16:9 slide in mm (13.333in x 7.5in)
+      var dlBtn = document.getElementById("sc-download-btn");
       var btn = document.getElementById("sc-email-btn");
       var status = document.getElementById("sc-email-status");
+
+      function libsReady() { return typeof window.html2canvas === "function" && window.jspdf && window.jspdf.jsPDF; }
+      async function waitForImages(root) {
+        var imgs = [].slice.call(root.querySelectorAll("img"));
+        await Promise.all(imgs.map(function (im) {
+          return (im.complete && im.naturalWidth) ? null : new Promise(function (res) { im.addEventListener("load", res); im.addEventListener("error", res); });
+        }));
+      }
+      // Render EACH .page to its own canvas and place it as one full PDF page —
+      // this guarantees one slide per page (html2pdf's auto-slicing drifted and
+      // straddled slides). Returns a jsPDF instance.
+      async function buildPdf() {
+        var jsPDF = window.jspdf.jsPDF;
+        var doc = document.querySelector(".doc");
+        if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) { /* ignore */ } }
+        await waitForImages(doc);
+        var pages = [].slice.call(doc.querySelectorAll(".page"));
+        var pdf = new jsPDF({ unit: "mm", format: [PW, PH], orientation: "landscape" });
+        for (var i = 0; i < pages.length; i++) {
+          var canvas = await window.html2canvas(pages[i], { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
+          if (i > 0) pdf.addPage([PW, PH], "landscape");
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, PW, PH);
+        }
+        return pdf;
+      }
+
+      dlBtn.addEventListener("click", async function () {
+        if (!libsReady()) { status.textContent = "PDF libraries still loading — try again in a second."; return; }
+        dlBtn.disabled = true;
+        status.textContent = "Generating PDF…";
+        try { var pdf = await buildPdf(); pdf.save(FILENAME); status.textContent = "Downloaded."; }
+        catch (e) { status.textContent = "Failed: " + (e && e.message ? e.message : e); }
+        finally { dlBtn.disabled = false; }
+      });
+
       btn.addEventListener("click", async function () {
         if (!window.opener || !window.opener.__scSendConsultationPdf) { status.textContent = "Open the document from the Consultation tab to enable email."; return; }
         if (!RECIPIENT) { status.textContent = "No email on file for this client — add it in Customer database."; return; }
         if (!window.confirm("Email this consultation to " + RECIPIENT + "?")) return;
-        if (typeof window.html2pdf !== "function") { status.textContent = "PDF library still loading — try again in a second."; return; }
+        if (!libsReady()) { status.textContent = "PDF libraries still loading — try again in a second."; return; }
         btn.disabled = true;
         status.textContent = "Generating PDF…";
         try {
-          var opt = { margin: 0, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "mm", format: [338.667, 190.5], orientation: "landscape" }, pagebreak: { mode: ["css", "legacy"] } };
-          var uri = await window.html2pdf().set(opt).from(document.querySelector(".doc")).outputPdf("datauristring");
+          var pdf = await buildPdf();
+          var uri = pdf.output("datauristring");
           var b64 = uri.indexOf(",") >= 0 ? uri.split(",")[1] : uri;
           status.textContent = "Sending…";
           var res = await window.opener.__scSendConsultationPdf(b64, FILENAME);
