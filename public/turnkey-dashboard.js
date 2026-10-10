@@ -1315,7 +1315,9 @@
     const gimgs = (g) => {
       const ph = ((g._photos && g._photos.length ? g._photos : (g._cover ? [g._cover] : []))).slice(0, 5);
       if (!ph.length) return `<div class="gph-row"><span class="gph">${esc(g.title || "Project")}</span></div>`;
-      return `<div class="gstrip">${ph.map((u) => `<div class="gcell"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div>`).join("")}</div>`;
+      // background-image (not <img object-fit>) so html2canvas crops to fill
+      // instead of stretching — matches the public gallery.
+      return `<div class="gstrip">${ph.map((u) => `<div class="gcell" style="background-image:url('${esc(u)}')"></div>`).join("")}</div>`;
     };
     const gproj = (g) => `<div class="gproj"><div class="gproj-head"><strong>${esc(g.title || "Untitled")}</strong>${g.location ? `<span>${esc(g.location)}</span>` : ""}</div>${gimgs(g)}</div>`;
     const galleryLinks = `<div class="glinks"><a href="${CONSULT_PORTFOLIO_URL}" target="_blank" rel="noopener">View our full portfolio ↗</a><a href="${CONSULT_WEBSITE_URL}" target="_blank" rel="noopener">safecreatives.com ↗</a></div>`;
@@ -1336,7 +1338,7 @@
     const wfCompact = CONSULT_WORKFLOW.map((w, i) => `<li><span class="n">${i + 1}</span><div><strong>${esc(w.title)}</strong><p>${esc(w.desc)}</p></div></li>`).join("");
     // One full-bleed slide per uploaded moodboard image.
     const moodPages = moodUrls.length
-      ? moodUrls.map((u) => `<section class="page moodpage"><div class="moodfull"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div></section>`).join("")
+      ? moodUrls.map((u) => `<section class="page moodpage"><div class="moodfull" style="background-image:url('${esc(u)}')"></div></section>`).join("")
       : `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Moodboard</span></div><h2>Moodboard</h2><p class="muted">No moodboard images added.</p></section>`;
 
     const qrows = (data.quotation || []).filter((r) => r.space || r.unit || r.spec || (r.cost != null && r.cost !== ""));
@@ -1376,8 +1378,7 @@
   .gproj-head strong { font: 600 15px "DM Sans", sans-serif; color: #222; }
   .gproj-head span { font-size: 12px; color: #777; }
   .gstrip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-  .gcell { aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden; background: #ece4d8; }
-  .gcell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gcell { aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden; background-color: #ece4d8; background-size: cover; background-position: center; background-repeat: no-repeat; }
   .gph-row { display: grid; place-items: center; height: 90px; border-radius: 8px; background: #f3ece2; }
   .gph { color: #9a8f7d; font: 500 13px "Playfair Display", serif; }
   /* Merged protocols slide: Scope of work + What sets us apart + Our workflow */
@@ -1399,8 +1400,7 @@
   .glinks { display: flex; gap: 26px; margin-top: 14px; font: 600 12px "DM Sans", sans-serif; }
   .tc-link { margin: 12px 0 0; font-size: 12px; }
   .moodpage { padding: 0; }
-  .moodfull { flex: 1; display: flex; align-items: center; justify-content: center; background: #15110e; }
-  .moodfull img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .moodfull { flex: 1; background-color: #15110e; background-size: cover; background-position: center; background-repeat: no-repeat; }
   table.data { width: 100%; border-collapse: collapse; margin-bottom: 8px; table-layout: fixed; }
   table.data th, table.data td { padding: 9px 12px; border-bottom: 1px solid #eceae6; text-align: left; vertical-align: top; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   table.data th { font: 600 10px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #faf8f5; }
@@ -1478,10 +1478,15 @@
 
       function libsReady() { return typeof window.html2canvas === "function" && window.jspdf && window.jspdf.jsPDF; }
       async function waitForImages(root) {
-        var imgs = [].slice.call(root.querySelectorAll("img"));
-        await Promise.all(imgs.map(function (im) {
+        var proms = [].slice.call(root.querySelectorAll("img")).map(function (im) {
           return (im.complete && im.naturalWidth) ? null : new Promise(function (res) { im.addEventListener("load", res); im.addEventListener("error", res); });
-        }));
+        });
+        // Gallery/moodboard are background-image cells — preload so html2canvas has them.
+        [].slice.call(root.querySelectorAll('[style*="background-image"]')).forEach(function (el) {
+          var m = /url\(['"]?([^'")]+)['"]?\)/.exec(el.style.backgroundImage || "");
+          if (m && m[1]) proms.push(new Promise(function (res) { var i = new Image(); i.onload = i.onerror = res; i.src = m[1]; }));
+        });
+        await Promise.all(proms);
       }
       // Split the quotation across as many 16:9 slides as its rows need (the
       // slide is a fixed-height box with hidden overflow, so a long quotation
