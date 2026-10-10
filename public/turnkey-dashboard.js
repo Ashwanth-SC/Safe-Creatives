@@ -1237,6 +1237,17 @@
     "Procurement assistance",
   ];
   const CONSULT_PILLARS = ["Sensory harmony", "Automation inclusivity", "Sustainable design"];
+  const CONSULT_STRENGTHS = [
+    { title: "Precise quotation", desc: "With our in-house quotation-builder software, we deliver precise quotations that have no gaps." },
+    { title: "Project tracking", desc: "The execution process is updated at every milestone on our project tracking page." },
+    { title: "Expert designers", desc: "Experienced designers who handle each and every project with care and expertise." },
+    { title: "Project managers", desc: "Seamless execution, with a dedicated project manager on each and every project." },
+    { title: "Comprehensive end-to-end service", desc: "Screw-to-screw services for all your interior requirements." },
+  ];
+  // Clickable links placed in the exported PDF (via jsPDF link annotations).
+  const CONSULT_PORTFOLIO_URL = "https://drive.google.com/file/d/1_qE9CsGezCKQYdxqn00OKPz2BCh9Ky6Z/view";
+  const CONSULT_WEBSITE_URL = "https://safecreatives.com";
+  const CONSULT_TERMS_URL = "https://drive.google.com/file/d/18ucYNPWpFsL9WWq6ZI1qrLuopE4Obi5e/view";
   const CONSULT_WORKFLOW = [
     { title: "Design consultation", desc: "A free consultation to understand your requirements and run a feasibility check." },
     { title: "Design initiation", desc: "Thorough requirement study with a questionnaire." },
@@ -1307,18 +1318,20 @@
       return `<div class="gstrip">${ph.map((u) => `<div class="gcell"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div>`).join("")}</div>`;
     };
     const gproj = (g) => `<div class="gproj"><div class="gproj-head"><strong>${esc(g.title || "Untitled")}</strong>${g.location ? `<span>${esc(g.location)}</span>` : ""}</div>${gimgs(g)}</div>`;
+    const galleryLinks = `<div class="glinks"><a href="${CONSULT_PORTFOLIO_URL}" target="_blank" rel="noopener">View our full portfolio ↗</a><a href="${CONSULT_WEBSITE_URL}" target="_blank" rel="noopener">safecreatives.com ↗</a></div>`;
     let galleryPages;
     if (sel.length) {
       const half = Math.ceil(sel.length / 2);
       const chunks = sel.length > half ? [sel.slice(0, half), sel.slice(half)] : [sel];
-      galleryPages = chunks.map((chunk, i) => `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered${i ? " (continued)" : ""}</h2><div class="gprojs">${chunk.map(gproj).join("")}</div></section>`).join("");
+      galleryPages = chunks.map((chunk, i) => `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered${i ? " (continued)" : ""}</h2><div class="gprojs">${chunk.map(gproj).join("")}</div>${galleryLinks}</section>`).join("");
     } else {
-      galleryPages = `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered</h2><p class="muted">Selected gallery projects will appear here.</p></section>`;
+      galleryPages = `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered</h2><p class="muted">Selected gallery projects will appear here.</p>${galleryLinks}</section>`;
     }
 
     const scopeList = CONSULT_SCOPE.map((s) => `<li>${esc(s)}</li>`).join("");
     const pillars = CONSULT_PILLARS.map((p) => `<div class="pillar"><span>${esc(p)}</span></div>`).join("");
     const workflowCards = CONSULT_WORKFLOW.map((w, i) => `<div class="wfcard"><div class="wfnum">${i + 1}</div><div class="wfbody"><strong>${esc(w.title)}</strong><p>${esc(w.desc)}</p></div></div>`).join("");
+    const strengthCards = CONSULT_STRENGTHS.map((s) => `<div class="featcard"><strong>${esc(s.title)}</strong><p>${esc(s.desc)}</p></div>`).join("");
     // One full-bleed slide per uploaded moodboard image.
     const moodPages = moodUrls.length
       ? moodUrls.map((u) => `<section class="page moodpage"><div class="moodfull"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div></section>`).join("")
@@ -1376,6 +1389,13 @@
   .wfnum { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: #6f222a; color: #fff; display: grid; place-items: center; font: 600 13px "DM Mono", monospace; }
   .wfbody strong { display: block; font: 600 14px "DM Sans", sans-serif; color: #0c4444; margin-bottom: 3px; }
   .wfbody p { margin: 0; font-size: 12px; color: #555; line-height: 1.45; }
+  .featgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; flex: 1; align-content: center; }
+  .featcard { background: #f6efe9; border-radius: 8px; padding: 14px 16px; }
+  .featcard strong { display: block; font: 600 14px "DM Sans", sans-serif; color: #6f222a; margin-bottom: 4px; }
+  .featcard p { margin: 0; font-size: 12px; color: #555; line-height: 1.45; }
+  .page a { color: #6f222a; text-decoration: underline; }
+  .glinks { display: flex; gap: 26px; margin-top: 14px; font: 600 12px "DM Sans", sans-serif; }
+  .tc-link { margin: 12px 0 0; font-size: 12px; }
   .moodpage { padding: 0; }
   .moodfull { flex: 1; display: flex; align-items: center; justify-content: center; background: #15110e; }
   .moodfull img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -1419,6 +1439,11 @@
       </div>
     </section>
     <section class="page">
+      <div class="phead"><span>${esc(sellerName)}</span><span>Why Safe Creatives</span></div>
+      <h2>What sets us apart</h2>
+      <div class="featgrid">${strengthCards}</div>
+    </section>
+    <section class="page">
       <div class="phead"><span>${esc(sellerName)}</span><span>How we work</span></div>
       <h2>Our workflow</h2>
       <div class="wfgrid">${workflowCards}</div>
@@ -1440,6 +1465,7 @@
       <table class="data"><colgroup><col style="width:62%"><col style="width:38%"></colgroup>
         <thead><tr><th>Task</th><th>Start date</th></tr></thead><tbody>${trows}</tbody></table>
       <h3 class="terms-h">Terms &amp; conditions</h3><ul class="terms">${terms}</ul>
+      <p class="tc-link"><a href="${CONSULT_TERMS_URL}" target="_blank" rel="noopener">Read our full terms &amp; conditions ↗</a></p>
     </section>
   </div>
   <script>
@@ -1472,6 +1498,23 @@
           var canvas = await window.html2canvas(pages[i], { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
           if (i > 0) pdf.addPage([PW, PH], "landscape");
           pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, PW, PH);
+          // The slide is a flat image, so overlay clickable link annotations at
+          // each anchor's position (scaled from on-screen px to the PDF slide mm).
+          var pageRect = pages[i].getBoundingClientRect();
+          var anchors = pages[i].querySelectorAll("a[href]");
+          for (var a = 0; a < anchors.length; a++) {
+            var href = anchors[a].href;
+            if (!href) continue;
+            var r = anchors[a].getBoundingClientRect();
+            if (!r.width || !r.height) continue;
+            pdf.link(
+              (r.left - pageRect.left) / pageRect.width * PW,
+              (r.top - pageRect.top) / pageRect.height * PH,
+              r.width / pageRect.width * PW,
+              r.height / pageRect.height * PH,
+              { url: href }
+            );
+          }
         }
         return pdf;
       }
