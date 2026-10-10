@@ -384,3 +384,30 @@ button:disabled { opacity: .5; cursor: progress; }
 .ctrk-lightbox img { max-width: 92vw; max-height: 88vh; border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,.5); }
 .ctrk-lightbox-close { position: absolute; top: 16px; right: 20px; width: 40px; height: 40px; border: 0; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff; font-size: 18px; cursor: pointer; }
 .ctrk-lightbox-close:hover { background: rgba(255,255,255,.3); }
+
+/* ============================================================================
+   Consultation tab (turnkey dashboard)
+   ========================================================================== */
+.admin-secondary { padding: 13px 20px; border: 1px solid #6f222a; background: #fff; color: #6f222a; font: 12px "DM Sans", sans-serif; cursor: pointer; }
+.admin-secondary:hover { background: #f6efe9; }
+.admin-secondary:disabled, .admin-primary:disabled { opacity: .55; cursor: default; }
+
+.tk-consult { display: flex; flex-direction: column; gap: 22px; margin-top: 16px; }
+
+.tk-mood-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+.tk-mood-cell { position: relative; width: 150px; height: 112px; border-radius: 8px; overflow: hidden; background: #ece4d8; border: 1px solid rgba(23,23,23,.12); }
+.tk-mood-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tk-mood-cell .tk-delete-link { position: absolute; top: 4px; right: 6px; width: 24px; height: 24px; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; font-size: 13px; line-height: 1; }
+.tk-mood-cell .tk-delete-link:hover { background: rgba(0,0,0,.8); text-decoration: none; }
+.tk-mood-add { width: 150px; height: 112px; border: 1px dashed rgba(111,34,42,.5); border-radius: 8px; display: grid; place-items: center; color: #6f222a; font: 600 12px "DM Sans", sans-serif; cursor: pointer; background: #fff; }
+.tk-mood-add:hover { background: #f6efe9; }
+.tk-mood-add.is-busy { opacity: .6; cursor: default; }
+
+.tk-gallery-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.tk-gallery-item { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid rgba(23,23,23,.14); border-radius: 8px; background: #fff; cursor: pointer; position: relative; }
+.tk-gallery-item:has(input:checked) { border-color: #6f222a; box-shadow: 0 0 0 1px #6f222a inset; }
+.tk-gallery-item input[type="checkbox"] { position: absolute; top: 12px; left: 12px; margin: 0; cursor: pointer; z-index: 2; accent-color: #6f222a; }
+.tk-gallery-thumb { aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; background: #ece4d8; }
+.tk-gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tk-gallery-cap { display: flex; flex-direction: column; font: 600 13px "DM Sans", sans-serif; color: #222; }
+.tk-gallery-cap span { font-weight: 400; font-size: 11px; color: #777; }

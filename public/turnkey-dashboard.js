@@ -1224,6 +1224,482 @@
   }
 
   // ------------------------------------------------------------------
+  // Consultation — per-client consultation document (export + email)
+  // ------------------------------------------------------------------
+
+  const CONSULTATION_BUCKET = "turnkey-consultation";
+  const MOODBOARD_MAX = 4;
+  const TIMELINE_TASKS = ["Design consultation", "Design initiation", "Design Sign Off", "Execution phase", "Handover"];
+  // Fixed copy for the "protocols & scope of work" page (client-provided).
+  const CONSULT_SCOPE = [
+    "Wood works", "Civil works", "Electrical works", "Plumbing works",
+    "Design and renders", "Design consultation", "BOQ and project planning",
+    "Procurement assistance",
+  ];
+  const CONSULT_PILLARS = ["Sensory harmony", "Automation inclusivity", "Sustainable design"];
+  const CONSULT_TERMS = [
+    "This document is a consultation. Costs shown are approximate and exclude GST.",
+    "Final pricing is confirmed in a detailed quotation after site measurement and design sign-off.",
+    "The timeline is tentative; each phase starts from its stated date, subject to site readiness and timely approvals.",
+    "Material availability and client-approved changes may affect the cost and the schedule.",
+    "Project images shown are of work we have previously executed and are indicative of our quality, not of the proposed design.",
+  ];
+
+  const consultBucketUrl = (path) => sb.storage.from(CONSULTATION_BUCKET).getPublicUrl(path).data.publicUrl;
+  const galleryBucketUrl = (path) => sb.storage.from("turnkey-gallery").getPublicUrl(path).data.publicUrl;
+
+  async function loadSellerSettings() {
+    const { data } = await sb
+      .from("seller_settings")
+      .select("legal_name, trade_name, address_line, city, state_name, pin_code, gstin, phone, email")
+      .maybeSingle();
+    return data || {};
+  }
+  async function loadGalleryItems() {
+    const { data, error } = await sb
+      .from("turnkey_gallery")
+      .select("id, title, category, location, cover_photo, published, sort_order, created_at")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data || []).filter((g) => g.published);
+  }
+  async function loadConsultation(projectId) {
+    const { data, error } = await sb
+      .from("turnkey_consultations")
+      .select("project_id, quotation_rows, timeline_rows, gallery_ids, moodboard")
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (error) throw error;
+    return data || { quotation_rows: [], timeline_rows: [], gallery_ids: [], moodboard: [] };
+  }
+
+  // Document code: {project number}/2.2/DD/MM/YYYY.
+  function consultDocCode(projectNumber, d = new Date()) {
+    const p = (n) => String(n).padStart(2, "0");
+    return `${projectNumber || ""}/2.2/${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+  }
+  const longDateNow = () => new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+  const inrAmount = (n) => "₹" + (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+  // Builds the full landscape consultation document (one <section class="page">
+  // per slide). gallery items must already carry a resolved _cover URL; moodUrls
+  // are resolved public URLs. Opened in a new window with html2pdf + email.
+  function consultationHtml(seller, project, data, gallery, moodUrls, opts) {
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const sellerName = seller.trade_name || seller.legal_name || "Safe Creatives";
+    const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
+    const location = project.site_address || seller.city || "";
+
+    const sel = (data.gallery_ids || []).map((id) => gallery.find((g) => g.id === id)).filter(Boolean);
+    const gcard = (g) => `<figure class="gcard"><div class="gimg">${g._cover ? `<img src="${esc(g._cover)}" crossorigin="anonymous" alt="">` : `<span class="gph">${esc(g.title || "Project")}</span>`}</div><figcaption>${esc(g.title || "Untitled")}${g.location ? `<span>${esc(g.location)}</span>` : ""}</figcaption></figure>`;
+    let galleryPages;
+    if (sel.length) {
+      const half = Math.ceil(sel.length / 2);
+      const chunks = sel.length > half ? [sel.slice(0, half), sel.slice(half)] : [sel];
+      galleryPages = chunks.map((chunk, i) => `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered${i ? " (continued)" : ""}</h2><div class="ggrid">${chunk.map(gcard).join("")}</div></section>`).join("");
+    } else {
+      galleryPages = `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered</h2><p class="muted">Selected gallery projects will appear here.</p></section>`;
+    }
+
+    const scopeList = CONSULT_SCOPE.map((s) => `<li>${esc(s)}</li>`).join("");
+    const pillars = CONSULT_PILLARS.map((p) => `<div class="pillar"><span>${esc(p)}</span></div>`).join("");
+    const moodGrid = moodUrls.length ? `<div class="mgrid">${moodUrls.map((u) => `<div class="mcell"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div>`).join("")}</div>` : `<p class="muted">No moodboard images added.</p>`;
+
+    const qrows = (data.quotation || []).filter((r) => r.space || r.unit || r.spec || (r.cost != null && r.cost !== ""));
+    const qtotal = qrows.reduce((t, r) => t + (Number(r.cost) || 0), 0);
+    const qbody = qrows.length
+      ? qrows.map((r) => `<tr><td>${esc(r.space || "—")}</td><td>${esc(r.unit || "—")}</td><td>${esc(r.spec || "—")}</td><td class="num">${r.cost != null && r.cost !== "" ? esc(inrAmount(r.cost)) : "—"}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="muted">No line items added.</td></tr>`;
+    const trows = (data.timeline || []).map((r) => `<tr><td>${esc(r.task)}</td><td>${r.start_date ? esc(fmtDate(r.start_date)) : "—"}</td></tr>`).join("");
+    const terms = CONSULT_TERMS.map((t) => `<li>${esc(t)}</li>`).join("");
+
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Consultation — ${esc(project.client_name)} (#${esc(project.project_number)})</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "DM Sans", Arial, sans-serif; color: #171717; background: #e9e7e2; }
+  .toolbar { position: sticky; top: 0; display: flex; gap: 12px; align-items: center; padding: 12px 18px; background: #0c4444; color: #fff; z-index: 5; }
+  .toolbar button { padding: 9px 16px; border: 0; border-radius: 6px; background: #fff; color: #0c4444; font: 600 13px "DM Sans", sans-serif; cursor: pointer; }
+  .toolbar .muted { color: #cfe3e3; font-size: 12px; }
+  .doc { margin: 18px auto; width: 1050px; max-width: 96%; }
+  .page { position: relative; background: #fff; width: 100%; aspect-ratio: 297 / 210; padding: 38px 46px; margin: 0 auto 18px; box-shadow: 0 2px 16px rgba(0,0,0,.08); overflow: hidden; page-break-after: always; break-after: page; display: flex; flex-direction: column; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  .phead { display: flex; justify-content: space-between; font: 600 10px "DM Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: #8a8f8c; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 18px; }
+  .page h2 { margin: 0 0 14px; font: 500 26px "Playfair Display", Georgia, serif; letter-spacing: -.02em; color: #6f222a; }
+  .page h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #0c4444; }
+  .lead { font-size: 15px; color: #44504c; margin: 0 0 22px; }
+  .muted { color: #9a9a96; }
+  .cover { justify-content: space-between; background: linear-gradient(135deg, #0c4444, #123a3a); color: #fff; }
+  .cover .brand { font: 500 30px "Playfair Display", Georgia, serif; }
+  .cover .tagline { font: 600 11px "DM Mono", monospace; letter-spacing: .16em; text-transform: uppercase; color: #bfe0da; margin-top: 6px; }
+  .cover-mid h1 { font: 500 52px "Playfair Display", Georgia, serif; margin: 0; letter-spacing: -.02em; }
+  .cover-grid { display: flex; gap: 60px; }
+  .cover-grid h4 { margin: 0 0 6px; font: 600 10px "DM Mono", monospace; letter-spacing: .14em; text-transform: uppercase; color: #9fc6c0; }
+  .cover-grid p { margin: 2px 0; font-size: 15px; }
+  .cover-foot { font-size: 11px; color: #9fc6c0; border-top: 1px solid rgba(255,255,255,.2); padding-top: 12px; }
+  .ggrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .gcard { margin: 0; }
+  .gimg { position: relative; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; background: #ece4d8; }
+  .gimg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .gph { position: absolute; inset: 0; display: grid; place-items: center; color: #9a8f7d; font: 500 13px "Playfair Display", serif; }
+  .gcard figcaption { margin-top: 8px; font: 600 13px "DM Sans", sans-serif; color: #222; display: flex; flex-direction: column; }
+  .gcard figcaption span { font-weight: 400; font-size: 11px; color: #777; }
+  .scope-two { display: flex; gap: 48px; flex: 1; }
+  .scope-two > div { flex: 1; }
+  ul.scope { columns: 2; margin: 0; padding-left: 18px; font-size: 14px; }
+  ul.scope li { margin-bottom: 9px; }
+  .pillars { display: flex; flex-direction: column; gap: 12px; }
+  .pillar { background: #f6efe9; border-left: 3px solid #6f222a; padding: 12px 14px; border-radius: 6px; font: 500 15px "Playfair Display", serif; color: #0c4444; }
+  .mgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; flex: 1; }
+  .mcell { border-radius: 10px; overflow: hidden; background: #ece4d8; }
+  .mcell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  table.data { width: 100%; border-collapse: collapse; margin-bottom: 8px; table-layout: fixed; }
+  table.data th, table.data td { padding: 9px 12px; border-bottom: 1px solid #eceae6; text-align: left; vertical-align: top; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
+  table.data th { font: 600 10px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #faf8f5; }
+  table.data td.num, table.data th.num { text-align: right; }
+  table.data tr.total td { font-weight: 700; color: #0c4444; border-top: 2px solid #0c4444; background: #f4f6f3; }
+  .note { font-size: 11px; color: #888; margin-top: 6px; }
+  .terms-h { margin-top: 22px; }
+  ul.terms { margin: 0; padding-left: 18px; color: #555; font-size: 12px; }
+  ul.terms li { margin-bottom: 6px; }
+  @media print { body { background: #fff; } .toolbar { display: none; } .doc { width: auto; margin: 0; max-width: none; } .page { box-shadow: none; margin: 0; aspect-ratio: auto; } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script></head><body>
+  <div class="toolbar">
+    <button onclick="window.print()">Download / Print (PDF)</button>
+    <button id="sc-email-btn" type="button">Email to customer</button>
+    <span class="muted" id="sc-email-status"></span>
+  </div>
+  <div class="doc">
+    <section class="page cover">
+      <div class="cover-top"><div class="brand">${esc(sellerName)}</div><div class="tagline">Turnkey solutions for interior design &amp; execution</div></div>
+      <div class="cover-mid"><h1>Design consultation</h1></div>
+      <div class="cover-grid">
+        <div><h4>Prepared for</h4><p><strong>${esc(project.client_name || "")}</strong></p>${location ? `<p>${esc(location)}</p>` : ""}</div>
+        <div><h4>Document</h4><p>${esc(opts.docCode)}</p><p>${esc(opts.dateLabel)}</p></div>
+      </div>
+      <div class="cover-foot">${esc(sellerAddr)}${seller.phone || seller.email ? ` · ${esc([seller.phone, seller.email].filter(Boolean).join(" · "))}` : ""}</div>
+    </section>
+    ${galleryPages}
+    <section class="page">
+      <div class="phead"><span>${esc(sellerName)}</span><span>Scope &amp; approach</span></div>
+      <h2>Our protocols &amp; scope of work</h2>
+      <p class="lead">Turnkey solutions for interior design and execution — end to end, under one roof.</p>
+      <div class="scope-two">
+        <div><h3>Scope of work</h3><ul class="scope">${scopeList}</ul></div>
+        <div><h3>Key design pillars</h3><div class="pillars">${pillars}</div></div>
+      </div>
+    </section>
+    <section class="page">
+      <div class="phead"><span>${esc(sellerName)}</span><span>Moodboard</span></div>
+      <h2>Moodboard</h2>${moodGrid}
+    </section>
+    <section class="page">
+      <div class="phead"><span>${esc(sellerName)}</span><span>Tentative quotation</span></div>
+      <h2>Tentative quotation</h2>
+      <table class="data"><colgroup><col style="width:14%"><col style="width:22%"><col style="width:44%"><col style="width:20%"></colgroup>
+        <thead><tr><th>Space</th><th>Unit / task</th><th>Specifications</th><th class="num">Approx. cost (excl. GST)</th></tr></thead>
+        <tbody>${qbody}</tbody>
+        <tfoot><tr class="total"><td colspan="3">Total (approx., excl. GST)</td><td class="num">${esc(inrAmount(qtotal))}</td></tr></tfoot>
+      </table>
+      <p class="note">Indicative only — excludes GST. A detailed quotation follows after site measurement and design sign-off.</p>
+    </section>
+    <section class="page">
+      <div class="phead"><span>${esc(sellerName)}</span><span>Tentative timeline</span></div>
+      <h2>Tentative timeline</h2>
+      <table class="data"><colgroup><col style="width:62%"><col style="width:38%"></colgroup>
+        <thead><tr><th>Task</th><th>Start date</th></tr></thead><tbody>${trows}</tbody></table>
+      <h3 class="terms-h">Terms &amp; conditions</h3><ul class="terms">${terms}</ul>
+    </section>
+  </div>
+  <script>
+    (function () {
+      var RECIPIENT = ${JSON.stringify(project.client_email || "")};
+      var FILENAME = ${JSON.stringify(`Consultation-${project.project_number || ""}.pdf`)};
+      var btn = document.getElementById("sc-email-btn");
+      var status = document.getElementById("sc-email-status");
+      btn.addEventListener("click", async function () {
+        if (!window.opener || !window.opener.__scSendConsultationPdf) { status.textContent = "Open the document from the Consultation tab to enable email."; return; }
+        if (!RECIPIENT) { status.textContent = "No email on file for this client — add it in Customer database."; return; }
+        if (!window.confirm("Email this consultation to " + RECIPIENT + "?")) return;
+        if (typeof window.html2pdf !== "function") { status.textContent = "PDF library still loading — try again in a second."; return; }
+        btn.disabled = true;
+        status.textContent = "Generating PDF…";
+        try {
+          var opt = { margin: 6, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "mm", format: "a4", orientation: "landscape" }, pagebreak: { mode: ["css", "legacy"] } };
+          var uri = await window.html2pdf().set(opt).from(document.querySelector(".doc")).outputPdf("datauristring");
+          var b64 = uri.indexOf(",") >= 0 ? uri.split(",")[1] : uri;
+          status.textContent = "Sending…";
+          var res = await window.opener.__scSendConsultationPdf(b64, FILENAME);
+          status.textContent = res && res.message ? res.message : (res && res.ok ? "Sent." : "Failed.");
+        } catch (e) {
+          status.textContent = "Failed: " + (e && e.message ? e.message : e);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body></html>`;
+  }
+
+  function openConsultationWindow(seller, project, data, gallery, moodUrls, opts) {
+    const w = window.open("", "_blank");
+    if (!w) { message("Pop-up blocked — allow pop-ups for this site to open the document.", true); return; }
+    w.document.open();
+    w.document.write(consultationHtml(seller, project, data, gallery, moodUrls, opts));
+    w.document.close();
+    w.focus();
+  }
+
+  async function consultationPanel() {
+    const [projects, gallery, seller] = await Promise.all([loadProjects(), loadGalleryItems(), loadSellerSettings()]);
+    const projectsById = new Map(projects.map((p) => [p.id, p]));
+    const frag = document.createDocumentFragment();
+
+    frag.appendChild(el("p", "dash-note", "Prepare a design consultation for a client — a tentative quotation, an indicative timeline, a moodboard and selected gallery projects — then export it as a single landscape PDF and email it to the client."));
+
+    const projectS = document.createElement("select");
+    projectS.appendChild(el("option", null, projects.length ? "Select a client…" : "No clients yet — add one in Customer database"));
+    projects.forEach((p) => {
+      const o = el("option", null, `#${p.project_number} — ${p.client_name}` + (p.project_name ? ` — ${p.project_name}` : ""));
+      o.value = p.id;
+      projectS.appendChild(o);
+    });
+    const row = el("div", "admin-inline");
+    row.appendChild(field("Client", projectS));
+    frag.appendChild(row);
+
+    const wrap = el("div", "tk-consult");
+    frag.appendChild(wrap);
+    wrap.appendChild(el("p", "dash-note", "Select a client above to begin."));
+
+    projectS.addEventListener("change", () => renderConsult(projectS.value));
+
+    async function renderConsult(projectId) {
+      wrap.textContent = "";
+      if (!projectId) { wrap.appendChild(el("p", "dash-note", "Select a client above to begin.")); return; }
+      wrap.appendChild(el("p", "dash-note", "Loading…"));
+
+      const project = projectsById.get(projectId);
+      let spaces, consult;
+      try {
+        spaces = await loadProjectSpaces(projectId);
+        consult = await loadConsultation(projectId);
+      } catch (error) {
+        wrap.textContent = "";
+        wrap.appendChild(el("p", "admin-message is-error", `Could not load: ${error.message}. If this mentions a missing table, run migration 051-turnkey-consultation.sql.`));
+        return;
+      }
+      wrap.textContent = "";
+
+      const spaceNames = spaces.map((s) => s.name);
+      const state = {
+        gallery_ids: Array.isArray(consult.gallery_ids) ? consult.gallery_ids.slice() : [],
+        moodboard: Array.isArray(consult.moodboard) ? consult.moodboard.slice() : [],
+        timeline: TIMELINE_TASKS.map((task) => {
+          const saved = (consult.timeline_rows || []).find((r) => r && r.task === task);
+          return { task, start_date: saved ? saved.start_date || "" : "" };
+        }),
+      };
+
+      // Bind the email bridge to THIS client (the printable window calls back here).
+      window.__scSendConsultationPdf = async (base64, filename) => {
+        if (!project.client_email) return { ok: false, message: "No email on file for this client — add it in Customer database." };
+        try {
+          const { data, error } = await sb.functions.invoke("send-turnkey-consultation", { body: { project_id: projectId, pdf_base64: base64, filename: filename || `Consultation-${project.project_number}.pdf` } });
+          if (error) {
+            let detail = error.message;
+            try { const b = await error.context.json(); if (b && b.error) detail = b.error; } catch (_ignored) { /* no body */ }
+            throw new Error(detail);
+          }
+          if (data && data.error) throw new Error(data.error);
+          if (data && data.ok === false && data.reason === "no_email") return { ok: false, message: "No email on file for this client." };
+          if (data && data.ok === false && data.reason === "email_not_configured") return { ok: false, message: "Email isn't configured on the server (RESEND_API_KEY)." };
+          message(`Consultation emailed to ${project.client_email}.`);
+          return { ok: true, message: `Sent to ${project.client_email}.` };
+        } catch (e) {
+          return { ok: false, message: `Send failed: ${e.message}` };
+        }
+      };
+
+      // --- Table 1: tentative quotation ------------------------------------
+      const quoteBody = el("tbody");
+      const quoteRowsCtl = [];
+      const totalCell = el("strong", null, inrAmount(0));
+      const recomputeTotal = () => {
+        const t = quoteRowsCtl.reduce((a, c) => a + (Number(c.read().cost) || 0), 0);
+        totalCell.textContent = inrAmount(t);
+      };
+      const addQuoteRow = (dataRow) => {
+        const tr = el("tr");
+        const spaceSel = document.createElement("select");
+        const ph = el("option", null, spaceNames.length ? "Select space…" : "No spaces set");
+        ph.value = "";
+        spaceSel.appendChild(ph);
+        spaceNames.forEach((n) => { const o = el("option", null, n); o.value = n; if (dataRow && dataRow.space === n) o.selected = true; spaceSel.appendChild(o); });
+        if (dataRow && dataRow.space && !spaceNames.includes(dataRow.space)) { const o = el("option", null, dataRow.space); o.value = dataRow.space; o.selected = true; spaceSel.appendChild(o); }
+        const unitI = input("text", dataRow ? dataRow.unit || "" : ""); unitI.placeholder = "Unit / task";
+        const specI = input("text", dataRow ? dataRow.spec || "" : ""); specI.placeholder = "Specifications";
+        const costI = input("number", dataRow && dataRow.cost != null ? dataRow.cost : ""); costI.min = "0"; costI.step = "1"; costI.placeholder = "0";
+        costI.addEventListener("input", recomputeTotal);
+        const del = el("button", "tk-delete-link", "✕"); del.type = "button"; del.title = "Delete row";
+        del.addEventListener("click", () => { const i = quoteRowsCtl.findIndex((c) => c.tr === tr); if (i >= 0) quoteRowsCtl.splice(i, 1); tr.remove(); recomputeTotal(); });
+        [spaceSel, unitI, specI, costI].forEach((ctrl) => { const td = el("td"); td.appendChild(ctrl); tr.appendChild(td); });
+        const tdDel = el("td"); tdDel.appendChild(del); tr.appendChild(tdDel);
+        quoteBody.appendChild(tr);
+        quoteRowsCtl.push({ tr, read: () => ({ space: spaceSel.value, unit: unitI.value.trim(), spec: specI.value.trim(), cost: costI.value === "" ? null : Number(costI.value) }) });
+      };
+      const savedQuote = Array.isArray(consult.quotation_rows) ? consult.quotation_rows : [];
+      if (savedQuote.length) savedQuote.forEach(addQuoteRow); else addQuoteRow();
+      recomputeTotal();
+
+      const readQuote = () => quoteRowsCtl.map((c) => c.read()).filter((r) => r.space || r.unit || r.spec || r.cost != null);
+
+      const quoteSec = el("div", "admin-package");
+      quoteSec.appendChild(el("p", "eyebrow", "TABLE 1 · TENTATIVE QUOTATION"));
+      if (!spaceNames.length) quoteSec.appendChild(el("p", "dash-note", "This client has no spaces yet — set them up in the Quotations tab to populate the Space dropdown. You can still type the other columns."));
+      const qScroll = el("div", "table-scroll");
+      const qTable = el("table", "dash-table");
+      const qHead = el("thead"); const qhr = el("tr");
+      ["Space", "Unit / task", "Specifications", "Approx. cost (₹, excl. GST)", ""].forEach((h) => qhr.appendChild(el("th", null, h)));
+      qHead.appendChild(qhr);
+      qTable.append(qHead, quoteBody);
+      qScroll.appendChild(qTable);
+      quoteSec.appendChild(qScroll);
+      const addBtn = el("button", "admin-secondary", "+ Add row"); addBtn.type = "button";
+      addBtn.addEventListener("click", () => { addQuoteRow(); });
+      const totalLine = el("p", "dash-note"); totalLine.append(document.createTextNode("Total (approx., excl. GST): "), totalCell);
+      quoteSec.append(addBtn, totalLine);
+      wrap.appendChild(quoteSec);
+
+      // --- Table 2: tentative timeline -------------------------------------
+      const timelineCtl = [];
+      const tlSec = el("div", "admin-package");
+      tlSec.appendChild(el("p", "eyebrow", "TABLE 2 · TENTATIVE TIMELINE"));
+      const tlScroll = el("div", "table-scroll");
+      const tlTable = el("table", "dash-table");
+      const tlHead = el("thead"); const tlhr = el("tr");
+      ["Task", "Start date"].forEach((h) => tlhr.appendChild(el("th", null, h)));
+      tlHead.appendChild(tlhr);
+      const tlBody = el("tbody");
+      state.timeline.forEach((rowData) => {
+        const tr = el("tr");
+        tr.appendChild(el("td", null, rowData.task));
+        const dateI = input("date", rowData.start_date || "");
+        const td = el("td"); td.appendChild(dateI); tr.appendChild(td);
+        tlBody.appendChild(tr);
+        timelineCtl.push(() => ({ task: rowData.task, start_date: dateI.value || "" }));
+      });
+      tlTable.append(tlHead, tlBody);
+      tlScroll.appendChild(tlTable);
+      tlSec.appendChild(tlScroll);
+      wrap.appendChild(tlSec);
+      const readTimeline = () => timelineCtl.map((f) => f());
+
+      // --- Moodboard (up to 4 images) --------------------------------------
+      const moodSec = el("div", "admin-package");
+      moodSec.appendChild(el("p", "eyebrow", `MOODBOARD · UP TO ${MOODBOARD_MAX} IMAGES`));
+      const moodWrap = el("div", "tk-mood-grid");
+      moodSec.appendChild(moodWrap);
+      wrap.appendChild(moodSec);
+
+      // --- Gallery project picker ------------------------------------------
+      const galSec = el("div", "admin-package");
+      galSec.appendChild(el("p", "eyebrow", "GALLERY PROJECTS TO SHOWCASE"));
+      galSec.appendChild(el("p", "dash-note", "Tick the executed projects to feature (they fill the 2 gallery pages of the document)."));
+      const galWrap = el("div", "tk-gallery-pick");
+      if (!gallery.length) galWrap.appendChild(el("p", "dash-note", "No published gallery projects yet — add some in the Gallery admin."));
+      gallery.forEach((g) => {
+        const lab = el("label", "tk-gallery-item");
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = state.gallery_ids.includes(g.id);
+        cb.addEventListener("change", () => {
+          if (cb.checked) { if (!state.gallery_ids.includes(g.id)) state.gallery_ids.push(g.id); }
+          else { const i = state.gallery_ids.indexOf(g.id); if (i >= 0) state.gallery_ids.splice(i, 1); }
+        });
+        const thumb = el("div", "tk-gallery-thumb");
+        if (g.cover_photo) { const im = document.createElement("img"); im.src = galleryBucketUrl(g.cover_photo); thumb.appendChild(im); }
+        const cap = el("div", "tk-gallery-cap");
+        cap.appendChild(el("strong", null, g.title || "Untitled"));
+        if (g.location) cap.appendChild(el("span", null, g.location));
+        lab.append(cb, thumb, cap);
+        galWrap.appendChild(lab);
+      });
+      galSec.appendChild(galWrap);
+      wrap.appendChild(galSec);
+
+      // --- collect + persist -----------------------------------------------
+      const collect = () => ({ quotation: readQuote(), timeline: readTimeline(), gallery_ids: state.gallery_ids.slice(), moodboard: state.moodboard.slice() });
+      const persist = async () => {
+        const d = collect();
+        const payload = { project_id: projectId, quotation_rows: d.quotation, timeline_rows: d.timeline, gallery_ids: d.gallery_ids, moodboard: d.moodboard };
+        const { error } = await sb.from("turnkey_consultations").upsert(payload, { onConflict: "project_id" });
+        if (error) { message(`Could not save: ${error.message}`, true); return false; }
+        return true;
+      };
+
+      function renderMood() {
+        moodWrap.textContent = "";
+        state.moodboard.forEach((path, idx) => {
+          const cell = el("div", "tk-mood-cell");
+          const img = document.createElement("img"); img.src = consultBucketUrl(path); cell.appendChild(img);
+          const rm = el("button", "tk-delete-link", "✕"); rm.type = "button"; rm.title = "Remove image";
+          rm.addEventListener("click", async () => {
+            rm.disabled = true;
+            try { await sb.storage.from(CONSULTATION_BUCKET).remove([path]); } catch (_ignored) { /* best effort */ }
+            state.moodboard.splice(idx, 1);
+            await persist();
+            renderMood();
+          });
+          cell.appendChild(rm);
+          moodWrap.appendChild(cell);
+        });
+        if (state.moodboard.length < MOODBOARD_MAX) {
+          const add = el("label", "tk-mood-add");
+          add.appendChild(el("span", null, "+ Add image"));
+          const fi = document.createElement("input"); fi.type = "file"; fi.accept = "image/*"; fi.style.display = "none";
+          fi.addEventListener("change", async () => {
+            const file = fi.files && fi.files[0];
+            if (!file) return;
+            if (state.moodboard.length >= MOODBOARD_MAX) return;
+            add.classList.add("is-busy"); add.querySelector("span").textContent = "Uploading…";
+            const safe = file.name.replace(/[^\w.\-]+/g, "_");
+            const path = `${projectId}/${Date.now()}-${safe}`;
+            const { error } = await sb.storage.from(CONSULTATION_BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: false });
+            add.classList.remove("is-busy");
+            if (error) { renderMood(); return void message(`Image upload failed: ${error.message}`, true); }
+            state.moodboard.push(path);
+            await persist();
+            renderMood();
+          });
+          add.appendChild(fi);
+          moodWrap.appendChild(add);
+        }
+      }
+      renderMood();
+
+      // --- actions ----------------------------------------------------------
+      const actions = el("div", "admin-inline");
+      const saveBtn = el("button", "admin-primary", "Save consultation"); saveBtn.type = "button";
+      saveBtn.addEventListener("click", async () => { saveBtn.disabled = true; const ok = await persist(); saveBtn.disabled = false; if (ok) message("Consultation saved."); });
+      const openBtn = el("button", "admin-secondary", "Open consultation document"); openBtn.type = "button";
+      openBtn.addEventListener("click", async () => {
+        await persist();
+        const data = collect();
+        const galForDoc = gallery.map((g) => ({ id: g.id, title: g.title, location: g.location, category: g.category, _cover: g.cover_photo ? galleryBucketUrl(g.cover_photo) : "" }));
+        const moodUrls = data.moodboard.map(consultBucketUrl);
+        openConsultationWindow(seller, project, data, galForDoc, moodUrls, { docCode: consultDocCode(project.project_number), dateLabel: longDateNow() });
+      });
+      actions.append(saveBtn, openBtn);
+      wrap.appendChild(actions);
+      wrap.appendChild(el("p", "admin-hint", "The document is emailed to the client's email on file, as a single landscape PDF. Open it, then use “Email to customer”."));
+    }
+
+    return frag;
+  }
+
+  // ------------------------------------------------------------------
   // Headline counts
   // ------------------------------------------------------------------
 
@@ -1263,6 +1739,7 @@
     receipts: receiptsPanel,
     documents: documentsPanel,
     quotations: quotationsPanel,
+    consultation: consultationPanel,
   };
 
   async function show(tab) {
