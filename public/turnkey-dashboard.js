@@ -1237,6 +1237,14 @@
     "Procurement assistance",
   ];
   const CONSULT_PILLARS = ["Sensory harmony", "Automation inclusivity", "Sustainable design"];
+  const CONSULT_WORKFLOW = [
+    { title: "Design consultation", desc: "A free consultation to understand your requirements and run a feasibility check." },
+    { title: "Design initiation", desc: "Thorough requirement study with a questionnaire." },
+    { title: "Design iteration", desc: "3D visualisation of the space with renders and material sampling." },
+    { title: "Design sign off", desc: "Final sign-off of the design, specifications and drawings as a contract." },
+    { title: "Execution phase", desc: "Material procurement, manufacturing / fabrication and quality control." },
+    { title: "Handover", desc: "Final snag and handover." },
+  ];
   const CONSULT_TERMS = [
     "This document is a consultation. Costs shown are approximate and exclude GST.",
     "Final pricing is confirmed in a detailed quotation after site measurement and design sign-off.",
@@ -1258,7 +1266,7 @@
   async function loadGalleryItems() {
     const { data, error } = await sb
       .from("turnkey_gallery")
-      .select("id, title, category, location, cover_photo, published, sort_order, created_at")
+      .select("id, title, category, location, cover_photo, photos, published, sort_order, created_at")
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
     if (error) throw error;
@@ -1292,19 +1300,29 @@
     const location = project.site_address || seller.city || "";
 
     const sel = (data.gallery_ids || []).map((id) => gallery.find((g) => g.id === id)).filter(Boolean);
-    const gcard = (g) => `<figure class="gcard"><div class="gimg">${g._cover ? `<img src="${esc(g._cover)}" crossorigin="anonymous" alt="">` : `<span class="gph">${esc(g.title || "Project")}</span>`}</div><figcaption>${esc(g.title || "Untitled")}${g.location ? `<span>${esc(g.location)}</span>` : ""}</figcaption></figure>`;
+    // Each project shows up to 5 of its photos (falls back to the cover).
+    const gimgs = (g) => {
+      const ph = ((g._photos && g._photos.length ? g._photos : (g._cover ? [g._cover] : []))).slice(0, 5);
+      if (!ph.length) return `<div class="gph-row"><span class="gph">${esc(g.title || "Project")}</span></div>`;
+      return `<div class="gstrip">${ph.map((u) => `<div class="gcell"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div>`).join("")}</div>`;
+    };
+    const gproj = (g) => `<div class="gproj"><div class="gproj-head"><strong>${esc(g.title || "Untitled")}</strong>${g.location ? `<span>${esc(g.location)}</span>` : ""}</div>${gimgs(g)}</div>`;
     let galleryPages;
     if (sel.length) {
       const half = Math.ceil(sel.length / 2);
       const chunks = sel.length > half ? [sel.slice(0, half), sel.slice(half)] : [sel];
-      galleryPages = chunks.map((chunk, i) => `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered${i ? " (continued)" : ""}</h2><div class="ggrid">${chunk.map(gcard).join("")}</div></section>`).join("");
+      galleryPages = chunks.map((chunk, i) => `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered${i ? " (continued)" : ""}</h2><div class="gprojs">${chunk.map(gproj).join("")}</div></section>`).join("");
     } else {
       galleryPages = `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered</h2><p class="muted">Selected gallery projects will appear here.</p></section>`;
     }
 
     const scopeList = CONSULT_SCOPE.map((s) => `<li>${esc(s)}</li>`).join("");
     const pillars = CONSULT_PILLARS.map((p) => `<div class="pillar"><span>${esc(p)}</span></div>`).join("");
-    const moodGrid = moodUrls.length ? `<div class="mgrid">${moodUrls.map((u) => `<div class="mcell"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div>`).join("")}</div>` : `<p class="muted">No moodboard images added.</p>`;
+    const workflowCards = CONSULT_WORKFLOW.map((w, i) => `<div class="wfcard"><div class="wfnum">${i + 1}</div><div class="wfbody"><strong>${esc(w.title)}</strong><p>${esc(w.desc)}</p></div></div>`).join("");
+    // One full-bleed slide per uploaded moodboard image.
+    const moodPages = moodUrls.length
+      ? moodUrls.map((u) => `<section class="page moodpage"><div class="moodfull"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div></section>`).join("")
+      : `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Moodboard</span></div><h2>Moodboard</h2><p class="muted">No moodboard images added.</p></section>`;
 
     const qrows = (data.quotation || []).filter((r) => r.space || r.unit || r.spec || (r.cost != null && r.cost !== ""));
     const qtotal = qrows.reduce((t, r) => t + (Number(r.cost) || 0), 0);
@@ -1323,7 +1341,7 @@
   .toolbar button { padding: 9px 16px; border: 0; border-radius: 6px; background: #fff; color: #0c4444; font: 600 13px "DM Sans", sans-serif; cursor: pointer; }
   .toolbar .muted { color: #cfe3e3; font-size: 12px; }
   .doc { margin: 18px auto; width: 1050px; max-width: 96%; }
-  .page { position: relative; background: #fff; width: 100%; aspect-ratio: 297 / 210; padding: 38px 46px; margin: 0 auto 18px; box-shadow: 0 2px 16px rgba(0,0,0,.08); overflow: hidden; page-break-after: always; break-after: page; display: flex; flex-direction: column; }
+  .page { position: relative; background: #fff; width: 100%; aspect-ratio: 16 / 9; padding: 34px 44px; margin: 0 auto 18px; box-shadow: 0 2px 16px rgba(0,0,0,.08); overflow: hidden; page-break-after: always; break-after: page; display: flex; flex-direction: column; }
   .page:last-child { page-break-after: auto; break-after: auto; }
   .phead { display: flex; justify-content: space-between; font: 600 10px "DM Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: #8a8f8c; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 18px; }
   .page h2 { margin: 0 0 14px; font: 500 26px "Playfair Display", Georgia, serif; letter-spacing: -.02em; color: #6f222a; }
@@ -1338,22 +1356,29 @@
   .cover-grid h4 { margin: 0 0 6px; font: 600 10px "DM Mono", monospace; letter-spacing: .14em; text-transform: uppercase; color: #9fc6c0; }
   .cover-grid p { margin: 2px 0; font-size: 15px; }
   .cover-foot { font-size: 11px; color: #9fc6c0; border-top: 1px solid rgba(255,255,255,.2); padding-top: 12px; }
-  .ggrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-  .gcard { margin: 0; }
-  .gimg { position: relative; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; background: #ece4d8; }
-  .gimg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .gph { position: absolute; inset: 0; display: grid; place-items: center; color: #9a8f7d; font: 500 13px "Playfair Display", serif; }
-  .gcard figcaption { margin-top: 8px; font: 600 13px "DM Sans", sans-serif; color: #222; display: flex; flex-direction: column; }
-  .gcard figcaption span { font-weight: 400; font-size: 11px; color: #777; }
+  .gprojs { display: flex; flex-direction: column; gap: 20px; flex: 1; justify-content: center; }
+  .gproj-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .gproj-head strong { font: 600 15px "DM Sans", sans-serif; color: #222; }
+  .gproj-head span { font-size: 12px; color: #777; }
+  .gstrip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .gcell { aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden; background: #ece4d8; }
+  .gcell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gph-row { display: grid; place-items: center; height: 90px; border-radius: 8px; background: #f3ece2; }
+  .gph { color: #9a8f7d; font: 500 13px "Playfair Display", serif; }
   .scope-two { display: flex; gap: 48px; flex: 1; }
   .scope-two > div { flex: 1; }
   ul.scope { columns: 2; margin: 0; padding-left: 18px; font-size: 14px; }
   ul.scope li { margin-bottom: 9px; }
   .pillars { display: flex; flex-direction: column; gap: 12px; }
   .pillar { background: #f6efe9; border-left: 3px solid #6f222a; padding: 12px 14px; border-radius: 6px; font: 500 15px "Playfair Display", serif; color: #0c4444; }
-  .mgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; flex: 1; }
-  .mcell { border-radius: 10px; overflow: hidden; background: #ece4d8; }
-  .mcell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .wfgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; flex: 1; align-content: center; }
+  .wfcard { display: flex; gap: 12px; background: #f6efe9; border-radius: 8px; padding: 14px 16px; }
+  .wfnum { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: #6f222a; color: #fff; display: grid; place-items: center; font: 600 13px "DM Mono", monospace; }
+  .wfbody strong { display: block; font: 600 14px "DM Sans", sans-serif; color: #0c4444; margin-bottom: 3px; }
+  .wfbody p { margin: 0; font-size: 12px; color: #555; line-height: 1.45; }
+  .moodpage { padding: 0; }
+  .moodfull { flex: 1; display: flex; align-items: center; justify-content: center; background: #15110e; }
+  .moodfull img { width: 100%; height: 100%; object-fit: contain; display: block; }
   table.data { width: 100%; border-collapse: collapse; margin-bottom: 8px; table-layout: fixed; }
   table.data th, table.data td { padding: 9px 12px; border-bottom: 1px solid #eceae6; text-align: left; vertical-align: top; font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
   table.data th { font: 600 10px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: #777; background: #faf8f5; }
@@ -1363,7 +1388,8 @@
   .terms-h { margin-top: 22px; }
   ul.terms { margin: 0; padding-left: 18px; color: #555; font-size: 12px; }
   ul.terms li { margin-bottom: 6px; }
-  @media print { body { background: #fff; } .toolbar { display: none; } .doc { width: auto; margin: 0; max-width: none; } .page { box-shadow: none; margin: 0; aspect-ratio: auto; } }
+  @page { size: 338.667mm 190.5mm; margin: 0; }
+  @media print { body { background: #fff; } .toolbar { display: none; } .doc { width: auto; margin: 0; max-width: none; } .page { box-shadow: none; margin: 0; } }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script></head><body>
   <div class="toolbar">
@@ -1392,9 +1418,11 @@
       </div>
     </section>
     <section class="page">
-      <div class="phead"><span>${esc(sellerName)}</span><span>Moodboard</span></div>
-      <h2>Moodboard</h2>${moodGrid}
+      <div class="phead"><span>${esc(sellerName)}</span><span>How we work</span></div>
+      <h2>Our workflow</h2>
+      <div class="wfgrid">${workflowCards}</div>
     </section>
+    ${moodPages}
     <section class="page">
       <div class="phead"><span>${esc(sellerName)}</span><span>Tentative quotation</span></div>
       <h2>Tentative quotation</h2>
@@ -1427,7 +1455,7 @@
         btn.disabled = true;
         status.textContent = "Generating PDF…";
         try {
-          var opt = { margin: 6, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "mm", format: "a4", orientation: "landscape" }, pagebreak: { mode: ["css", "legacy"] } };
+          var opt = { margin: 0, image: { type: "jpeg", quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "mm", format: [338.667, 190.5], orientation: "landscape" }, pagebreak: { mode: ["css", "legacy"] } };
           var uri = await window.html2pdf().set(opt).from(document.querySelector(".doc")).outputPdf("datauristring");
           var b64 = uri.indexOf(",") >= 0 ? uri.split(",")[1] : uri;
           status.textContent = "Sending…";
@@ -1687,7 +1715,7 @@
       openBtn.addEventListener("click", async () => {
         await persist();
         const data = collect();
-        const galForDoc = gallery.map((g) => ({ id: g.id, title: g.title, location: g.location, category: g.category, _cover: g.cover_photo ? galleryBucketUrl(g.cover_photo) : "" }));
+        const galForDoc = gallery.map((g) => ({ id: g.id, title: g.title, location: g.location, category: g.category, _cover: g.cover_photo ? galleryBucketUrl(g.cover_photo) : "", _photos: (Array.isArray(g.photos) ? g.photos : []).slice(0, 5).map(galleryBucketUrl) }));
         const moodUrls = data.moodboard.map(consultBucketUrl);
         openConsultationWindow(seller, project, data, galForDoc, moodUrls, { docCode: consultDocCode(project.project_number), dateLabel: longDateNow() });
       });
