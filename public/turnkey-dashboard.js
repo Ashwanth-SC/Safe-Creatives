@@ -1328,10 +1328,12 @@
       galleryPages = `<section class="page"><div class="phead"><span>${esc(sellerName)}</span><span>Selected projects</span></div><h2>Projects we have delivered</h2><p class="muted">Selected gallery projects will appear here.</p>${galleryLinks}</section>`;
     }
 
-    const scopeList = CONSULT_SCOPE.map((s) => `<li>${esc(s)}</li>`).join("");
-    const pillars = CONSULT_PILLARS.map((p) => `<div class="pillar"><span>${esc(p)}</span></div>`).join("");
-    const workflowCards = CONSULT_WORKFLOW.map((w, i) => `<div class="wfcard"><div class="wfnum">${i + 1}</div><div class="wfbody"><strong>${esc(w.title)}</strong><p>${esc(w.desc)}</p></div></div>`).join("");
-    const strengthCards = CONSULT_STRENGTHS.map((s) => `<div class="featcard"><strong>${esc(s.title)}</strong><p>${esc(s.desc)}</p></div>`).join("");
+    // Scope of work, What sets us apart and Our workflow share ONE compact
+    // 3-column slide (merged).
+    const scopeCompact = CONSULT_SCOPE.map((s) => `<li>${esc(s)}</li>`).join("");
+    const pillTags = CONSULT_PILLARS.map((p) => `<span>${esc(p)}</span>`).join("");
+    const featCompact = CONSULT_STRENGTHS.map((s) => `<li><strong>${esc(s.title)}</strong><p>${esc(s.desc)}</p></li>`).join("");
+    const wfCompact = CONSULT_WORKFLOW.map((w, i) => `<li><span class="n">${i + 1}</span><div><strong>${esc(w.title)}</strong><p>${esc(w.desc)}</p></div></li>`).join("");
     // One full-bleed slide per uploaded moodboard image.
     const moodPages = moodUrls.length
       ? moodUrls.map((u) => `<section class="page moodpage"><div class="moodfull"><img src="${esc(u)}" crossorigin="anonymous" alt=""></div></section>`).join("")
@@ -1378,21 +1380,21 @@
   .gcell img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .gph-row { display: grid; place-items: center; height: 90px; border-radius: 8px; background: #f3ece2; }
   .gph { color: #9a8f7d; font: 500 13px "Playfair Display", serif; }
-  .scope-two { display: flex; gap: 48px; flex: 1; }
-  .scope-two > div { flex: 1; }
-  ul.scope { columns: 2; margin: 0; padding-left: 18px; font-size: 14px; }
-  ul.scope li { margin-bottom: 9px; }
-  .pillars { display: flex; flex-direction: column; gap: 12px; }
-  .pillar { background: #f6efe9; border-left: 3px solid #6f222a; padding: 12px 14px; border-radius: 6px; font: 500 15px "Playfair Display", serif; color: #0c4444; }
-  .wfgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; flex: 1; align-content: center; }
-  .wfcard { display: flex; gap: 12px; background: #f6efe9; border-radius: 8px; padding: 14px 16px; }
-  .wfnum { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: #6f222a; color: #fff; display: grid; place-items: center; font: 600 13px "DM Mono", monospace; }
-  .wfbody strong { display: block; font: 600 14px "DM Sans", sans-serif; color: #0c4444; margin-bottom: 3px; }
-  .wfbody p { margin: 0; font-size: 12px; color: #555; line-height: 1.45; }
-  .featgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; flex: 1; align-content: center; }
-  .featcard { background: #f6efe9; border-radius: 8px; padding: 14px 16px; }
-  .featcard strong { display: block; font: 600 14px "DM Sans", sans-serif; color: #6f222a; margin-bottom: 4px; }
-  .featcard p { margin: 0; font-size: 12px; color: #555; line-height: 1.45; }
+  /* Merged protocols slide: Scope of work + What sets us apart + Our workflow */
+  .merge3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 34px; flex: 1; }
+  .mcol h3 { margin: 0 0 9px; font: 600 11px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #0c4444; }
+  .mcol h3.mt { margin-top: 18px; }
+  ul.scope-compact { margin: 0; padding-left: 16px; font-size: 12px; color: #333; }
+  ul.scope-compact li { margin-bottom: 6px; }
+  .pill-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+  .pill-tags span { background: #f6efe9; border-left: 2px solid #6f222a; padding: 5px 9px; border-radius: 4px; font: 500 11px "Playfair Display", serif; color: #0c4444; }
+  ul.feat-compact, ol.wf-compact { margin: 0; padding: 0; list-style: none; }
+  ul.feat-compact li { margin-bottom: 11px; }
+  ul.feat-compact strong { display: block; font: 600 12px "DM Sans", sans-serif; color: #6f222a; }
+  ol.wf-compact li { display: flex; gap: 8px; margin-bottom: 10px; }
+  ol.wf-compact strong { display: block; font: 600 12px "DM Sans", sans-serif; color: #0c4444; }
+  ol.wf-compact .n { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; background: #6f222a; color: #fff; font: 600 10px "DM Mono", monospace; display: grid; place-items: center; margin-top: 1px; }
+  .mcol p { margin: 1px 0 0; font-size: 10.5px; color: #666; line-height: 1.35; }
   .page a { color: #6f222a; text-decoration: underline; }
   .glinks { display: flex; gap: 26px; margin-top: 14px; font: 600 12px "DM Sans", sans-serif; }
   .tc-link { margin: 12px 0 0; font-size: 12px; }
@@ -1431,25 +1433,22 @@
     ${galleryPages}
     <section class="page">
       <div class="phead"><span>${esc(sellerName)}</span><span>Scope &amp; approach</span></div>
-      <h2>Our protocols &amp; scope of work</h2>
-      <p class="lead">Turnkey solutions for interior design and execution — end to end, under one roof.</p>
-      <div class="scope-two">
-        <div><h3>Scope of work</h3><ul class="scope">${scopeList}</ul></div>
-        <div><h3>Key design pillars</h3><div class="pillars">${pillars}</div></div>
+      <h2>Our protocols &amp; approach</h2>
+      <div class="merge3">
+        <div class="mcol">
+          <h3>Scope of work</h3><ul class="scope-compact">${scopeCompact}</ul>
+          <h3 class="mt">Key design pillars</h3><div class="pill-tags">${pillTags}</div>
+        </div>
+        <div class="mcol">
+          <h3>What sets us apart</h3><ul class="feat-compact">${featCompact}</ul>
+        </div>
+        <div class="mcol">
+          <h3>Our workflow</h3><ol class="wf-compact">${wfCompact}</ol>
+        </div>
       </div>
     </section>
-    <section class="page">
-      <div class="phead"><span>${esc(sellerName)}</span><span>Why Safe Creatives</span></div>
-      <h2>What sets us apart</h2>
-      <div class="featgrid">${strengthCards}</div>
-    </section>
-    <section class="page">
-      <div class="phead"><span>${esc(sellerName)}</span><span>How we work</span></div>
-      <h2>Our workflow</h2>
-      <div class="wfgrid">${workflowCards}</div>
-    </section>
     ${moodPages}
-    <section class="page">
+    <section class="page qsrc" data-seller="${esc(sellerName)}">
       <div class="phead"><span>${esc(sellerName)}</span><span>Tentative quotation</span></div>
       <h2>Tentative quotation</h2>
       <table class="data"><colgroup><col style="width:14%"><col style="width:22%"><col style="width:44%"><col style="width:20%"></colgroup>
@@ -1484,6 +1483,63 @@
           return (im.complete && im.naturalWidth) ? null : new Promise(function (res) { im.addEventListener("load", res); im.addEventListener("error", res); });
         }));
       }
+      // Split the quotation across as many 16:9 slides as its rows need (the
+      // slide is a fixed-height box with hidden overflow, so a long quotation
+      // would otherwise be clipped to a single slide). Idempotent.
+      function paginateQuotation() {
+        if (window.__qPaginated) return;
+        var src = document.querySelector(".qsrc");
+        if (!src) { window.__qPaginated = true; return; }
+        var parent = src.parentNode;
+        var seller = src.getAttribute("data-seller") || "";
+        var table = src.querySelector("table");
+        var cg = table.querySelector("colgroup");
+        var colgroup = cg ? cg.outerHTML : "";
+        var theadHTML = table.querySelector("thead").outerHTML;
+        var rows = [].slice.call(table.querySelectorAll("tbody > tr"));
+        var tf = table.querySelector("tfoot");
+        var tfootHTML = tf ? tf.outerHTML : "";
+        var noteEl = src.querySelector(".note");
+        var noteHTML = noteEl ? noteEl.outerHTML : "";
+        function makePage(cont) {
+          var sec = document.createElement("section");
+          sec.className = "page";
+          sec.innerHTML = '<div class="phead"><span>' + seller + '</span><span>Tentative quotation</span></div>'
+            + '<h2>Tentative quotation' + (cont ? " (continued)" : "") + "</h2>"
+            + '<table class="data">' + colgroup + theadHTML + "<tbody></tbody></table>";
+          parent.insertBefore(sec, src);
+          return sec;
+        }
+        var made = [];
+        var cur = makePage(false);
+        var tb = cur.querySelector("tbody");
+        for (var i = 0; i < rows.length; i++) {
+          tb.appendChild(rows[i]);
+          if (cur.scrollHeight > cur.clientHeight && tb.children.length > 1) {
+            tb.removeChild(rows[i]);
+            made.push(cur);
+            cur = makePage(true);
+            tb = cur.querySelector("tbody");
+            tb.appendChild(rows[i]);
+          }
+        }
+        made.push(cur);
+        // Total row + note belong on the last page; if they overflow, add a page.
+        var last = made[made.length - 1];
+        var lastTable = last.querySelector("table");
+        if (tfootHTML) lastTable.insertAdjacentHTML("beforeend", tfootHTML);
+        if (noteHTML) last.insertAdjacentHTML("beforeend", noteHTML);
+        if (last.scrollHeight > last.clientHeight) {
+          var f = lastTable.querySelector("tfoot"); if (f) f.remove();
+          var n = last.querySelector(".note"); if (n) n.remove();
+          var extra = makePage(true);
+          if (tfootHTML) extra.querySelector("table").insertAdjacentHTML("beforeend", tfootHTML);
+          if (noteHTML) extra.insertAdjacentHTML("beforeend", noteHTML);
+        }
+        parent.removeChild(src);
+        window.__qPaginated = true;
+      }
+      (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(paginateQuotation);
       // Render EACH .page to its own canvas and place it as one full PDF page —
       // this guarantees one slide per page (html2pdf's auto-slicing drifted and
       // straddled slides). Returns a jsPDF instance.
@@ -1491,6 +1547,7 @@
         var jsPDF = window.jspdf.jsPDF;
         var doc = document.querySelector(".doc");
         if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) { /* ignore */ } }
+        paginateQuotation();
         await waitForImages(doc);
         var pages = [].slice.call(doc.querySelectorAll(".page"));
         var pdf = new jsPDF({ unit: "mm", format: [PW, PH], orientation: "landscape" });
