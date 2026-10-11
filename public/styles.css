@@ -42,14 +42,6 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:"DM San
 .primary-nav a { color:var(--ink); font-size:13px; letter-spacing:.01em; text-decoration:none; position:relative; padding:8px 0; }
 .primary-nav a::after { content:""; position:absolute; height:1px; left:0; right:0; bottom:3px; background:currentColor; transform:scaleX(0); transform-origin:right; transition:transform .25s ease; }
 .primary-nav a:hover::after { transform:scaleX(1); transform-origin:left; }
-.nav-cta { display:inline-flex; align-items:center; padding:9px 18px; border-radius:999px; background:#6f222a; color:#fff; font-size:13px; text-decoration:none; white-space:nowrap; transition:background .2s; }
-.nav-cta:hover { background:#0c4444; color:#fff; }
-.primary-nav a.nav-cta::after { display:none; }
-@media (max-width:640px) { .nav-cta { padding:7px 13px; font-size:11px; } }
-/* Tablet range: compact the nav so the "Get in touch" button fits without
-   wrapping the brand. */
-@media (min-width:641px) and (max-width:980px) { .primary-nav { gap:18px; } .primary-nav a { font-size:12px; } .nav-cta { padding:8px 14px; font-size:12px; } .brand { letter-spacing:.1em; } }
-@media (min-width:641px) and (max-width:820px) { .primary-nav { gap:13px; } .brand { letter-spacing:.06em; } }
 .account-link { justify-self:end; display:grid; width:38px; height:38px; border:1px solid var(--ink); border-radius:50%; place-items:center; color:var(--ink); transition:background .2s,color .2s; }
 .account-link:hover { color:var(--paper); background:var(--ink); }
 .account-link svg { width:18px; fill:none; stroke:currentColor; stroke-width:1.35; stroke-linecap:round; }
