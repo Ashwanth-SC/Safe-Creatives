@@ -67,6 +67,18 @@ form.addEventListener('submit', async (event) => {
 // "View more" button to the full gallery. The section stays hidden if there
 // are no published projects (or on error).
 // ---------------------------------------------------------------------------
+// A cross-page link like index.html's "Get in touch" lands here as
+// turnkey-solutions.html#enquiry. The hero images and the async gallery
+// section shift the page after the browser's initial jump, so re-apply the
+// hash once content has settled.
+function scrollToHash() {
+  if (!location.hash) return;
+  let target;
+  try { target = document.querySelector(location.hash); } catch (e) { return; }
+  if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
+}
+window.addEventListener('load', () => setTimeout(scrollToHash, 60));
+
 (function () {
   const section = document.getElementById('tk-gallery');
   const grid = document.getElementById('tk-gallery-grid');
@@ -74,7 +86,7 @@ form.addEventListener('submit', async (event) => {
   const photoUrl = (path) => sb.storage.from('turnkey-gallery').getPublicUrl(path).data.publicUrl;
 
   (async () => {
-    let items = [];
+    let items = null;
     try {
       const { data, error } = await sb
         .from('turnkey_gallery')
@@ -86,9 +98,9 @@ form.addEventListener('submit', async (event) => {
       if (error) throw error;
       items = data || [];
     } catch (e) {
-      return; // leave the section hidden
+      items = null; // leave the section hidden
     }
-    if (!items.length) return;
+    if (!items || !items.length) { scrollToHash(); return; }
 
     grid.textContent = '';
     items.forEach((it) => {
@@ -126,5 +138,6 @@ form.addEventListener('submit', async (event) => {
       grid.appendChild(a);
     });
     section.hidden = false;
+    scrollToHash(); // the gallery just changed the page height — re-anchor
   })();
 })();
