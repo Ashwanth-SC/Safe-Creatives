@@ -61,7 +61,7 @@
     // (starting prices are being finalised and are set on the package page).
     const meta = document.createElement("p");
     meta.className = "package-meta";
-    meta.textContent = "Fully customisable · Installed in ~20 days · 5-year warranty";
+    meta.textContent = "Fully customisable · Installed in ~20 days · 10-year warranty";
 
     const cta = document.createElement("strong");
     cta.textContent = "Explore package ↗︎";

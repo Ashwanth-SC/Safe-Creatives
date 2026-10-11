@@ -61,3 +61,70 @@ form.addEventListener('submit', async (event) => {
     submit.textContent = 'Submit enquiry ↗︎';
   }
 });
+
+// ---------------------------------------------------------------------------
+// Gallery preview — the first 4 published turnkey_gallery projects, with a
+// "View more" button to the full gallery. The section stays hidden if there
+// are no published projects (or on error).
+// ---------------------------------------------------------------------------
+(function () {
+  const section = document.getElementById('tk-gallery');
+  const grid = document.getElementById('tk-gallery-grid');
+  if (!section || !grid || typeof sb === 'undefined') return;
+  const photoUrl = (path) => sb.storage.from('turnkey-gallery').getPublicUrl(path).data.publicUrl;
+
+  (async () => {
+    let items = [];
+    try {
+      const { data, error } = await sb
+        .from('turnkey_gallery')
+        .select('id, title, category, location, cover_photo')
+        .eq('published', true)
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(4);
+      if (error) throw error;
+      items = data || [];
+    } catch (e) {
+      return; // leave the section hidden
+    }
+    if (!items.length) return;
+
+    grid.textContent = '';
+    items.forEach((it) => {
+      const a = document.createElement('a');
+      a.className = 'tk-gcard';
+      a.href = 'gallery.html';
+      const media = document.createElement('div');
+      media.className = 'tk-gcard-media';
+      if (it.cover_photo) {
+        const img = document.createElement('img');
+        img.src = photoUrl(it.cover_photo);
+        img.alt = it.title || 'Project';
+        img.loading = 'lazy';
+        media.appendChild(img);
+      }
+      const body = document.createElement('div');
+      body.className = 'tk-gcard-body';
+      if (it.category) {
+        const cat = document.createElement('span');
+        cat.className = 'tk-gcard-cat';
+        cat.textContent = it.category;
+        body.appendChild(cat);
+      }
+      const h = document.createElement('h3');
+      h.className = 'tk-gcard-title';
+      h.textContent = it.title || 'Untitled';
+      body.appendChild(h);
+      if (it.location) {
+        const loc = document.createElement('span');
+        loc.className = 'tk-gcard-loc';
+        loc.textContent = it.location;
+        body.appendChild(loc);
+      }
+      a.append(media, body);
+      grid.appendChild(a);
+    });
+    section.hidden = false;
+  })();
+})();
