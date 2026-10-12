@@ -130,13 +130,16 @@ Deno.serve(async (req) => {
       <p>Hi ${prefix},</p>
       <p>${bodyHtml}</p>
       <p>Warm regards,<br/>${esc(sellerName)}</p>
+      <p style="font-size:12px;color:#8a8f88;border-top:1px solid #eee;margin-top:20px;padding-top:12px">
+        You're receiving this because you registered with ${esc(sellerName)}. This mailbox is not monitored — to reach us, email
+        <a href="mailto:ashwanth@safecreatives.com">ashwanth@safecreatives.com</a> or call / WhatsApp +91&nbsp;97898&nbsp;90877.
+        If you'd prefer not to receive emails like this, email us and we'll remove you right away.
+      </p>
     </div>`;
   };
-  const emailObj = (to: string) => {
-    const o: Record<string, unknown> = { from, to: [to], subject, html: htmlFor(to) };
-    if (seller?.email) o.reply_to = String(seller.email);
-    return o;
-  };
+  // Sent from a no-reply address, so no reply_to — recipients are directed to
+  // email / call / WhatsApp in the body and footer instead.
+  const emailObj = (to: string) => ({ from, to: [to], subject, html: htmlFor(to) });
 
   // Preview: one email to the tester (uses that address's greeting).
   if (testEmail) {

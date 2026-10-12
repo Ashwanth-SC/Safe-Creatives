@@ -1104,6 +1104,35 @@
     const frag = document.createDocumentFragment();
     const myEmail = SC.profile?.email || SC.session?.user?.email || "";
 
+    // Default copy per audience. "Hi <name>," and the sign-off / unsubscribe
+    // line are added automatically by the send-marketing-email function, so
+    // these are just the middle of the message. Editable before sending.
+    const DEFAULTS = {
+      abandoned_cart: {
+        subject: "Your sensory room is still waiting for you",
+        body:
+          "We noticed you started designing your sensory room with us but didn't quite finish — and we didn't want you to miss out.\n\n" +
+          "Good news: your selection is still saved, so you can pick up right where you left off whenever you're ready.\n\n" +
+          "A few reasons our customers love our Sensory rooms:\n" +
+          "• Fully customisable, installed in as little as 20 days\n" +
+          "• Backed by a 10-year warranty\n" +
+          "• Up to 70% resale & buy-back when you upgrade\n\n" +
+          "Have a question, or want a quick consultation to tailor the space to you? Email us at ashwanth@safecreatives.com or call / WhatsApp us at +91 97898 90877 — we're happy to help.\n\n" +
+          "Ready to continue? Log in at safecreatives.com to complete your order.",
+      },
+      registered_no_activity: {
+        subject: "A calmer, more personal space — designed around you",
+        body:
+          "Thank you for joining Safe Creatives — we're really glad you're here.\n\n" +
+          "Our sensory rooms are premium, package-based interiors built around comfort, calm and inclusivity — functional, beautiful spaces that can be installed in as little as 20 days.\n\n" +
+          "A few reasons our customers love our Sensory rooms:\n" +
+          "• Thoughtfully curated packages, fully customisable to you\n" +
+          "• Installed in ~20 days, backed by a 10-year warranty\n" +
+          "• Up to 70% resale & buy-back whenever you choose to upgrade\n\n" +
+          "Whenever you're ready to explore, browse our packages at safecreatives.com — or email us at ashwanth@safecreatives.com or call / WhatsApp us at +91 97898 90877 for a free consultation. We'd love to help you create a space that feels just right.",
+      },
+    };
+
     frag.appendChild(
       el(
         "p",
@@ -1189,7 +1218,17 @@
       }
     }
 
-    catSel.addEventListener("change", refreshCount);
+    const applyDefaults = () => {
+      const d = DEFAULTS[catSel.value];
+      if (d) {
+        subjectI.value = d.subject;
+        bodyT.value = d.body;
+      }
+    };
+    catSel.addEventListener("change", () => {
+      applyDefaults();
+      refreshCount();
+    });
 
     testBtn.addEventListener("click", async () => {
       if (!myEmail) return void (statusP.textContent = "No email on your account to send a test to.");
@@ -1228,6 +1267,7 @@
       }
     });
 
+    applyDefaults();
     refreshCount();
     return frag;
   }
