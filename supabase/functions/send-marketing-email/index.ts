@@ -43,6 +43,20 @@ const chunk = <T>(arr: T[], n: number): T[][] => {
   return out;
 };
 
+// One-click unsubscribe token — HMAC-SHA256(email, service role key). The
+// public `unsubscribe` function recomputes it the same way to verify the link.
+async function unsubToken(email: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(email.trim().toLowerCase()));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
+
 Deno.serve(async (req) => {
   const cors = corsHeadersFor(req);
   const json = (body: unknown, status = 200) =>
@@ -80,14 +94,17 @@ Deno.serve(async (req) => {
   }
 
   // --- Compute the audience (service role) -----------------------------------
-  const [cartsRes, totalsRes, ordersRes, profilesRes] = await Promise.all([
+  const [cartsRes, totalsRes, ordersRes, profilesRes, unsubRes] = await Promise.all([
     admin.from("carts").select("id, user_id").eq("status", "active"),
     admin.from("cart_totals").select("cart_id, item_count"),
     admin.from("orders").select("user_id"),
     admin.from("profiles").select("id, email, is_admin"),
+    admin.from("marketing_unsubscribes").select("email"),
   ]);
   if (profilesRes.error) return json({ error: "Could not load registrations." }, 500);
 
+  // Opted-out addresses are excluded from both the count and the send.
+  const unsubSet = new Set((unsubRes.data ?? []).map((u) => String(u.email).toLowerCase()));
   const itemCount = new Map((totalsRes.data ?? []).map((t) => [t.cart_id, Number(t.item_count) || 0]));
   const abandonedUserIds = new Set(
     (cartsRes.data ?? []).filter((c) => (itemCount.get(c.id) || 0) > 0).map((c) => c.user_id)
@@ -104,7 +121,7 @@ Deno.serve(async (req) => {
     const include = category === "abandoned_cart" ? hasCart : !hasCart && !hasOrder;
     if (!include) continue;
     const key = email.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key) || unsubSet.has(key)) continue;
     seen.add(key);
     recipients.push(email);
   }
@@ -124,7 +141,8 @@ Deno.serve(async (req) => {
   const from = Deno.env.get("INVOICE_FROM_EMAIL") ?? "Safe Creatives <noreply@safecreatives.com>";
   const bodyHtml = esc(body).replace(/\r?\n/g, "<br>");
 
-  const htmlFor = (email: string) => {
+  const functionsBase = `${Deno.env.get("SUPABASE_URL")}/functions/v1`;
+  const htmlFor = (email: string, unsubUrl: string) => {
     const prefix = esc(email.split("@")[0]);
     return `<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;line-height:1.6">
       <p>Hi ${prefix},</p>
@@ -133,20 +151,32 @@ Deno.serve(async (req) => {
       <p style="font-size:12px;color:#8a8f88;border-top:1px solid #eee;margin-top:20px;padding-top:12px">
         You're receiving this because you registered with ${esc(sellerName)}. This mailbox is not monitored — to reach us, email
         <a href="mailto:ashwanth@safecreatives.com">ashwanth@safecreatives.com</a> or call / WhatsApp +91&nbsp;97898&nbsp;90877.
-        If you'd prefer not to receive emails like this, email us and we'll remove you right away.
+        <br><br>Don't want these emails? <a href="${esc(unsubUrl)}">Unsubscribe with one click</a>.
       </p>
     </div>`;
   };
   // Sent from a no-reply address, so no reply_to — recipients are directed to
-  // email / call / WhatsApp in the body and footer instead.
-  const emailObj = (to: string) => ({ from, to: [to], subject, html: htmlFor(to) });
+  // email / call / WhatsApp, and a one-click unsubscribe link (per recipient).
+  const buildEmail = async (to: string) => {
+    const unsubUrl = `${functionsBase}/unsubscribe?e=${encodeURIComponent(to)}&t=${await unsubToken(to)}`;
+    return {
+      from,
+      to: [to],
+      subject,
+      html: htmlFor(to, unsubUrl),
+      headers: {
+        "List-Unsubscribe": `<${unsubUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+    };
+  };
 
   // Preview: one email to the tester (uses that address's greeting).
   if (testEmail) {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(emailObj(testEmail)),
+      body: JSON.stringify(await buildEmail(testEmail)),
     });
     if (!res.ok) {
       console.error("Resend test failed:", res.status, await res.text());
@@ -161,10 +191,11 @@ Deno.serve(async (req) => {
   let sent = 0;
   let failed = 0;
   for (const group of chunk(recipients, 100)) {
+    const objs = await Promise.all(group.map(buildEmail));
     const res = await fetch("https://api.resend.com/emails/batch", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(group.map(emailObj)),
+      body: JSON.stringify(objs),
     });
     if (res.ok) {
       sent += group.length;

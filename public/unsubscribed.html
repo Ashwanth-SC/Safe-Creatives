@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="./ASSET/SC_Logo_Logomark_Secondary.png" />
+    <title>Email preferences | Safe Creatives</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+             font-family: "DM Sans", Arial, Helvetica, sans-serif; color: #fff;
+             background: linear-gradient(135deg, #0c2222, #123a3a); }
+      .unsub-card { max-width: 460px; width: 100%; text-align: center; background: #fffaf3; color: #171717;
+                    border-radius: 16px; padding: 44px 34px; box-shadow: 0 16px 50px rgba(0,0,0,.35); }
+      .unsub-brand { font: 600 12px "DM Mono", monospace; letter-spacing: .18em; text-transform: uppercase; color: #6f222a; margin: 0 0 18px; }
+      .unsub-card h1 { margin: 0 0 12px; font-family: "Playfair Display", Georgia, serif; font-weight: 500;
+                       font-size: 28px; letter-spacing: -.02em; color: #6f222a; }
+      .unsub-card p { margin: 0; font-size: 15px; line-height: 1.6; color: #4b524e; }
+      .unsub-card a { color: #6f222a; }
+      .unsub-home { display: inline-block; margin-top: 24px; padding: 11px 22px; border-radius: 999px;
+                    background: #0c4444; color: #fff; font-size: 13px; text-decoration: none; }
+      .unsub-home:hover { background: #6f222a; }
+    </style>
+  </head>
+  <body>
+    <div class="unsub-card">
+      <p class="unsub-brand">Safe Creatives</p>
+      <h1 id="unsub-title">One moment…</h1>
+      <p id="unsub-msg"></p>
+      <a class="unsub-home" href="index.html">Back to Safe Creatives</a>
+    </div>
+    <script>
+      (function () {
+        var status = new URLSearchParams(location.search).get("status");
+        var title = document.getElementById("unsub-title");
+        var msg = document.getElementById("unsub-msg");
+        if (status === "done") {
+          title.textContent = "You're unsubscribed";
+          msg.innerHTML =
+            "You won't receive marketing emails from Safe Creatives anymore. If this was a mistake, email " +
+            "<a href='mailto:ashwanth@safecreatives.com'>ashwanth@safecreatives.com</a> and we'll add you back.";
+        } else if (status === "invalid") {
+          title.textContent = "Link not valid";
+          msg.innerHTML =
+            "This unsubscribe link is incomplete or couldn't be verified. To opt out, email " +
+            "<a href='mailto:ashwanth@safecreatives.com'>ashwanth@safecreatives.com</a> and we'll remove you.";
+        } else {
+          title.textContent = "Something went wrong";
+          msg.innerHTML =
+            "We couldn't process your request just now. Please email " +
+            "<a href='mailto:ashwanth@safecreatives.com'>ashwanth@safecreatives.com</a> and we'll remove you.";
+        }
+      })();
+    </script>
+  </body>
+</html>
