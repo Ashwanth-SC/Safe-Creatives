@@ -411,3 +411,12 @@ button:disabled { opacity: .5; cursor: progress; }
 .tk-gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .tk-gallery-cap { display: flex; flex-direction: column; font: 600 13px "DM Sans", sans-serif; color: #222; }
 .tk-gallery-cap span { font-weight: 400; font-size: 11px; color: #777; }
+
+/* ============================================================================
+   Marketing tab (sensory rooms dashboard)
+   ========================================================================== */
+.mkt-field { display: flex; flex-direction: column; gap: 6px; max-width: 640px; margin: 16px 0; }
+.mkt-label { font: 600 11px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: #6f222a; }
+.mkt-select, .mkt-input, .mkt-textarea { width: 100%; padding: 11px 12px; border: 1px solid rgba(23,23,23,.2); border-radius: 6px; background: #fff; font: 14px "DM Sans", sans-serif; color: #171717; }
+.mkt-textarea { resize: vertical; line-height: 1.5; }
+.mkt-select:focus, .mkt-input:focus, .mkt-textarea:focus { outline: none; border-color: #6f222a; }

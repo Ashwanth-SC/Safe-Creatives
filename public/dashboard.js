@@ -1096,6 +1096,142 @@
   // Headline counts
   // ------------------------------------------------------------------
 
+  // ------------------------------------------------------------------
+  // Marketing — one common email to a computed audience
+  // ------------------------------------------------------------------
+
+  async function marketingPanel() {
+    const frag = document.createDocumentFragment();
+    const myEmail = SC.profile?.email || SC.session?.user?.email || "";
+
+    frag.appendChild(
+      el(
+        "p",
+        "dash-note",
+        "Send a one-off marketing email to a group of registered customers. The list is built on the server (staff accounts excluded). Each person is emailed individually and greeted with the part of their email before the “@”."
+      )
+    );
+
+    const mkField = (labelText, control) => {
+      const wrap = el("div", "mkt-field");
+      wrap.appendChild(el("label", "mkt-label", labelText));
+      wrap.appendChild(control);
+      return wrap;
+    };
+
+    const catSel = document.createElement("select");
+    catSel.className = "mkt-select";
+    [
+      ["abandoned_cart", "Abandoned carts — a saved cart but no order"],
+      ["registered_no_activity", "Registered — no cart and no order"],
+    ].forEach(([v, l]) => {
+      const o = el("option", null, l);
+      o.value = v;
+      catSel.appendChild(o);
+    });
+    frag.appendChild(mkField("Audience", catSel));
+
+    const countNote = el("p", "dash-note", "Counting recipients…");
+    frag.appendChild(countNote);
+
+    const subjectI = document.createElement("input");
+    subjectI.type = "text";
+    subjectI.className = "mkt-input";
+    subjectI.placeholder = "e.g. Your sensory room is waiting";
+    frag.appendChild(mkField("Subject", subjectI));
+
+    const bodyT = document.createElement("textarea");
+    bodyT.className = "mkt-textarea";
+    bodyT.rows = 8;
+    bodyT.placeholder = "Write the message. “Hi <name>,” is added automatically at the top of each email.";
+    frag.appendChild(mkField("Message (same for everyone in this audience)", bodyT));
+
+    const statusP = el("p", "admin-hint", "");
+    const actions = el("div", "admin-inline");
+    const testBtn = el("button", "admin-secondary", myEmail ? `Send test to ${myEmail}` : "Send test");
+    testBtn.type = "button";
+    const sendBtn = el("button", "admin-primary", "Send");
+    sendBtn.type = "button";
+    sendBtn.disabled = true;
+    actions.append(testBtn, sendBtn);
+    frag.append(actions, statusP);
+
+    let currentCount = 0;
+
+    async function invoke(payload) {
+      const { data, error } = await sb.functions.invoke("send-marketing-email", { body: payload });
+      if (error) {
+        let detail = error.message;
+        try {
+          const b = await error.context.json();
+          if (b && b.error) detail = b.error;
+        } catch (_ignored) {
+          /* no body */
+        }
+        throw new Error(detail);
+      }
+      if (data && data.error) throw new Error(data.error);
+      return data;
+    }
+
+    async function refreshCount() {
+      countNote.textContent = "Counting recipients…";
+      sendBtn.disabled = true;
+      try {
+        const data = await invoke({ category: catSel.value, dry_run: true });
+        currentCount = data.count || 0;
+        countNote.textContent = `${currentCount} recipient(s) in this audience.`;
+        sendBtn.textContent = currentCount ? `Send to ${currentCount} recipient(s)` : "No recipients";
+        sendBtn.disabled = currentCount === 0;
+      } catch (e) {
+        countNote.textContent = `Could not count recipients: ${e.message}`;
+        sendBtn.disabled = true;
+      }
+    }
+
+    catSel.addEventListener("change", refreshCount);
+
+    testBtn.addEventListener("click", async () => {
+      if (!myEmail) return void (statusP.textContent = "No email on your account to send a test to.");
+      if (!subjectI.value.trim() || !bodyT.value.trim()) return void (statusP.textContent = "Add a subject and a message first.");
+      testBtn.disabled = true;
+      statusP.textContent = "Sending test…";
+      try {
+        const data = await invoke({ category: catSel.value, subject: subjectI.value.trim(), body: bodyT.value, test_email: myEmail });
+        statusP.textContent = data.ok === false && data.reason === "email_not_configured"
+          ? "Email isn’t configured on the server (RESEND_API_KEY)."
+          : `Test sent to ${myEmail}.`;
+      } catch (e) {
+        statusP.textContent = `Test failed: ${e.message}`;
+      } finally {
+        testBtn.disabled = false;
+      }
+    });
+
+    sendBtn.addEventListener("click", async () => {
+      if (!currentCount) return;
+      if (!subjectI.value.trim() || !bodyT.value.trim()) return void (statusP.textContent = "Add a subject and a message first.");
+      if (!window.confirm(`Send this email to ${currentCount} real customer(s)? This cannot be undone.`)) return;
+      sendBtn.disabled = true;
+      testBtn.disabled = true;
+      statusP.textContent = "Sending…";
+      try {
+        const data = await invoke({ category: catSel.value, subject: subjectI.value.trim(), body: bodyT.value });
+        statusP.textContent = data.ok === false && data.reason === "email_not_configured"
+          ? "Email isn’t configured on the server (RESEND_API_KEY)."
+          : `Sent to ${data.sent} recipient(s).` + (data.failed ? ` ${data.failed} failed — check the function logs.` : "");
+      } catch (e) {
+        statusP.textContent = `Send failed: ${e.message}`;
+      } finally {
+        sendBtn.disabled = false;
+        testBtn.disabled = false;
+      }
+    });
+
+    refreshCount();
+    return frag;
+  }
+
   async function renderStats() {
     const [orders, carts, people, paid, lastInvoice] = await Promise.all([
       sb.from("orders").select("id", { count: "exact", head: true })
@@ -1139,6 +1275,7 @@
     people: peoplePanel,
     payments: paymentsPanel,
     invoices: invoicesPanel,
+    marketing: marketingPanel,
   };
 
   async function show(tab) {
