@@ -121,10 +121,16 @@ window.SC = (function () {
     );
   }
 
-  // A profile row always exists once signup has run, so "registered" means
-  // the name has actually been filled in rather than the row being present.
+  // A profile row always exists once signup has run, so "registered" means the
+  // three mandatory fields are actually filled: full name, phone and PIN code.
+  // A profile missing any of them is incomplete, so a guarded page sends the
+  // visitor (back) to register.html to finish — including on their next login.
   function isRegistered(profile) {
-    return Boolean(profile?.full_name?.trim());
+    return Boolean(
+      profile?.full_name?.trim() &&
+        profile?.phone?.trim() &&
+        profile?.pin_code?.trim()
+    );
   }
 
   async function loadProfile(userId) {
@@ -438,6 +444,7 @@ window.SC = (function () {
     STATES,
     fillStateSelect,
     stateNameOf,
+    profileComplete: isRegistered,
     get session() {
       return state.session;
     },

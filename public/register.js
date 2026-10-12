@@ -60,6 +60,10 @@
     const pin = pinField.value.trim();
     const gstin = gstinField.value.trim().toUpperCase();
 
+    // Name, phone and PIN code are mandatory — without them the account stays
+    // "incomplete" and the visitor is sent back here on their next login.
+    // All validation happens before the button is disabled so a typo never
+    // leaves the form stuck on "Saving...".
     if (!fullName) {
       show("Please enter your full name.", "error");
       nameField.focus();
@@ -72,10 +76,13 @@
       return;
     }
 
-    button.disabled = true;
-    show("Saving...");
+    if (!pin) {
+      show("Please enter your 6-digit PIN code.", "error");
+      pinField.focus();
+      return;
+    }
 
-    if (pin && !/^\d{6}$/.test(pin)) {
+    if (!/^\d{6}$/.test(pin)) {
       show("PIN code should be 6 digits.", "error");
       pinField.focus();
       return;
@@ -89,6 +96,9 @@
       return;
     }
 
+    button.disabled = true;
+    show("Saving...");
+
     // Address parts are only written when provided, so returning here and
     // leaving them blank does not wipe an address set at checkout.
     const updates = { full_name: fullName, phone };
@@ -98,7 +108,7 @@
       updates.state_code = state;
       updates.state_name = SC.stateNameOf(state);
     }
-    if (pin) updates.pin_code = pin;
+    updates.pin_code = pin;
     // Written even when blank, so a customer can clear a GSTIN they no longer
     // want on their invoices.
     updates.gstin = gstin || null;
@@ -117,4 +127,22 @@
     show("Saved.", "success");
     window.location.href = nextPage;
   });
+
+  // Lock the page while the profile is incomplete: the only way off register
+  // is to fill in the required details and press Continue. Every link (the
+  // logo, "← Back to home", the injected account icon) is intercepted in the
+  // capture phase so neither its default navigation nor any other handler runs.
+  if (!SC.profileComplete(profile)) {
+    document.addEventListener(
+      "click",
+      (event) => {
+        const nav = event.target.closest("a, .account-link, .logout-button");
+        if (!nav) return; // the Continue button is a <button>, so it still works
+        event.preventDefault();
+        event.stopPropagation();
+        show("Please add your name, phone number and PIN code, then press Continue.", "error");
+      },
+      true
+    );
+  }
 })();
