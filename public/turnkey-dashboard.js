@@ -1871,6 +1871,180 @@
   }
 
   // ------------------------------------------------------------------
+  // Reports — charts over leads, pipeline, collections and demand
+  // ------------------------------------------------------------------
+
+  async function reportsPanel() {
+    const R = window.SCReports;
+    const frag = document.createDocumentFragment();
+    if (!R || !R.ready()) {
+      frag.appendChild(
+        el("p", "dash-note",
+          "Charts couldn’t load — the Chart.js library is fetched from a CDN, so this needs an internet connection. Reopen this tab once you’re back online.")
+      );
+      return frag;
+    }
+
+    const [prj, rcp, spc] = await Promise.all([
+      sb.from("turnkey_projects").select("id, status, platform, budget_paise, pin_code, project_category, created_at"),
+      sb.from("turnkey_receipts").select("amount_paise, receipt_date, payment_mode"),
+      sb.from("turnkey_project_spaces").select("name, is_selected"),
+    ]);
+    const firstErr = prj.error || rcp.error || spc.error;
+    if (firstErr) throw firstErr;
+
+    const projects = prj.data || [];
+    const receipts = rcp.data || [];
+    const spaces = (spc.data || []).filter((s) => s.is_selected);
+
+    const rupees = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
+    // receipt_date is a plain 'YYYY-MM-DD'; build it as a local date (no TZ shift).
+    const ymd = (s) => { const [y, m, d] = String(s).split("-"); return new Date(+y, +m - 1, +d); };
+
+    // ---- Controls ------------------------------------------------------
+    const controls = el("div", "report-controls");
+    const rangeWrap = el("label", "report-range");
+    rangeWrap.appendChild(el("span", null, "Period"));
+    const rangeSel = document.createElement("select");
+    R.RANGES.forEach(([key, label]) => {
+      const o = el("option", null, label);
+      o.value = key;
+      rangeSel.appendChild(o);
+    });
+    rangeSel.value = "90d";
+    rangeWrap.appendChild(rangeSel);
+    const printBtn = el("button", "report-print", "Print / Save PDF");
+    printBtn.type = "button";
+    printBtn.addEventListener("click", () => window.print());
+    controls.append(rangeWrap, printBtn);
+
+    const kpis = el("div", "report-kpis");
+    const grid = el("div", "report-grid");
+    frag.append(controls, kpis, grid);
+
+    function card(title, opts) {
+      opts = opts || {};
+      const node = el("div", "report-card" + (opts.wide ? " is-wide" : ""));
+      node.appendChild(el("h3", null, title));
+      const sub = el("p", "report-sub");
+      node.appendChild(sub);
+      const chartBox = el("div", "report-chart");
+      chartBox.appendChild(document.createElement("canvas"));
+      node.appendChild(chartBox);
+      const legendBox = opts.legend ? el("div") : null;
+      if (legendBox) node.appendChild(legendBox);
+      grid.appendChild(node);
+      return { chartBox, legendBox, sub };
+    }
+
+    const cCollect = card("Collections over time", { wide: true });
+    const cChannel = card("Lead source", { legend: true });
+    const cPipeline = card("Pipeline");
+    const cCategory = card("Residential vs commercial", { legend: true });
+    const cMode = card("Payment mode", { legend: true });
+    const cSpaces = card("Most-requested spaces");
+    const cLeads = card("New leads over time", { wide: true });
+
+    function setKpis(cards) {
+      kpis.textContent = "";
+      cards.forEach(([label, value, tone]) => {
+        const c = el("div", `stat-card stat-${tone}`);
+        c.appendChild(el("span", "stat-value" + (String(value).length > 8 ? " is-text" : ""), value));
+        c.appendChild(el("span", "stat-label", label));
+        kpis.appendChild(c);
+      });
+    }
+
+    function drawOrEmpty(c, hasData, draw) {
+      if (c.legendBox) c.legendBox.textContent = "";
+      if (!hasData) {
+        c.chartBox.innerHTML = "";
+        c.chartBox.appendChild(el("p", "report-empty", "No data in this period."));
+        return;
+      }
+      if (!c.chartBox.querySelector("canvas")) {
+        c.chartBox.innerHTML = "";
+        c.chartBox.appendChild(document.createElement("canvas"));
+      }
+      draw(c.chartBox.querySelector("canvas"));
+    }
+
+    const CHANNEL_DOMAIN = PLATFORM_OPTIONS.map((o) => o[1]);
+    const CATEGORY_DOMAIN = ["Residential", "Commercial"];
+    const OPEN_STATUSES = ["Lead", "Design initiated", "DSO", "Execution commenced"];
+
+    function render(rangeKey) {
+      const now = new Date();
+      const start = R.rangeStart(rangeKey, now);
+      const grain = R.grainFor(start, now);
+      const inRange = (d) => !start || new Date(d) >= start;
+      R.reset();
+
+      const prjR = projects.filter((p) => inRange(p.created_at));
+      const rcpR = receipts.filter((r) => r.receipt_date && (!start || ymd(r.receipt_date) >= start));
+
+      const collected = rcpR.reduce((s, r) => s + Number(r.amount_paise || 0), 0);
+      const openValue = projects
+        .filter((p) => OPEN_STATUSES.includes(p.status))
+        .reduce((s, p) => s + Number(p.budget_paise || 0), 0);
+      const withBudget = prjR.filter((p) => Number(p.budget_paise || 0) > 0);
+      const avgBudget = withBudget.length
+        ? Math.round(withBudget.reduce((s, p) => s + Number(p.budget_paise || 0), 0) / withBudget.length)
+        : 0;
+      const handed = projects.filter((p) => p.status === "Handed over").length;
+      setKpis([
+        ["Collected", money(collected), "ok"],
+        ["New leads", String(prjR.length), "muted"],
+        ["Open pipeline value", money(openValue), "warn"],
+        ["Avg project budget", avgBudget ? money(avgBudget) : "—", "muted"],
+        ["Handed over (all time)", String(handed), "ok"],
+      ]);
+
+      const col = R.series(rcpR, (r) => ymd(r.receipt_date), (r) => Number(r.amount_paise || 0) / 100, start, now, grain);
+      cCollect.sub.textContent = `Receipts · by ${R.grainWord(grain)}`;
+      drawOrEmpty(cCollect, collected > 0, (cv) => R.line(cv, col.labels, col.values, { valueFmt: rupees }));
+
+      const ch = R.group(prjR, (p) => PLATFORM_LABEL[p.platform] || p.platform || "—", null, { domain: CHANNEL_DOMAIN });
+      cChannel.sub.textContent = "New leads in period";
+      drawOrEmpty(cChannel, prjR.length > 0, (cv) => {
+        R.pie(cv, ch.labels, ch.values);
+        cChannel.legendBox.appendChild(R.legend(ch.labels, ch.values));
+      });
+
+      // Pipeline is a current-state view across all projects, not period-bound.
+      const pl = R.group(projects, (p) => p.status, null, { domain: STATUS_OPTIONS });
+      cPipeline.sub.textContent = "All projects · current stage";
+      drawOrEmpty(cPipeline, projects.length > 0, (cv) => R.bar(cv, pl.labels, pl.values, { horizontal: true }));
+
+      const cat = R.group(prjR, (p) => p.project_category || "Unspecified", null, { domain: CATEGORY_DOMAIN });
+      cCategory.sub.textContent = "New leads in period";
+      drawOrEmpty(cCategory, prjR.length > 0, (cv) => {
+        R.pie(cv, cat.labels, cat.values, { doughnut: true });
+        cCategory.legendBox.appendChild(R.legend(cat.labels, cat.values));
+      });
+
+      const mode = R.group(rcpR, (r) => r.payment_mode || "—", (r) => Number(r.amount_paise || 0) / 100, { domain: MODE_OPTIONS });
+      cMode.sub.textContent = "Receipts, by amount";
+      drawOrEmpty(cMode, rcpR.length > 0, (cv) => {
+        R.pie(cv, mode.labels, mode.values, { valueFmt: rupees });
+        cMode.legendBox.appendChild(R.legend(mode.labels, mode.values, rupees));
+      });
+
+      const sp = R.group(spaces, (s) => s.name || "—", null, { top: 8 });
+      cSpaces.sub.textContent = "Across all projects";
+      drawOrEmpty(cSpaces, spaces.length > 0, (cv) => R.bar(cv, sp.labels, sp.values, { horizontal: true }));
+
+      const leadS = R.series(prjR, (p) => p.created_at, null, start, now, grain);
+      cLeads.sub.textContent = `New leads · by ${R.grainWord(grain)}`;
+      drawOrEmpty(cLeads, prjR.length > 0, (cv) => R.line(cv, leadS.labels, leadS.values));
+    }
+
+    rangeSel.addEventListener("change", () => render(rangeSel.value));
+    requestAnimationFrame(() => render(rangeSel.value));
+    return frag;
+  }
+
+  // ------------------------------------------------------------------
   // Headline counts
   // ------------------------------------------------------------------
 
@@ -1911,6 +2085,7 @@
     documents: documentsPanel,
     quotations: quotationsPanel,
     consultation: consultationPanel,
+    reports: reportsPanel,
   };
 
   async function show(tab) {

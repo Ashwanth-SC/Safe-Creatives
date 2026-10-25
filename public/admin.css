@@ -420,3 +420,43 @@ button:disabled { opacity: .5; cursor: progress; }
 .mkt-select, .mkt-input, .mkt-textarea { width: 100%; padding: 11px 12px; border: 1px solid rgba(23,23,23,.2); border-radius: 6px; background: #fff; font: 14px "DM Sans", sans-serif; color: #171717; }
 .mkt-textarea { resize: vertical; line-height: 1.5; }
 .mkt-select:focus, .mkt-input:focus, .mkt-textarea:focus { outline: none; border-color: #6f222a; }
+
+/* ============================================================================
+   Reports tab (both dashboards)
+   ========================================================================== */
+.report-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin: 0 0 22px; }
+.report-range { display: flex; flex-direction: column; gap: 6px; }
+.report-range span { font: 600 10px "DM Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: #8b8f88; }
+.report-range select { padding: 9px 12px; border: 1px solid rgba(23,23,23,.2); border-radius: 6px; background: #fff; font: 13px "DM Sans", sans-serif; color: #171717; min-width: 170px; }
+.report-range select:focus { outline: none; border-color: #0c4444; }
+.report-print { margin-left: auto; padding: 10px 18px; border: 1px solid #0c4444; border-radius: 6px; background: #fff; color: #0c4444; font: 12px "DM Sans", sans-serif; cursor: pointer; }
+.report-print:hover { background: #0c4444; color: #fff; }
+
+.report-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0 0 26px; }
+
+.report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.report-card { background: #fff; border: 1px solid rgba(23,23,23,.12); border-radius: 10px; padding: 18px 18px 20px; }
+.report-card.is-wide { grid-column: 1 / -1; }
+.report-card h3 { margin: 0; font: 500 16px "Playfair Display", Georgia, serif; color: #171717; letter-spacing: -.01em; }
+.report-sub { margin: 3px 0 14px; font: 11px "DM Mono", monospace; letter-spacing: .04em; color: #8b8f88; text-transform: uppercase; }
+.report-chart { position: relative; height: 240px; }
+.report-card.is-wide .report-chart { height: 280px; }
+.report-empty { display: grid; place-items: center; height: 100%; color: #a7aaa2; font: 13px "DM Sans", sans-serif; }
+
+/* Pie/doughnut cards pair the canvas with an HTML legend below it. */
+.report-legend { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 7px; }
+.report-legend li { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 9px; font: 13px "DM Sans", sans-serif; color: #3a3a3a; }
+.report-sw { width: 12px; height: 12px; border-radius: 3px; }
+.report-lg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-lg-val { font-variant-numeric: tabular-nums; color: #777; }
+
+@media (max-width: 760px) {
+  .report-grid { grid-template-columns: 1fr; }
+  .report-print { margin-left: 0; }
+}
+
+@media print {
+  .site-header, .tab-bar, .admin-intro, .report-controls, .stat-row { display: none !important; }
+  .report-card { break-inside: avoid; border-color: rgba(23,23,23,.25); }
+  .report-grid { gap: 12px; }
+}

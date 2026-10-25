@@ -1272,6 +1272,177 @@
     return frag;
   }
 
+  // ------------------------------------------------------------------
+  // Reports — charts over the order / payment / registration history
+  // ------------------------------------------------------------------
+
+  async function reportsPanel() {
+    const R = window.SCReports;
+    const frag = document.createDocumentFragment();
+    if (!R || !R.ready()) {
+      frag.appendChild(
+        el("p", "dash-note",
+          "Charts couldn’t load — the Chart.js library is fetched from a CDN, so this needs an internet connection. Reopen this tab once you’re back online.")
+      );
+      return frag;
+    }
+
+    // One fetch; the period selector filters these in memory (no refetch).
+    const [pay, ord, prof, ref] = await Promise.all([
+      sb.from("payments").select("amount_paise, status, method, created_at"),
+      sb.from("orders").select("id, status, subtotal_paise, placed_at, order_items ( package_name, line_total_paise )"),
+      sb.from("profiles").select("id, state_name, is_admin, created_at"),
+      sb.from("refunds").select("amount_paise, status, created_at"),
+    ]);
+    const firstErr = pay.error || ord.error || prof.error || ref.error;
+    if (firstErr) throw firstErr;
+
+    const payments = pay.data || [];
+    const orders = ord.data || [];
+    const profiles = (prof.data || []).filter((p) => !p.is_admin);
+    const refunds = ref.data || [];
+
+    // Chart values are passed in rupees; this formats ticks and tooltips.
+    const rupees = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
+
+    // ---- Controls ------------------------------------------------------
+    const controls = el("div", "report-controls");
+    const rangeWrap = el("label", "report-range");
+    rangeWrap.appendChild(el("span", null, "Period"));
+    const rangeSel = document.createElement("select");
+    R.RANGES.forEach(([key, label]) => {
+      const o = el("option", null, label);
+      o.value = key;
+      rangeSel.appendChild(o);
+    });
+    rangeSel.value = "90d";
+    rangeWrap.appendChild(rangeSel);
+    const printBtn = el("button", "report-print", "Print / Save PDF");
+    printBtn.type = "button";
+    printBtn.addEventListener("click", () => window.print());
+    controls.append(rangeWrap, printBtn);
+
+    const kpis = el("div", "report-kpis");
+    const grid = el("div", "report-grid");
+    frag.append(controls, kpis, grid);
+
+    // One card = a titled box with a subtitle, a fixed-height chart area, and
+    // (optionally) an HTML legend slot beneath it.
+    function card(title, opts) {
+      opts = opts || {};
+      const node = el("div", "report-card" + (opts.wide ? " is-wide" : ""));
+      node.appendChild(el("h3", null, title));
+      const sub = el("p", "report-sub");
+      node.appendChild(sub);
+      const chartBox = el("div", "report-chart");
+      chartBox.appendChild(document.createElement("canvas"));
+      node.appendChild(chartBox);
+      const legendBox = opts.legend ? el("div") : null;
+      if (legendBox) node.appendChild(legendBox);
+      grid.appendChild(node);
+      return { chartBox, legendBox, sub };
+    }
+
+    const cRevenue = card("Revenue over time", { wide: true });
+    const cMethod = card("Payment method", { legend: true });
+    const cPackage = card("Orders by package");
+    const cStatus = card("Order status", { legend: true });
+    const cRegs = card("New registrations", { wide: true });
+    const cState = card("Customers by state");
+
+    function setKpis(cards) {
+      kpis.textContent = "";
+      cards.forEach(([label, value, tone]) => {
+        const c = el("div", `stat-card stat-${tone}`);
+        c.appendChild(el("span", "stat-value" + (String(value).length > 8 ? " is-text" : ""), value));
+        c.appendChild(el("span", "stat-label", label));
+        kpis.appendChild(c);
+      });
+    }
+
+    // Draw into a card, or show an empty note when the period has no rows.
+    // Chart.js needs a live canvas, so restore one when leaving the empty state.
+    function drawOrEmpty(c, hasData, draw) {
+      if (c.legendBox) c.legendBox.textContent = "";
+      if (!hasData) {
+        c.chartBox.innerHTML = "";
+        c.chartBox.appendChild(el("p", "report-empty", "No data in this period."));
+        return;
+      }
+      if (!c.chartBox.querySelector("canvas")) {
+        c.chartBox.innerHTML = "";
+        c.chartBox.appendChild(document.createElement("canvas"));
+      }
+      draw(c.chartBox.querySelector("canvas"));
+    }
+
+    const PM_DOMAIN = ["upi", "card", "netbanking", "wallet", "emi"];
+    const PM_LABEL = { upi: "UPI", card: "Card", netbanking: "Netbanking", wallet: "Wallet", emi: "EMI" };
+    const STATUS_DOMAIN = Object.values(ORDER_STATUS);
+
+    function render(rangeKey) {
+      const now = new Date();
+      const start = R.rangeStart(rangeKey, now);
+      const grain = R.grainFor(start, now);
+      const inRange = (d) => !start || new Date(d) >= start;
+      R.reset();
+
+      const captured = payments.filter((p) => p.status === "captured" && inRange(p.created_at));
+      const ordR = orders.filter((o) => inRange(o.placed_at));
+      const profR = profiles.filter((p) => inRange(p.created_at));
+      const refR = refunds.filter((r) => inRange(r.created_at) && ["pending", "processed"].includes(r.status));
+
+      const revenue = captured.reduce((s, p) => s + Number(p.amount_paise || 0), 0);
+      const aov = ordR.length ? Math.round(ordR.reduce((s, o) => s + Number(o.subtotal_paise || 0), 0) / ordR.length) : 0;
+      const refTot = refR.reduce((s, r) => s + Number(r.amount_paise || 0), 0);
+      setKpis([
+        ["Revenue (captured)", SC.money(revenue), "ok"],
+        ["Orders placed", String(ordR.length), "muted"],
+        ["Avg order value", ordR.length ? SC.money(aov) : "—", "muted"],
+        ["New registrations", String(profR.length), "muted"],
+        ["Refunds", refTot ? SC.money(refTot) : "₹0", refTot ? "warn" : "muted"],
+      ]);
+
+      const rev = R.series(captured, (p) => p.created_at, (p) => Number(p.amount_paise || 0) / 100, start, now, grain);
+      cRevenue.sub.textContent = `Captured payments · by ${R.grainWord(grain)}`;
+      drawOrEmpty(cRevenue, revenue > 0, (cv) => R.line(cv, rev.labels, rev.values, { valueFmt: rupees }));
+
+      const pm = R.group(captured, (p) => PM_LABEL[p.method] || p.method || "—",
+        (p) => Number(p.amount_paise || 0) / 100, { domain: PM_DOMAIN.map((k) => PM_LABEL[k]) });
+      cMethod.sub.textContent = "Captured, by amount";
+      drawOrEmpty(cMethod, captured.length > 0, (cv) => {
+        R.pie(cv, pm.labels, pm.values, { valueFmt: rupees });
+        cMethod.legendBox.appendChild(R.legend(pm.labels, pm.values, rupees));
+      });
+
+      const items = [];
+      ordR.forEach((o) => (o.order_items || []).forEach((it) => items.push(it)));
+      const pkg = R.group(items, (it) => it.package_name || "—", null, {});
+      cPackage.sub.textContent = "Units ordered in period";
+      drawOrEmpty(cPackage, items.length > 0, (cv) => R.bar(cv, pkg.labels, pkg.values));
+
+      const st = R.group(ordR, (o) => ORDER_STATUS[o.status] || o.status, null, { domain: STATUS_DOMAIN });
+      cStatus.sub.textContent = "Orders placed in period";
+      drawOrEmpty(cStatus, ordR.length > 0, (cv) => {
+        R.pie(cv, st.labels, st.values, { doughnut: true });
+        cStatus.legendBox.appendChild(R.legend(st.labels, st.values));
+      });
+
+      const regS = R.series(profR, (p) => p.created_at, null, start, now, grain);
+      cRegs.sub.textContent = `New accounts · by ${R.grainWord(grain)}`;
+      drawOrEmpty(cRegs, profR.length > 0, (cv) => R.line(cv, regS.labels, regS.values));
+
+      const stateG = R.group(profR, (p) => p.state_name || "Unknown", null, { top: 8 });
+      cState.sub.textContent = "Registered accounts";
+      drawOrEmpty(cState, profR.length > 0, (cv) => R.bar(cv, stateG.labels, stateG.values, { horizontal: true }));
+    }
+
+    rangeSel.addEventListener("change", () => render(rangeSel.value));
+    // Draw after the fragment is in the document, so Chart.js measures real sizes.
+    requestAnimationFrame(() => render(rangeSel.value));
+    return frag;
+  }
+
   async function renderStats() {
     const [orders, carts, people, paid, lastInvoice] = await Promise.all([
       sb.from("orders").select("id", { count: "exact", head: true })
@@ -1316,6 +1487,7 @@
     payments: paymentsPanel,
     invoices: invoicesPanel,
     marketing: marketingPanel,
+    reports: reportsPanel,
   };
 
   async function show(tab) {
