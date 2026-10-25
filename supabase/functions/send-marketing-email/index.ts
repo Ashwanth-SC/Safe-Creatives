@@ -177,6 +177,10 @@ Deno.serve(async (req) => {
   for (const p of profilesRes.data ?? []) {
     const email = String(p.email ?? "").trim();
     if (!email || p.is_admin || unverifiedIds.has(p.id)) continue;
+    // No name = registration never completed. The bot flood verified and signed
+    // in but of course never filled the form, so requiring a name keeps
+    // marketing to people who actually registered (and can be greeted properly).
+    if (!String(p.full_name ?? "").trim()) continue;
     const key = email.toLowerCase();
     if (seen.has(key) || unsubSet.has(key)) continue;
 
