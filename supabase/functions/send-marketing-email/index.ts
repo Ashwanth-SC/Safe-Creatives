@@ -179,15 +179,38 @@ Deno.serve(async (req) => {
       body: JSON.stringify(await buildEmail(testEmail)),
     });
     if (!res.ok) {
-      console.error("Resend test failed:", res.status, await res.text());
-      return json({ error: `Email service error (${res.status}).` }, 502);
+      const detail = (await res.text()).slice(0, 400);
+      console.error("Resend test failed:", res.status, detail);
+      return json({ error: `Email service error (${res.status}).`, detail: `${res.status}: ${detail}` }, 502);
     }
     return json({ ok: true, test: true, sent: 1, to: testEmail });
   }
 
   if (!recipients.length) return json({ ok: true, sent: 0 });
 
-  // Resend batch endpoint: up to 100 messages per request.
+  // The exact text of the first Resend failure, returned to the dashboard so a
+  // failed run says WHY (quota, unverified domain, a bad address, …) instead of
+  // just a count.
+  let firstError: string | null = null;
+
+  // Send one email via Resend's single endpoint. Used as a fallback when a
+  // batch is rejected, so one bad address doesn't sink its 99 neighbours.
+  const sendOne = async (obj: unknown): Promise<boolean> => {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(obj),
+    });
+    if (res.ok) return true;
+    const detail = `${res.status}: ${(await res.text()).slice(0, 300)}`;
+    if (!firstError) firstError = detail;
+    return false;
+  };
+
+  // Resend's batch endpoint takes up to 100 messages per request but rejects
+  // the WHOLE batch if any single message is invalid. So on a batch failure we
+  // capture the reason and — unless it's clearly account-wide (auth, billing,
+  // rate limit) — retry that chunk one message at a time to salvage the rest.
   let sent = 0;
   let failed = 0;
   for (const group of chunk(recipients, 100)) {
@@ -199,12 +222,22 @@ Deno.serve(async (req) => {
     });
     if (res.ok) {
       sent += group.length;
-    } else {
+      continue;
+    }
+    const detail = `${res.status}: ${(await res.text()).slice(0, 300)}`;
+    if (!firstError) firstError = detail;
+    console.error("Resend batch failed:", detail);
+    // Account-wide problems won't be fixed by retrying — don't hammer the API.
+    if ([401, 402, 403, 429].includes(res.status)) {
       failed += group.length;
-      console.error("Resend batch failed:", res.status, await res.text());
+      continue;
+    }
+    for (const obj of objs) {
+      if (await sendOne(obj)) sent++;
+      else failed++;
     }
   }
 
-  console.log(`Marketing email (${category}) sent to ${sent}, failed ${failed}`);
-  return json({ ok: true, sent, failed });
+  console.log(`Marketing email (${category}) sent to ${sent}, failed ${failed}. First error: ${firstError ?? "none"}`);
+  return json({ ok: true, sent, failed, detail: firstError });
 });

@@ -1193,13 +1193,13 @@
         let detail = error.message;
         try {
           const b = await error.context.json();
-          if (b && b.error) detail = b.error;
+          if (b && (b.error || b.detail)) detail = [b.error, b.detail].filter(Boolean).join(" — ");
         } catch (_ignored) {
           /* no body */
         }
         throw new Error(detail);
       }
-      if (data && data.error) throw new Error(data.error);
+      if (data && data.error) throw new Error([data.error, data.detail].filter(Boolean).join(" — "));
       return data;
     }
 
@@ -1258,7 +1258,9 @@
         const data = await invoke({ category: catSel.value, subject: subjectI.value.trim(), body: bodyT.value });
         statusP.textContent = data.ok === false && data.reason === "email_not_configured"
           ? "Email isn’t configured on the server (RESEND_API_KEY)."
-          : `Sent to ${data.sent} recipient(s).` + (data.failed ? ` ${data.failed} failed — check the function logs.` : "");
+          : `Sent to ${data.sent} recipient(s).`
+            + (data.failed ? ` ${data.failed} failed.` : "")
+            + (data.failed && data.detail ? ` First error — ${data.detail}` : "");
       } catch (e) {
         statusP.textContent = `Send failed: ${e.message}`;
       } finally {
