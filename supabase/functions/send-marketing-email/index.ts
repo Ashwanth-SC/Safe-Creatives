@@ -8,7 +8,8 @@
 // client. Two audiences:
 //   * "abandoned_cart"          — profiles with an active, non-empty cart
 //   * "registered_no_activity"  — profiles with no abandoned cart AND no order
-// Staff accounts (is_admin) and profiles without an email are excluded.
+// Staff accounts (is_admin), profiles without an email, and accounts that never
+// verified their email (bot sign-ups) are excluded.
 //
 // Each recipient gets the same subject + body, greeted with the part of their
 // email before the "@". Sent via Resend's batch endpoint (100 per request),
@@ -113,6 +114,17 @@ Deno.serve(async (req) => {
   ]);
   if (profilesRes.error) return json({ error: "Could not load registrations." }, 500);
 
+  // Accounts that never entered their emailed code. Bots sign strangers'
+  // addresses up in bulk; those people never asked to hear from us, and
+  // emailing them earns spam reports that sink delivery to real customers.
+  const unverifiedIds = new Set<string>();
+  for (let page = 1; ; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return json({ error: "Could not load accounts." }, 500);
+    for (const u of data.users) if (!u.email_confirmed_at) unverifiedIds.add(u.id);
+    if (data.users.length < 1000) break;
+  }
+
   // Opted-out addresses are excluded from both the count and the send.
   const unsubSet = new Set((unsubRes.data ?? []).map((u) => String(u.email).toLowerCase()));
   const itemCount = new Map((totalsRes.data ?? []).map((t) => [t.cart_id, Number(t.item_count) || 0]));
@@ -133,7 +145,7 @@ Deno.serve(async (req) => {
   // --- CSV export: every registered (non-staff) profile, classified ----------
   if (doExport) {
     const rows = (profilesRes.data ?? [])
-      .filter((p) => !p.is_admin)
+      .filter((p) => !p.is_admin && !unverifiedIds.has(p.id))
       .map((p) => {
         const key = String(p.email ?? "").trim().toLowerCase();
         const hasOrder = (orderCount.get(p.id) || 0) > 0;
@@ -164,7 +176,7 @@ Deno.serve(async (req) => {
   const recipients: string[] = [];
   for (const p of profilesRes.data ?? []) {
     const email = String(p.email ?? "").trim();
-    if (!email || p.is_admin) continue;
+    if (!email || p.is_admin || unverifiedIds.has(p.id)) continue;
     const key = email.toLowerCase();
     if (seen.has(key) || unsubSet.has(key)) continue;
 
