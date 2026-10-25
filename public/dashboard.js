@@ -1108,6 +1108,28 @@
     // line are added automatically by the send-marketing-email function, so
     // these are just the middle of the message. Editable before sending.
     const DEFAULTS = {
+      registered_new: {
+        subject: "A calmer, more personal space — designed around you",
+        body:
+          "Thank you for joining Safe Creatives — we're really glad you're here.\n\n" +
+          "Our sensory rooms are premium, package-based interiors built around comfort, calm and inclusivity — functional, beautiful spaces that can be installed in as little as 20 days.\n\n" +
+          "A few reasons our customers love our Sensory rooms:\n" +
+          "• Thoughtfully curated packages, fully customisable to you\n" +
+          "• Installed in ~20 days, backed by a 10-year warranty\n" +
+          "• Up to 70% resale & buy-back whenever you choose to upgrade\n\n" +
+          "Whenever you're ready to explore, browse our packages at safecreatives.com — or email us at ashwanth@safecreatives.com or call / WhatsApp us at +91 97898 90877 for a free consultation. We'd love to help you create a space that feels just right.",
+      },
+      registered_old: {
+        subject: "Still thinking about a calmer, more personal space?",
+        body:
+          "We reached out a little while ago about creating a sensory room with you, and we wanted to check back in.\n\n" +
+          "Our sensory rooms are premium, package-based interiors built around comfort, calm and inclusivity — installed in as little as 20 days and designed entirely around you.\n\n" +
+          "A few reasons our customers love our Sensory rooms:\n" +
+          "• Thoughtfully curated packages, fully customisable to you\n" +
+          "• Installed in ~20 days, backed by a 10-year warranty\n" +
+          "• Up to 70% resale & buy-back whenever you choose to upgrade\n\n" +
+          "If now's a better time, we'd love to help. Browse our packages at safecreatives.com, or email ashwanth@safecreatives.com or call / WhatsApp +91 97898 90877 for a free consultation.",
+      },
       abandoned_cart: {
         subject: "Your sensory room is still waiting for you",
         body:
@@ -1120,24 +1142,13 @@
           "Have a question, or want a quick consultation to tailor the space to you? Email us at ashwanth@safecreatives.com or call / WhatsApp us at +91 97898 90877 — we're happy to help.\n\n" +
           "Ready to continue? Log in at safecreatives.com to complete your order.",
       },
-      registered_no_activity: {
-        subject: "A calmer, more personal space — designed around you",
-        body:
-          "Thank you for joining Safe Creatives — we're really glad you're here.\n\n" +
-          "Our sensory rooms are premium, package-based interiors built around comfort, calm and inclusivity — functional, beautiful spaces that can be installed in as little as 20 days.\n\n" +
-          "A few reasons our customers love our Sensory rooms:\n" +
-          "• Thoughtfully curated packages, fully customisable to you\n" +
-          "• Installed in ~20 days, backed by a 10-year warranty\n" +
-          "• Up to 70% resale & buy-back whenever you choose to upgrade\n\n" +
-          "Whenever you're ready to explore, browse our packages at safecreatives.com — or email us at ashwanth@safecreatives.com or call / WhatsApp us at +91 97898 90877 for a free consultation. We'd love to help you create a space that feels just right.",
-      },
     };
 
     frag.appendChild(
       el(
         "p",
         "dash-note",
-        "Send a one-off marketing email to a group of registered customers. The list is built on the server (staff accounts excluded). Each person is emailed individually and greeted with the part of their email before the “@”."
+        "Send a one-off marketing email to a group of registered customers. The list is built on the server (staff and unsubscribed excluded). Pick an audience, untick anyone you don't want, and send — each person is emailed individually and greeted with the part of their email before the “@”. You can also download every registered profile, with its segment, as a CSV at the bottom."
       )
     );
 
@@ -1151,8 +1162,9 @@
     const catSel = document.createElement("select");
     catSel.className = "mkt-select";
     [
+      ["registered_new", "New registrations — visited, no cart/order, not emailed yet"],
+      ["registered_old", "Old registrations — visited, no cart/order, already emailed"],
       ["abandoned_cart", "Abandoned carts — a saved cart but no order"],
-      ["registered_no_activity", "Registered — no cart and no order"],
     ].forEach(([v, l]) => {
       const o = el("option", null, l);
       o.value = v;
@@ -1162,6 +1174,68 @@
 
     const countNote = el("p", "dash-note", "Counting recipients…");
     frag.appendChild(countNote);
+
+    // Recipient picker: the full audience as ticked rows, with a filter and a
+    // select-all. Only the ticked addresses are sent to.
+    const recipWrap = el("div", "mkt-reciplist");
+    const recipHead = el("div", "mkt-recip-head");
+    const selectAllLabel = el("label", "mkt-recip-all");
+    const selectAllChk = document.createElement("input");
+    selectAllChk.type = "checkbox";
+    selectAllChk.checked = true;
+    selectAllLabel.append(selectAllChk, el("span", null, "Select all"));
+    const selectedNote = el("span", "mkt-recip-count", "");
+    recipHead.append(selectAllLabel, selectedNote);
+    const filterInput = document.createElement("input");
+    filterInput.type = "search";
+    filterInput.className = "mkt-input mkt-recip-filter";
+    filterInput.placeholder = "Filter by email…";
+    const listBox = el("div", "mkt-recip-items");
+    recipWrap.append(recipHead, filterInput, listBox);
+    frag.appendChild(recipWrap);
+
+    function selectedEmails() {
+      return [...listBox.querySelectorAll("input[type=checkbox]")]
+        .filter((b) => b.checked)
+        .map((b) => b.value);
+    }
+
+    function updateSelected() {
+      const boxes = [...listBox.querySelectorAll("input[type=checkbox]")];
+      const checked = boxes.filter((b) => b.checked).length;
+      selectedNote.textContent = boxes.length ? `${checked} of ${boxes.length} selected` : "";
+      selectAllChk.checked = boxes.length > 0 && checked === boxes.length;
+      selectAllChk.indeterminate = checked > 0 && checked < boxes.length;
+      sendBtn.disabled = checked === 0;
+      sendBtn.textContent = checked ? `Send to ${checked} recipient(s)` : "No recipients selected";
+    }
+
+    function renderChecklist(emails) {
+      listBox.textContent = "";
+      emails.forEach((email) => {
+        const row = el("label", "mkt-recip-item");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = true;
+        cb.value = email;
+        row.append(cb, el("span", null, email));
+        listBox.appendChild(row);
+      });
+      filterInput.value = "";
+      updateSelected();
+    }
+
+    selectAllChk.addEventListener("change", () => {
+      listBox.querySelectorAll("input[type=checkbox]").forEach((b) => (b.checked = selectAllChk.checked));
+      updateSelected();
+    });
+    listBox.addEventListener("change", updateSelected);
+    filterInput.addEventListener("input", () => {
+      const q = filterInput.value.trim().toLowerCase();
+      listBox.querySelectorAll(".mkt-recip-item").forEach((row) => {
+        row.style.display = row.querySelector("input").value.toLowerCase().includes(q) ? "" : "none";
+      });
+    });
 
     const subjectI = document.createElement("input");
     subjectI.type = "text";
@@ -1185,8 +1259,6 @@
     actions.append(testBtn, sendBtn);
     frag.append(actions, statusP);
 
-    let currentCount = 0;
-
     async function invoke(payload) {
       const { data, error } = await sb.functions.invoke("send-marketing-email", { body: payload });
       if (error) {
@@ -1205,16 +1277,19 @@
 
     async function refreshCount() {
       countNote.textContent = "Counting recipients…";
+      listBox.textContent = "";
       sendBtn.disabled = true;
       try {
         const data = await invoke({ category: catSel.value, dry_run: true });
-        currentCount = data.count || 0;
-        countNote.textContent = `${currentCount} recipient(s) in this audience.`;
-        sendBtn.textContent = currentCount ? `Send to ${currentCount} recipient(s)` : "No recipients";
-        sendBtn.disabled = currentCount === 0;
+        const emails = data.emails || [];
+        countNote.textContent = emails.length
+          ? `${emails.length} recipient(s) in this audience. Untick anyone you don't want to email.`
+          : "No recipients in this audience.";
+        renderChecklist(emails);
       } catch (e) {
         countNote.textContent = `Could not count recipients: ${e.message}`;
-        sendBtn.disabled = true;
+        listBox.textContent = "";
+        updateSelected();
       }
     }
 
@@ -1248,24 +1323,89 @@
     });
 
     sendBtn.addEventListener("click", async () => {
-      if (!currentCount) return;
+      const chosen = selectedEmails();
+      if (!chosen.length) return;
       if (!subjectI.value.trim() || !bodyT.value.trim()) return void (statusP.textContent = "Add a subject and a message first.");
-      if (!window.confirm(`Send this email to ${currentCount} real customer(s)? This cannot be undone.`)) return;
+      if (!window.confirm(`Send this email to ${chosen.length} selected customer(s)? This cannot be undone.`)) return;
       sendBtn.disabled = true;
       testBtn.disabled = true;
       statusP.textContent = "Sending…";
       try {
-        const data = await invoke({ category: catSel.value, subject: subjectI.value.trim(), body: bodyT.value });
+        const data = await invoke({ category: catSel.value, subject: subjectI.value.trim(), body: bodyT.value, recipients: chosen });
         statusP.textContent = data.ok === false && data.reason === "email_not_configured"
           ? "Email isn’t configured on the server (RESEND_API_KEY)."
           : `Sent to ${data.sent} recipient(s).`
             + (data.failed ? ` ${data.failed} failed.` : "")
             + (data.failed && data.detail ? ` First error — ${data.detail}` : "");
+        // Everyone just emailed moves from "new" to "old" — rebuild the list.
+        if (data.sent) await refreshCount();
       } catch (e) {
         statusP.textContent = `Send failed: ${e.message}`;
       } finally {
-        sendBtn.disabled = false;
         testBtn.disabled = false;
+        updateSelected();
+      }
+    });
+
+    // --- CSV export of all registered profiles --------------------------
+    const csvSection = el("div", "mkt-csv");
+    csvSection.appendChild(
+      el("p", "mkt-csv-note",
+        "Export every registered profile — name, contact, location and which segment they fall into (New / Old registration, Abandoned cart, Customer) — as a spreadsheet.")
+    );
+    const csvBtn = el("button", "admin-secondary", "Download all profiles (CSV)");
+    csvBtn.type = "button";
+    csvSection.appendChild(csvBtn);
+    frag.appendChild(csvSection);
+
+    const CSV_COLUMNS = [
+      ["name", "Name"], ["email", "Email"], ["phone", "Phone"], ["city", "City"],
+      ["state", "State"], ["pin_code", "PIN code"], ["registered_at", "Registered on"],
+      ["segment", "Segment"], ["emailed", "Emailed before"], ["last_emailed_at", "Last emailed"],
+      ["emails_sent", "Emails sent"], ["has_abandoned_cart", "Abandoned cart"],
+      ["unsubscribed", "Unsubscribed"], ["orders_placed", "Orders placed"],
+    ];
+    const DATE_COLS = new Set(["registered_at", "last_emailed_at"]);
+    const csvDate = (v) => (v ? new Date(v).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "");
+    const csvCell = (v) => {
+      const s = String(v ?? "");
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    function buildCsv(rows) {
+      const header = CSV_COLUMNS.map(([, label]) => csvCell(label)).join(",");
+      const lines = rows.map((r) =>
+        CSV_COLUMNS.map(([key]) => csvCell(DATE_COLS.has(key) ? csvDate(r[key]) : r[key])).join(",")
+      );
+      return "﻿" + [header, ...lines].join("\r\n"); // BOM so Excel reads UTF-8
+    }
+
+    csvBtn.addEventListener("click", async () => {
+      csvBtn.disabled = true;
+      const label = csvBtn.textContent;
+      csvBtn.textContent = "Preparing…";
+      statusP.textContent = "";
+      try {
+        const data = await invoke({ export: true });
+        const rows = data.profiles || [];
+        if (!rows.length) {
+          statusP.textContent = "No registered profiles to export.";
+          return;
+        }
+        const blob = new Blob([buildCsv(rows)], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `safe-creatives-registrations-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        statusP.textContent = `Downloaded ${rows.length} profile(s) as CSV.`;
+      } catch (e) {
+        statusP.textContent = `Export failed: ${e.message}`;
+      } finally {
+        csvBtn.disabled = false;
+        csvBtn.textContent = label;
       }
     });
 

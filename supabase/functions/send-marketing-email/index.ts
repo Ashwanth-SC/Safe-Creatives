@@ -88,18 +88,28 @@ Deno.serve(async (req) => {
   const subject = String(reqBody.subject ?? "").trim();
   const body = String(reqBody.body ?? "");
   const dryRun = reqBody.dry_run === true;
+  const doExport = reqBody.export === true;
   const testEmail = String(reqBody.test_email ?? "").trim();
-  if (category !== "abandoned_cart" && category !== "registered_no_activity") {
+  // When the dashboard sends a hand-picked subset it passes `recipients`. We
+  // only ever INTERSECT it with the server-computed audience, so an admin can
+  // narrow the list but never email an address the audience rule didn't allow.
+  const picked = Array.isArray(reqBody.recipients)
+    ? new Set((reqBody.recipients as unknown[]).map((e) => String(e).trim().toLowerCase()))
+    : null;
+
+  const VALID = new Set(["abandoned_cart", "registered_new", "registered_old", "registered_no_activity"]);
+  if (!doExport && !VALID.has(category)) {
     return json({ error: "Unknown audience." }, 400);
   }
 
-  // --- Compute the audience (service role) -----------------------------------
-  const [cartsRes, totalsRes, ordersRes, profilesRes, unsubRes] = await Promise.all([
+  // --- Load everything the audience / export needs (service role) ------------
+  const [cartsRes, totalsRes, ordersRes, profilesRes, unsubRes, sendsRes] = await Promise.all([
     admin.from("carts").select("id, user_id").eq("status", "active"),
     admin.from("cart_totals").select("cart_id, item_count"),
     admin.from("orders").select("user_id"),
-    admin.from("profiles").select("id, email, is_admin"),
+    admin.from("profiles").select("id, email, is_admin, full_name, phone, city, state_name, pin_code, created_at"),
     admin.from("marketing_unsubscribes").select("email"),
+    admin.from("marketing_sends").select("email, first_sent_at, last_sent_at, send_count"),
   ]);
   if (profilesRes.error) return json({ error: "Could not load registrations." }, 500);
 
@@ -109,25 +119,77 @@ Deno.serve(async (req) => {
   const abandonedUserIds = new Set(
     (cartsRes.data ?? []).filter((c) => (itemCount.get(c.id) || 0) > 0).map((c) => c.user_id)
   );
-  const orderUserIds = new Set((ordersRes.data ?? []).map((o) => o.user_id).filter(Boolean));
+  const orderCount = new Map<string, number>();
+  for (const o of ordersRes.data ?? []) {
+    if (o.user_id) orderCount.set(o.user_id, (orderCount.get(o.user_id) || 0) + 1);
+  }
+  // email -> prior marketing-send record (presence means "already emailed").
+  const sendByEmail = new Map((sendsRes.data ?? []).map((s) => [String(s.email).toLowerCase(), s]));
 
+  // Which segment a profile belongs to — mutually exclusive, in priority order.
+  const segmentOf = (hasOrder: boolean, hasCart: boolean, emailed: boolean) =>
+    hasOrder ? "Customer" : hasCart ? "Abandoned cart" : emailed ? "Old registration" : "New registration";
+
+  // --- CSV export: every registered (non-staff) profile, classified ----------
+  if (doExport) {
+    const rows = (profilesRes.data ?? [])
+      .filter((p) => !p.is_admin)
+      .map((p) => {
+        const key = String(p.email ?? "").trim().toLowerCase();
+        const hasOrder = (orderCount.get(p.id) || 0) > 0;
+        const hasCart = abandonedUserIds.has(p.id);
+        const sent = key ? sendByEmail.get(key) : null;
+        return {
+          name: p.full_name ?? "",
+          email: p.email ?? "",
+          phone: p.phone ?? "",
+          city: p.city ?? "",
+          state: p.state_name ?? "",
+          pin_code: p.pin_code ?? "",
+          registered_at: p.created_at ?? "",
+          segment: segmentOf(hasOrder, hasCart, !!sent),
+          emailed: sent ? "Yes" : "No",
+          last_emailed_at: sent?.last_sent_at ?? "",
+          emails_sent: sent?.send_count ?? 0,
+          has_abandoned_cart: hasCart ? "Yes" : "No",
+          unsubscribed: key && unsubSet.has(key) ? "Yes" : "No",
+          orders_placed: orderCount.get(p.id) || 0,
+        };
+      });
+    return json({ ok: true, profiles: rows });
+  }
+
+  // --- Compute the email audience for the chosen category --------------------
   const seen = new Set<string>();
   const recipients: string[] = [];
   for (const p of profilesRes.data ?? []) {
     const email = String(p.email ?? "").trim();
     if (!email || p.is_admin) continue;
-    const hasCart = abandonedUserIds.has(p.id);
-    const hasOrder = orderUserIds.has(p.id);
-    const include = category === "abandoned_cart" ? hasCart : !hasCart && !hasOrder;
-    if (!include) continue;
     const key = email.toLowerCase();
     if (seen.has(key) || unsubSet.has(key)) continue;
+
+    const hasCart = abandonedUserIds.has(p.id);
+    const hasOrder = (orderCount.get(p.id) || 0) > 0;
+    const emailed = sendByEmail.has(key);
+    const noActivity = !hasCart && !hasOrder;
+
+    let include = false;
+    if (category === "abandoned_cart") include = hasCart;
+    else if (category === "registered_new") include = noActivity && !emailed;
+    else if (category === "registered_old") include = noActivity && emailed;
+    else include = noActivity; // "registered_no_activity" (legacy = new + old)
+    if (!include) continue;
+
+    // A real send may narrow the audience to a hand-picked subset; the count
+    // (dry run) always reports the full audience so the UI can list it.
+    if (!dryRun && picked && !picked.has(key)) continue;
+
     seen.add(key);
     recipients.push(email);
   }
 
   if (dryRun) {
-    return json({ ok: true, count: recipients.length, sample: recipients.slice(0, 5) });
+    return json({ ok: true, count: recipients.length, emails: recipients });
   }
 
   // --- Sending ---------------------------------------------------------------
@@ -211,7 +273,7 @@ Deno.serve(async (req) => {
   // the WHOLE batch if any single message is invalid. So on a batch failure we
   // capture the reason and — unless it's clearly account-wide (auth, billing,
   // rate limit) — retry that chunk one message at a time to salvage the rest.
-  let sent = 0;
+  const sentEmails: string[] = [];
   let failed = 0;
   for (const group of chunk(recipients, 100)) {
     const objs = await Promise.all(group.map(buildEmail));
@@ -221,7 +283,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify(objs),
     });
     if (res.ok) {
-      sent += group.length;
+      sentEmails.push(...group);
       continue;
     }
     const detail = `${res.status}: ${(await res.text()).slice(0, 300)}`;
@@ -232,12 +294,31 @@ Deno.serve(async (req) => {
       failed += group.length;
       continue;
     }
-    for (const obj of objs) {
-      if (await sendOne(obj)) sent++;
+    for (let i = 0; i < objs.length; i++) {
+      if (await sendOne(objs[i])) sentEmails.push(group[i]);
       else failed++;
     }
   }
 
+  // Record who we reached, so a "new" registration becomes "old" next time.
+  // Prior values come from sendByEmail, so first_sent_at and the count survive.
+  if (sentEmails.length) {
+    const nowIso = new Date().toISOString();
+    const rows = sentEmails.map((e) => {
+      const prev = sendByEmail.get(e.toLowerCase());
+      return {
+        email: e.toLowerCase(),
+        first_sent_at: prev?.first_sent_at ?? nowIso,
+        last_sent_at: nowIso,
+        send_count: (Number(prev?.send_count) || 0) + 1,
+        last_category: category,
+      };
+    });
+    const { error: logErr } = await admin.from("marketing_sends").upsert(rows, { onConflict: "email" });
+    if (logErr) console.error("Could not record marketing_sends:", logErr.message);
+  }
+
+  const sent = sentEmails.length;
   console.log(`Marketing email (${category}) sent to ${sent}, failed ${failed}. First error: ${firstError ?? "none"}`);
   return json({ ok: true, sent, failed, detail: firstError });
 });

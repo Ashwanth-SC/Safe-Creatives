@@ -421,6 +421,23 @@ button:disabled { opacity: .5; cursor: progress; }
 .mkt-textarea { resize: vertical; line-height: 1.5; }
 .mkt-select:focus, .mkt-input:focus, .mkt-textarea:focus { outline: none; border-color: #6f222a; }
 
+/* Recipient picker */
+.mkt-reciplist { max-width: 640px; margin: 4px 0 18px; border: 1px solid rgba(23,23,23,.16); border-radius: 8px; padding: 12px 14px; background: #fff; }
+.mkt-recip-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.mkt-recip-all { display: inline-flex; align-items: center; gap: 8px; font: 600 12px "DM Sans", sans-serif; color: #171717; cursor: pointer; }
+.mkt-recip-all input { width: 15px; height: 15px; accent-color: #0c4444; }
+.mkt-recip-count { font: 11px "DM Mono", monospace; letter-spacing: .04em; color: #8b8f88; }
+.mkt-recip-filter { margin: 0 0 10px; padding: 8px 11px; }
+.mkt-recip-items { max-height: 240px; overflow-y: auto; border-top: 1px solid rgba(23,23,23,.1); }
+.mkt-recip-item { display: flex; align-items: center; gap: 9px; padding: 7px 2px; font: 13px "DM Sans", sans-serif; color: #3a3a3a; border-bottom: 1px solid rgba(23,23,23,.06); cursor: pointer; }
+.mkt-recip-item:last-child { border-bottom: none; }
+.mkt-recip-item input { width: 15px; height: 15px; accent-color: #0c4444; flex: none; }
+.mkt-recip-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* CSV export */
+.mkt-csv { max-width: 640px; margin: 26px 0 0; padding: 18px 0 0; border-top: 1px solid rgba(23,23,23,.14); }
+.mkt-csv-note { margin: 0 0 12px; font: 13px "DM Sans", sans-serif; color: #59635d; line-height: 1.5; }
+
 /* ============================================================================
    Reports tab (both dashboards)
    ========================================================================== */
