@@ -1926,8 +1926,8 @@
     }
 
     const [prj, rcp, spc] = await Promise.all([
-      sb.from("turnkey_projects").select("id, status, platform, budget_paise, pin_code, project_category, created_at"),
-      sb.from("turnkey_receipts").select("amount_paise, receipt_date, payment_mode"),
+      sb.from("turnkey_projects").select("id, project_number, client_name, project_name, status, platform, budget_paise, pin_code, project_category, created_at"),
+      sb.from("turnkey_receipts").select("amount_paise, receipt_date, payment_mode, receipt_name, project_id"),
       sb.from("turnkey_project_spaces").select("name, is_selected"),
     ]);
     const firstErr = prj.error || rcp.error || spc.error;
@@ -1984,6 +1984,109 @@
     const cMode = card("Payment mode", { legend: true });
     const cSpaces = card("Most-requested spaces");
     const cLeads = card("New leads over time", { wide: true });
+
+    // ---- Per-project collections breakup (all-time, not period-bound) ------
+    // Each project is a row; columns show how much has come in under each
+    // payment milestone, plus the total received, the budget and the balance.
+    (function appendBreakup() {
+      const cats = RECEIPT_TYPES;
+      const byProject = new Map();
+      let hasOther = false;
+      receipts.forEach((r) => {
+        if (!r.project_id) return;
+        let rec = byProject.get(r.project_id);
+        if (!rec) {
+          rec = { total: 0, other: 0, cats: Object.fromEntries(cats.map((c) => [c, 0])) };
+          byProject.set(r.project_id, rec);
+        }
+        const amt = Number(r.amount_paise || 0);
+        rec.total += amt;
+        if (cats.includes(r.receipt_name)) rec.cats[r.receipt_name] += amt;
+        else { rec.other += amt; if (amt) hasOther = true; }
+      });
+
+      // Projects that have received money or carry a budget, newest first.
+      const rows = projects
+        .filter((p) => byProject.has(p.id) || Number(p.budget_paise || 0) > 0)
+        .sort((a, b) => (Number(b.project_number) || 0) - (Number(a.project_number) || 0));
+
+      const heads = ["Customer", "Status", ...cats, ...(hasOther ? ["Other"] : []), "Total received", "Budget", "Balance"];
+      const numFrom = 2; // every column from here on is money
+      const cell = (v) => (v > 0 ? money(v) : "—");
+
+      const scroll = el("div", "table-scroll");
+      const t = el("table", "dash-table tk-breakup");
+      const thead = el("thead");
+      const hr = el("tr");
+      heads.forEach((h, i) => hr.appendChild(el("th", i >= numFrom ? "num" : null, h)));
+      thead.appendChild(hr);
+
+      const tbody = el("tbody");
+      if (!rows.length) {
+        const tr = el("tr");
+        const td = el("td", "dash-empty", "No projects with payments or budgets yet.");
+        td.colSpan = heads.length;
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      }
+
+      const foot = { total: 0, other: 0, budget: 0, cats: Object.fromEntries(cats.map((c) => [c, 0])) };
+
+      rows.forEach((p) => {
+        const rec = byProject.get(p.id) || { total: 0, other: 0, cats: Object.fromEntries(cats.map((c) => [c, 0])) };
+        const budget = Number(p.budget_paise || 0);
+        const balance = budget > 0 ? budget - rec.total : null;
+        foot.total += rec.total; foot.other += rec.other; foot.budget += budget;
+        cats.forEach((c) => (foot.cats[c] += rec.cats[c]));
+
+        const who = el("div", "tk-breakup-proj");
+        who.append(el("strong", null, `#${p.project_number}`), el("span", null, p.client_name || "—"));
+        if (p.project_name) who.append(el("span", "tk-breakup-sub", p.project_name));
+
+        const cells = [
+          who,
+          p.status || "—",
+          ...cats.map((c) => cell(rec.cats[c])),
+          ...(hasOther ? [cell(rec.other)] : []),
+          el("strong", null, money(rec.total)),
+          budget > 0 ? money(budget) : "—",
+          balance == null ? "—" : balance <= 0 ? el("span", "tk-paid", "Paid") : money(balance),
+        ];
+        const tr = el("tr");
+        cells.forEach((c, i) => {
+          const td = el("td", i >= numFrom ? "num" : null);
+          if (c instanceof Node) td.appendChild(c);
+          else td.textContent = c ?? "—";
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+
+      if (rows.length) {
+        const cells = [
+          "All projects", "",
+          ...cats.map((c) => cell(foot.cats[c])),
+          ...(hasOther ? [cell(foot.other)] : []),
+          money(foot.total),
+          foot.budget > 0 ? money(foot.budget) : "—",
+          foot.budget > 0 ? money(Math.max(foot.budget - foot.total, 0)) : "—",
+        ];
+        const tr = el("tr", "tk-breakup-total");
+        cells.forEach((c, i) => tr.appendChild(el("td", i >= numFrom ? "num" : null, c)));
+        tbody.appendChild(tr);
+      }
+
+      t.append(thead, tbody);
+      scroll.appendChild(t);
+
+      const node = el("div", "report-card is-wide");
+      node.append(
+        el("h3", null, "Collections by project & category"),
+        el("p", "report-sub", "All-time · every receipt, by milestone"),
+        scroll
+      );
+      grid.appendChild(node);
+    })();
 
     function setKpis(cards) {
       kpis.textContent = "";
