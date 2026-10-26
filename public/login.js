@@ -101,7 +101,7 @@ async function destinationFor(userId) {
 // is switched on in Supabase (Auth -> Attack Protection), or every login
 // would be rejected for a missing token. The SECRET key goes only in Supabase.
 
-const TURNSTILE_SITE_KEY = "";
+const TURNSTILE_SITE_KEY = "0x4AAAAAAFmS1SQVujo1F3d4";
 
 let captchaToken = "";
 
