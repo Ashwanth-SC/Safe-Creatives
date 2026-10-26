@@ -361,6 +361,16 @@
     wrap.appendChild(el("p", "admin-hint", meta.join(" · ") + (quals.length ? " — " + quals.join(" · ") : "")));
 
     const f = projectFields(p);
+
+    // The customer / project number is editable here. It's UNIQUE in the
+    // database, so a duplicate is refused (checked before saving, and the DB
+    // constraint is the backstop if two edits race).
+    const numI = input("number", p.project_number);
+    numI.min = "1";
+    numI.step = "1";
+    numI.required = true;
+    f.grid.insertBefore(field("Customer no.", numI), f.grid.firstChild);
+
     const msg = el("p", "admin-hint", "");
     const btn = el("button", "admin-primary-small", "Save changes");
     btn.type = "button";
@@ -371,11 +381,41 @@
         msg.textContent = "Client name is required.";
         return;
       }
+
+      // Validate + (if changed) check the customer number is free.
+      const newNum = parseInt(numI.value, 10);
+      if (!Number.isInteger(newNum) || newNum < 1) {
+        msg.textContent = "Customer number must be a whole number of 1 or more.";
+        return;
+      }
+      if (newNum !== p.project_number) {
+        btn.disabled = true;
+        const { data: clash, error: checkErr } = await sb
+          .from("turnkey_projects")
+          .select("client_name")
+          .eq("project_number", newNum)
+          .neq("id", p.id)
+          .maybeSingle();
+        btn.disabled = false;
+        if (checkErr) {
+          msg.textContent = `Could not check the number: ${checkErr.message}`;
+          return;
+        }
+        if (clash) {
+          msg.textContent = `Customer number ${newNum} is already used by ${clash.client_name || "another project"}. Numbers must be unique.`;
+          return;
+        }
+        patch.project_number = newNum;
+      }
+
       btn.disabled = true;
       const { error } = await sb.from("turnkey_projects").update(patch).eq("id", p.id);
       btn.disabled = false;
       if (error) {
-        msg.textContent = `Could not save: ${error.message}`;
+        msg.textContent =
+          error.code === "23505" || /duplicate key|unique/i.test(error.message)
+            ? `Customer number ${newNum} is already taken. Numbers must be unique.`
+            : `Could not save: ${error.message}`;
         return;
       }
       Object.assign(p, patch);
