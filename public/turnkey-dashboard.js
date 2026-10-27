@@ -1926,8 +1926,8 @@
     }
 
     const [prj, rcp, spc] = await Promise.all([
-      sb.from("turnkey_projects").select("id, project_number, client_name, project_name, status, platform, budget_paise, pin_code, project_category, created_at"),
-      sb.from("turnkey_receipts").select("amount_paise, receipt_date, payment_mode, receipt_name, project_id"),
+      sb.from("turnkey_projects").select("id, project_number, client_name, project_name, site_address, status, platform, budget_paise, pin_code, project_category, created_at"),
+      sb.from("turnkey_receipts").select("receipt_number, amount_paise, receipt_date, payment_mode, receipt_name, project_id"),
       sb.from("turnkey_project_spaces").select("name, is_selected"),
     ]);
     const firstErr = prj.error || rcp.error || spc.error;
@@ -1975,6 +1975,253 @@
       if (legendBox) node.appendChild(legendBox);
       grid.appendChild(node);
       return { chartBox, legendBox, sub };
+    }
+
+    // ---- Customer payment report (one project, customer-safe) --------------
+    // A branded PDF for a single project: payment summary + charts only. It
+    // never shows cost, supplier or margin — only what the customer has paid,
+    // their budget, and the balance.
+    const reportCard = el("div", "report-card is-wide");
+    reportCard.appendChild(el("h3", null, "Customer payment report"));
+    reportCard.appendChild(el("p", "report-sub", "A customer-safe PDF for one project — payment summary and charts, no costs, suppliers or margins"));
+    const crRow = el("div", "tk-custreport-row");
+    const crSel = document.createElement("select");
+    crSel.className = "mkt-select tk-custreport-sel";
+    crSel.appendChild(el("option", null, "Select a project…"));
+    projects
+      .slice()
+      .sort((a, b) => (Number(b.project_number) || 0) - (Number(a.project_number) || 0))
+      .forEach((p) => {
+        const o = el("option", null, `#${p.project_number} — ${p.client_name}` + (p.project_name ? ` — ${p.project_name}` : ""));
+        o.value = p.id;
+        crSel.appendChild(o);
+      });
+    const crBtn = el("button", "admin-primary", "Download report");
+    crBtn.type = "button";
+    const crMsg = el("p", "admin-hint", "");
+    crRow.append(crSel, crBtn);
+    reportCard.append(crRow, crMsg);
+    grid.appendChild(reportCard);
+
+    crBtn.addEventListener("click", async () => {
+      const project = projects.find((p) => p.id === crSel.value);
+      if (!project) { crMsg.textContent = "Pick a project first."; return; }
+      crBtn.disabled = true;
+      const label = crBtn.textContent;
+      crBtn.textContent = "Preparing…";
+      crMsg.textContent = "";
+      try {
+        openCustomerReport(await getSeller(), project);
+        crMsg.textContent = "Opened in a new tab — review it, then use “Print / Save as PDF”.";
+      } catch (e) {
+        console.error("Customer report failed:", e);
+        crMsg.textContent = `Could not build the report: ${e.message || e}`;
+      } finally {
+        crBtn.disabled = false;
+        crBtn.textContent = label;
+      }
+    });
+
+    let sellerCache = null;
+    async function getSeller() {
+      if (sellerCache) return sellerCache;
+      const { data } = await sb
+        .from("seller_settings")
+        .select("legal_name, trade_name, address_line, city, state_name, pin_code, email, phone, gstin")
+        .maybeSingle();
+      sellerCache = data || {};
+      return sellerCache;
+    }
+
+    // Render a Chart.js config to a PNG data URL, off-screen and without
+    // animation, so it can be embedded as an <img> in the printable report.
+    function chartImg(config, w, h) {
+      const holder = el("div");
+      holder.style.cssText = `position:absolute;left:-10000px;top:0;width:${w}px;height:${h}px`;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      holder.appendChild(canvas);
+      document.body.appendChild(holder);
+      const chart = new window.Chart(canvas, {
+        type: config.type,
+        data: config.data,
+        options: Object.assign({ responsive: false, animation: false, devicePixelRatio: 2 }, config.options),
+      });
+      const url = chart.toBase64Image("image/png", 1);
+      chart.destroy();
+      holder.remove();
+      return url;
+    }
+
+    function openCustomerReport(seller, project) {
+      const cats = RECEIPT_TYPES;
+      const rs = receipts
+        .filter((r) => r.project_id === project.id)
+        .slice()
+        .sort((a, b) => String(a.receipt_date || "").localeCompare(String(b.receipt_date || "")));
+
+      const budget = Number(project.budget_paise || 0);
+      const paid = rs.reduce((s, r) => s + Number(r.amount_paise || 0), 0);
+      const balance = budget > 0 ? Math.max(budget - paid, 0) : null;
+      const pct = budget > 0 ? Math.round((paid / budget) * 100) : null;
+
+      const catTotals = Object.fromEntries(cats.map((c) => [c, 0]));
+      let otherTotal = 0;
+      rs.forEach((r) => {
+        const amt = Number(r.amount_paise || 0);
+        if (cats.includes(r.receipt_name)) catTotals[r.receipt_name] += amt;
+        else otherTotal += amt;
+      });
+
+      const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const monthMap = new Map();
+      rs.forEach((r) => {
+        if (!r.receipt_date) return;
+        const d = ymd(r.receipt_date);
+        const key = d.getFullYear() * 12 + d.getMonth();
+        monthMap.set(key, (monthMap.get(key) || 0) + Number(r.amount_paise || 0));
+      });
+      const monthKeys = [...monthMap.keys()].sort((a, b) => a - b);
+      const otLabels = monthKeys.map((k) => `${MONTHS[k % 12]} ${String(Math.floor(k / 12)).slice(2)}`);
+      const otData = monthKeys.map((k) => monthMap.get(k) / 100);
+
+      const PALETTE = R.PALETTE, TEAL = R.TEAL, INK2 = R.INK2, MUTED = R.MUTED;
+      const FONT = "'DM Sans', system-ui, sans-serif";
+      const rupeeTick = (v) => "₹" + Math.round(v).toLocaleString("en-IN");
+
+      const images = {};
+      if (budget > 0) {
+        images.progress = chartImg({
+          type: "doughnut",
+          data: { labels: ["Paid", "Balance"], datasets: [{ data: [paid / 100, (balance || 0) / 100], backgroundColor: [TEAL, "#e2e0d8"], borderColor: "#fff", borderWidth: 2 }] },
+          options: { cutout: "62%", plugins: { legend: { position: "bottom", labels: { font: { family: FONT, size: 13 }, color: INK2 } } } },
+        }, 440, 340);
+      }
+      const mLabels = [], mData = [], mColors = [];
+      cats.forEach((c, i) => { if (catTotals[c] > 0) { mLabels.push(c); mData.push(catTotals[c] / 100); mColors.push(PALETTE[i % PALETTE.length]); } });
+      if (otherTotal > 0) { mLabels.push("Other"); mData.push(otherTotal / 100); mColors.push("#9a9a93"); }
+      if (mData.length) {
+        images.byCat = chartImg({
+          type: "doughnut",
+          data: { labels: mLabels, datasets: [{ data: mData, backgroundColor: mColors, borderColor: "#fff", borderWidth: 2 }] },
+          options: { cutout: "58%", plugins: { legend: { position: "bottom", labels: { font: { family: FONT, size: 12 }, color: INK2 } } } },
+        }, 440, 340);
+      }
+      if (otData.length) {
+        images.overTime = chartImg({
+          type: "bar",
+          data: { labels: otLabels, datasets: [{ data: otData, backgroundColor: TEAL, borderRadius: 4, maxBarThickness: 46 }] },
+          options: {
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { grid: { display: false }, ticks: { font: { family: FONT, size: 12 }, color: INK2 } },
+              y: { beginAtZero: true, grid: { color: "#e8e7e0" }, ticks: { font: { family: FONT, size: 11 }, color: MUTED, callback: rupeeTick } },
+            },
+          },
+        }, 900, 360);
+      }
+
+      const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      const coName = seller.trade_name || seller.legal_name || "Safe Creatives";
+      const coAddr = [seller.address_line, seller.city, seller.state_name && `${seller.state_name} ${seller.pin_code || ""}`.trim()].filter(Boolean).join(", ");
+      const coContact = [seller.phone && `Ph: ${seller.phone}`, seller.email].filter(Boolean).join("  ·  ");
+      const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+      const title = (`Payment summary #${project.project_number}` + (project.client_name ? ` - ${project.client_name}` : "")).replace(/[\\/:*?"<>|]+/g, "-");
+
+      const summaryCards = [
+        ["Project budget", budget > 0 ? money(budget) : "—"],
+        ["Total received", money(paid)],
+        ["Balance due", balance == null ? "—" : balance <= 0 ? "Fully paid" : money(balance)],
+        ...(pct != null ? [["Paid", pct + "%"]] : []),
+      ].map(([l, v]) => `<div class="sum"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join("");
+
+      const recRows = rs.length
+        ? rs.map((r) => `<tr><td>${esc(fmtDate(r.receipt_date))}</td><td>${esc(r.receipt_name || "—")}</td><td>${esc(r.payment_mode || "—")}</td><td>${esc(r.receipt_number || "")}</td><td class="num">${esc(money(r.amount_paise))}</td></tr>`).join("")
+        : `<tr><td colspan="5" style="text-align:center;color:#999">No payments recorded yet.</td></tr>`;
+
+      const chartsHtml =
+        `<div class="charts">` +
+        (images.progress ? `<figure><figcaption>Payment progress</figcaption><img src="${images.progress}" alt="Payment progress"/></figure>` : "") +
+        (images.byCat ? `<figure><figcaption>Payments by stage</figcaption><img src="${images.byCat}" alt="Payments by stage"/></figure>` : "") +
+        `</div>` +
+        (images.overTime ? `<figure><figcaption>Payments over time</figcaption><img src="${images.overTime}" alt="Payments over time"/></figure>` : "");
+
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>${esc(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&family=DM+Sans:wght@400;500;600&family=Playfair+Display:wght@500&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#eceae4;color:#1f1f1f;font:14px/1.6 "DM Sans",system-ui,sans-serif}
+  .toolbar{position:sticky;top:0;background:#0c2222;padding:12px 20px;display:flex;gap:10px}
+  .toolbar button{padding:9px 18px;border:none;border-radius:6px;background:#fff;color:#0c2222;font:13px "DM Sans",sans-serif;cursor:pointer}
+  .toolbar button.primary{background:#6f222a;color:#fff}
+  .doc{max-width:900px;margin:24px auto;background:#fff;padding:40px 44px;box-shadow:0 10px 40px rgba(0,0,0,.12)}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0c4444;padding-bottom:16px}
+  .co-name{font:600 20px "Playfair Display",Georgia,serif;color:#6f222a}
+  .co-sub{font-size:12px;color:#666}
+  .doc-title{text-align:right}
+  .doc-title .word{font:500 12px "DM Mono",monospace;letter-spacing:.18em;color:#6f222a}
+  .doc-title .big{font:500 22px "Playfair Display",Georgia,serif}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin:18px 0 6px;font-size:13px}
+  .meta div span{color:#888;display:inline-block;min-width:88px}
+  .sums{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:22px 0}
+  .sum{border:1px solid rgba(0,0,0,.12);border-left:3px solid #0c4444;padding:12px 14px}
+  .sum span{display:block;font:9px "DM Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:5px}
+  .sum strong{font-size:19px;letter-spacing:-.02em}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  figure{margin:16px 0 0;border:1px solid rgba(0,0,0,.1);padding:14px}
+  figcaption{font:600 11px "DM Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:#6f222a;margin-bottom:8px}
+  figure img{width:100%;height:auto;display:block}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px}
+  th{text-align:left;padding:9px 10px;background:#faf7f2;color:#777;font:9px "DM Mono",monospace;letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid rgba(0,0,0,.14)}
+  td{padding:9px 10px;border-bottom:1px solid rgba(0,0,0,.07)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tfoot td{font-weight:600;border-top:2px solid rgba(0,0,0,.18)}
+  .sec-h{font:600 13px "DM Mono",monospace;letter-spacing:.08em;color:#6f222a;margin:26px 0 0}
+  .foot{margin-top:26px;font-size:11px;color:#999;text-align:center}
+  @media print{.toolbar{display:none}body{background:#fff}.doc{box-shadow:none;margin:0;max-width:none;padding:0 6mm}figure{break-inside:avoid}}
+</style></head>
+<body>
+  <div class="toolbar"><button class="primary" onclick="window.print()">Print / Save as PDF</button><button onclick="window.close()">Close</button></div>
+  <div class="doc">
+    <div class="head">
+      <div>
+        <div class="co-name">${esc(coName)}</div>
+        ${coAddr ? `<div class="co-sub">${esc(coAddr)}</div>` : ""}
+        ${coContact ? `<div class="co-sub">${esc(coContact)}</div>` : ""}
+        ${seller.gstin ? `<div class="co-sub">GSTIN: ${esc(seller.gstin)}</div>` : ""}
+      </div>
+      <div class="doc-title">
+        <div class="word">PAYMENT SUMMARY</div>
+        <div class="big">#${esc(project.project_number)}</div>
+        <div class="co-sub">${esc(today)}</div>
+      </div>
+    </div>
+    <div class="meta">
+      <div><span>Client</span>${esc(project.client_name || "—")}</div>
+      ${project.project_name ? `<div><span>Project</span>${esc(project.project_name)}</div>` : ""}
+      ${project.site_address ? `<div><span>Site</span>${esc(project.site_address)}</div>` : ""}
+      <div><span>Status</span>${esc(project.status || "—")}</div>
+    </div>
+    <div class="sums">${summaryCards}</div>
+    ${chartsHtml}
+    <div class="sec-h">PAYMENTS RECEIVED</div>
+    <table>
+      <thead><tr><th>Date</th><th>Towards</th><th>Mode</th><th>Receipt no.</th><th class="num">Amount</th></tr></thead>
+      <tbody>${recRows}</tbody>
+      ${rs.length ? `<tfoot><tr><td colspan="4">Total received</td><td class="num">${esc(money(paid))}</td></tr></tfoot>` : ""}
+    </table>
+    <div class="foot">This statement reflects payments received as of ${esc(today)}. Computer-generated; no signature required.</div>
+  </div>
+</body></html>`;
+
+      const win = window.open("", "_blank");
+      if (!win) throw new Error("pop-up blocked — allow pop-ups for this site, then try again");
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
     }
 
     const cCollect = card("Collections over time", { wide: true });

@@ -486,6 +486,10 @@ button:disabled { opacity: .5; cursor: progress; }
 .tk-breakup-total td { font-weight: 600; background: #faf7f2; border-top: 2px solid rgba(23,23,23,.16); }
 .tk-paid { color: #0c4444; font-weight: 600; }
 
+/* Customer payment report control */
+.tk-custreport-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 4px; }
+.tk-custreport-sel { max-width: 440px; }
+
 @media print {
   .site-header, .tab-bar, .admin-intro, .report-controls, .stat-row { display: none !important; }
   .report-card { break-inside: avoid; border-color: rgba(23,23,23,.25); }

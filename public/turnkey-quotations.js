@@ -2545,7 +2545,7 @@
     const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
     const body = s.rows.map((r) => `<tr><td>${escHtml(r.product)}</td><td>${escHtml(r.detail || "—")}</td><td class="num">${escHtml(r.qty)}</td><td class="num">${escHtml(money(r.unit_price))}</td><td class="num">${escHtml(money(r.total))}</td></tr>`).join("");
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>Vendor BOQ — ${escHtml(s.supplier)} (Project #${escHtml(proj.project_number || "")})</title>
+<title>Vendor BOQ #${escHtml(proj.project_number || "")} - ${escHtml(s.supplier)}</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font: 13px/1.5 "DM Sans", Arial, sans-serif; color: #171717; background: #f4f4f2; }
@@ -2927,7 +2927,7 @@
     const sellerAddr = [seller.address_line, [seller.city, seller.state_name].filter(Boolean).join(", "), seller.pin_code].filter(Boolean).join(", ");
     const body = l.rows.map((r) => `<tr><td>${escHtml(r.category || "—")}</td><td>${escHtml(r.task || "—")}</td><td class="num">${escHtml(r.total_days ?? 0)}</td><td class="num">${escHtml(r.total_sqft ?? 0)}</td><td class="num">${escHtml(money(r.cost))}</td></tr>`).join("");
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>Labour sheet — ${escHtml(l.name)} (Project #${escHtml(proj.project_number || "")})</title>
+<title>Labour sheet #${escHtml(proj.project_number || "")} - ${escHtml(l.name)}</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font: 13px/1.5 "DM Sans", Arial, sans-serif; color: #171717; background: #f4f4f2; }
