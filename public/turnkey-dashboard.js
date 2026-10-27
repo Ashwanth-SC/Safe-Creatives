@@ -2144,11 +2144,13 @@
       // listed ("—" where nothing has been paid yet), then the total.
       const stageRows = cats.map((c) => ({ name: c, amt: catTotals[c] }));
       if (otherTotal > 0) stageRows.push({ name: "Other", amt: otherTotal });
+      // "% of budget" = this stage's paid amount as a share of the total budget.
+      const pctOfBudget = (amt) => (budget > 0 && amt > 0 ? Math.round((amt / budget) * 100) + "%" : "—");
       const stageTable =
         `<div class="sec-h">PAID TOWARDS EACH STAGE</div>` +
-        `<table class="stage-table"><thead><tr><th>Stage</th><th class="num">Amount paid</th></tr></thead><tbody>` +
-        stageRows.map((s) => `<tr><td>${esc(s.name)}</td><td class="num">${s.amt > 0 ? esc(money(s.amt)) : "—"}</td></tr>`).join("") +
-        `</tbody><tfoot><tr><td>Total received</td><td class="num">${esc(money(paid))}</td></tr></tfoot></table>`;
+        `<table class="stage-table"><thead><tr><th>Stage</th><th class="num">Amount paid</th><th class="num">% of budget</th></tr></thead><tbody>` +
+        stageRows.map((s) => `<tr><td>${esc(s.name)}</td><td class="num">${s.amt > 0 ? esc(money(s.amt)) : "—"}</td><td class="num">${pctOfBudget(s.amt)}</td></tr>`).join("") +
+        `</tbody><tfoot><tr><td>Total received</td><td class="num">${esc(money(paid))}</td><td class="num">${budget > 0 ? Math.round((paid / budget) * 100) + "%" : "—"}</td></tr></tfoot></table>`;
 
       const chartsHtml =
         `<div class="charts">` +
@@ -2189,7 +2191,7 @@
   td{padding:9px 10px;border-bottom:1px solid rgba(0,0,0,.07)}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   tfoot td{font-weight:600;border-top:2px solid rgba(0,0,0,.18)}
-  .stage-table{max-width:460px}
+  .stage-table{max-width:540px}
   .sec-h{font:600 13px "DM Mono",monospace;letter-spacing:.08em;color:#6f222a;margin:26px 0 0}
   .foot{margin-top:26px;font-size:11px;color:#999;text-align:center}
   @media print{.toolbar{display:none}body{background:#fff}.doc{box-shadow:none;margin:0;max-width:none;padding:0 6mm}figure{break-inside:avoid}}
