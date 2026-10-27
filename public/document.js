@@ -103,6 +103,20 @@
   `;
   sheet.hidden = false;
 
+  // The saved filename is the DOCUMENT's name (its type + any annexure), not
+  // the uploaded file's name, keeping the original file's extension.
+  function downloadFileName() {
+    const name = [doc.document_type, doc.annexure_name].filter(Boolean).join(" - ") || "Document";
+    const base = name.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+    const m = /\.([A-Za-z0-9]+)$/.exec(doc.file_name || "");
+    let ext = m ? "." + m[1].toLowerCase() : "";
+    if (!ext) {
+      const mt = String(doc.mime_type || "");
+      ext = /pdf/.test(mt) ? ".pdf" : /png/.test(mt) ? ".png" : /jpe?g/.test(mt) ? ".jpg" : "";
+    }
+    return base + ext;
+  }
+
   // --- Download -------------------------------------------------------------
   downloadBtn.addEventListener("click", async () => {
     if (!fileUrl) return;
@@ -115,7 +129,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = doc.file_name || `${doc.document_type || "document"}`;
+      a.download = downloadFileName();
       document.body.appendChild(a);
       a.click();
       a.remove();

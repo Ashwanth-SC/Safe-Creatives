@@ -1985,34 +1985,66 @@
     const cSpaces = card("Most-requested spaces");
     const cLeads = card("New leads over time", { wide: true });
 
-    // ---- Per-project collections breakup (all-time, not period-bound) ------
+    // ---- Per-project collections breakup — all-time or the selected period --
     // Each project is a row; columns show how much has come in under each
-    // payment milestone, plus the total received, the budget and the balance.
-    (function appendBreakup() {
+    // payment milestone, plus total received, budget and (always all-time)
+    // balance. A toggle switches between every receipt and the chosen period.
+    const breakupCard = el("div", "report-card is-wide");
+    const bHead = el("div", "report-card-head");
+    const bTitleWrap = el("div");
+    bTitleWrap.appendChild(el("h3", null, "Collections by project & category"));
+    const bSub = el("p", "report-sub", "All-time · every receipt, by milestone");
+    bTitleWrap.appendChild(bSub);
+    const bToggle = el("div", "report-seg");
+    const segAll = el("button", "is-active", "All-time");
+    const segPeriod = el("button", null, "Selected period");
+    segAll.type = "button";
+    segPeriod.type = "button";
+    bToggle.append(segAll, segPeriod);
+    bHead.append(bTitleWrap, bToggle);
+    const breakupBody = el("div");
+    breakupCard.append(bHead, breakupBody);
+    grid.appendChild(breakupCard);
+
+    let breakupMode = "all"; // "all" | "period"
+    let curNow = new Date();
+    let curStart = R.rangeStart(rangeSel.value, curNow);
+
+    // All-time total per project, so Balance is always true outstanding even
+    // when the category columns are filtered to a period.
+    const allTotalByProject = new Map();
+    receipts.forEach((r) => {
+      if (!r.project_id) return;
+      allTotalByProject.set(r.project_id, (allTotalByProject.get(r.project_id) || 0) + Number(r.amount_paise || 0));
+    });
+
+    function rebuildBreakup() {
+      const periodBound = breakupMode === "period";
+      const startF = periodBound ? curStart : null;
       const cats = RECEIPT_TYPES;
+      const cell = (v) => (v > 0 ? money(v) : "—");
+
       const byProject = new Map();
       let hasOther = false;
       receipts.forEach((r) => {
         if (!r.project_id) return;
+        if (startF && !(r.receipt_date && ymd(r.receipt_date) >= startF)) return;
         let rec = byProject.get(r.project_id);
-        if (!rec) {
-          rec = { total: 0, other: 0, cats: Object.fromEntries(cats.map((c) => [c, 0])) };
-          byProject.set(r.project_id, rec);
-        }
+        if (!rec) { rec = { total: 0, other: 0, cats: Object.fromEntries(cats.map((c) => [c, 0])) }; byProject.set(r.project_id, rec); }
         const amt = Number(r.amount_paise || 0);
         rec.total += amt;
         if (cats.includes(r.receipt_name)) rec.cats[r.receipt_name] += amt;
         else { rec.other += amt; if (amt) hasOther = true; }
       });
 
-      // Projects that have received money or carry a budget, newest first.
+      // Period view shows only projects that received money in the period;
+      // all-time also lists projects that carry a budget but no receipt yet.
       const rows = projects
-        .filter((p) => byProject.has(p.id) || Number(p.budget_paise || 0) > 0)
+        .filter((p) => (periodBound ? byProject.has(p.id) : byProject.has(p.id) || Number(p.budget_paise || 0) > 0))
         .sort((a, b) => (Number(b.project_number) || 0) - (Number(a.project_number) || 0));
 
-      const heads = ["Customer", "Status", ...cats, ...(hasOther ? ["Other"] : []), "Total received", "Budget", "Balance"];
+      const heads = ["Customer", "Status", ...cats, ...(hasOther ? ["Other"] : []), periodBound ? "Received (period)" : "Total received", "Budget", "Balance"];
       const numFrom = 2; // every column from here on is money
-      const cell = (v) => (v > 0 ? money(v) : "—");
 
       const scroll = el("div", "table-scroll");
       const t = el("table", "dash-table tk-breakup");
@@ -2024,19 +2056,20 @@
       const tbody = el("tbody");
       if (!rows.length) {
         const tr = el("tr");
-        const td = el("td", "dash-empty", "No projects with payments or budgets yet.");
+        const td = el("td", "dash-empty", periodBound ? "No payments received in this period." : "No projects with payments or budgets yet.");
         td.colSpan = heads.length;
         tr.appendChild(td);
         tbody.appendChild(tr);
       }
 
-      const foot = { total: 0, other: 0, budget: 0, cats: Object.fromEntries(cats.map((c) => [c, 0])) };
+      const foot = { total: 0, other: 0, budget: 0, balance: 0, hasBudget: false, cats: Object.fromEntries(cats.map((c) => [c, 0])) };
 
       rows.forEach((p) => {
         const rec = byProject.get(p.id) || { total: 0, other: 0, cats: Object.fromEntries(cats.map((c) => [c, 0])) };
         const budget = Number(p.budget_paise || 0);
-        const balance = budget > 0 ? budget - rec.total : null;
+        const balance = budget > 0 ? budget - (allTotalByProject.get(p.id) || 0) : null;
         foot.total += rec.total; foot.other += rec.other; foot.budget += budget;
+        if (balance != null) { foot.balance += Math.max(balance, 0); foot.hasBudget = true; }
         cats.forEach((c) => (foot.cats[c] += rec.cats[c]));
 
         const who = el("div", "tk-breakup-proj");
@@ -2064,12 +2097,12 @@
 
       if (rows.length) {
         const cells = [
-          "All projects", "",
+          "All shown", "",
           ...cats.map((c) => cell(foot.cats[c])),
           ...(hasOther ? [cell(foot.other)] : []),
           money(foot.total),
           foot.budget > 0 ? money(foot.budget) : "—",
-          foot.budget > 0 ? money(Math.max(foot.budget - foot.total, 0)) : "—",
+          foot.hasBudget ? money(foot.balance) : "—",
         ];
         const tr = el("tr", "tk-breakup-total");
         cells.forEach((c, i) => tr.appendChild(el("td", i >= numFrom ? "num" : null, c)));
@@ -2078,15 +2111,28 @@
 
       t.append(thead, tbody);
       scroll.appendChild(t);
+      breakupBody.replaceChildren(scroll);
+      bSub.textContent = periodBound
+        ? "Selected period · category totals for the period; balance is all-time outstanding"
+        : "All-time · every receipt, by milestone";
+    }
 
-      const node = el("div", "report-card is-wide");
-      node.append(
-        el("h3", null, "Collections by project & category"),
-        el("p", "report-sub", "All-time · every receipt, by milestone"),
-        scroll
-      );
-      grid.appendChild(node);
-    })();
+    segAll.addEventListener("click", () => {
+      if (breakupMode === "all") return;
+      breakupMode = "all";
+      segAll.classList.add("is-active");
+      segPeriod.classList.remove("is-active");
+      rebuildBreakup();
+    });
+    segPeriod.addEventListener("click", () => {
+      if (breakupMode === "period") return;
+      breakupMode = "period";
+      segPeriod.classList.add("is-active");
+      segAll.classList.remove("is-active");
+      rebuildBreakup();
+    });
+
+    rebuildBreakup();
 
     function setKpis(cards) {
       kpis.textContent = "";
@@ -2180,6 +2226,11 @@
       const leadS = R.series(prjR, (p) => p.created_at, null, start, now, grain);
       cLeads.sub.textContent = `New leads · by ${R.grainWord(grain)}`;
       drawOrEmpty(cLeads, prjR.length > 0, (cv) => R.line(cv, leadS.labels, leadS.values));
+
+      // Keep the per-project breakup in step with the period (when toggled to it).
+      curStart = start;
+      curNow = now;
+      rebuildBreakup();
     }
 
     rangeSel.addEventListener("change", () => render(rangeSel.value));

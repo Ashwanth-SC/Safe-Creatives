@@ -473,6 +473,11 @@ button:disabled { opacity: .5; cursor: progress; }
 }
 
 /* Per-project collections breakup table */
+.report-card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.report-seg { display: inline-flex; flex: none; border: 1px solid rgba(23,23,23,.18); border-radius: 999px; overflow: hidden; }
+.report-seg button { padding: 7px 15px; border: none; background: #fff; color: #59635d; font: 12px "DM Sans", sans-serif; cursor: pointer; }
+.report-seg button + button { border-left: 1px solid rgba(23,23,23,.14); }
+.report-seg button.is-active { background: #0c4444; color: #fff; }
 .report-card .table-scroll { margin-top: 2px; }
 .tk-breakup th.num, .tk-breakup td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tk-breakup-proj { display: flex; flex-direction: column; gap: 1px; }
