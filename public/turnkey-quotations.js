@@ -2295,7 +2295,7 @@
     }).join("");
     const summary = printSegs.map((s) => `<tr><td>${escHtml(s.title)}</td><td class="num">${escHtml(money(s.totals.price))}</td><td class="num">${escHtml(money(s.totals.disc))}</td><td class="num">${escHtml(money(s.totals.gst))}</td></tr>`).join("");
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>Quotation — ${escHtml(project.client_name)} (#${escHtml(project.project_number)})</title>
+<title>Quotation #${escHtml(project.project_number)} - ${escHtml(project.client_name)}</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font: 13px/1.5 "DM Sans", Arial, sans-serif; color: #171717; background: #f4f4f2; }

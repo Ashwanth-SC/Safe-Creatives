@@ -155,6 +155,14 @@
   `;
 
   sheet.hidden = false;
+
+  // The browser's "Save as PDF" takes its filename from the page title, so
+  // name it after the receipt (number + client) rather than the generic title.
+  document.title = ("Receipt " + receipt.receipt_number + (receipt.client_name ? " - " + receipt.client_name : ""))
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+
   printBtn.addEventListener("click", () => window.print());
 
   // --- Send to customer -----------------------------------------------------

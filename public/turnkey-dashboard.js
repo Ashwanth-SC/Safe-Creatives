@@ -1510,7 +1510,7 @@
   <script>
     (function () {
       var RECIPIENT = ${JSON.stringify(project.client_email || "")};
-      var FILENAME = ${JSON.stringify(`Consultation-${project.project_number || ""}.pdf`)};
+      var FILENAME = ${JSON.stringify(("Consultation #" + (project.project_number || "") + (project.client_name ? " - " + project.client_name : "") + ".pdf").replace(/[\\/:*?"<>|]+/g, "-"))};
       var PW = 338.667, PH = 190.5; // 16:9 slide in mm (13.333in x 7.5in)
       var dlBtn = document.getElementById("sc-download-btn");
       var btn = document.getElementById("sc-email-btn");
