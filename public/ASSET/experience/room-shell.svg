@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#efe7da"/>
+      <stop offset="1" stop-color="#e2d8c6"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9ccb6"/>
+      <stop offset="1" stop-color="#cabda6"/>
+    </linearGradient>
+    <linearGradient id="winlight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbf7ee"/>
+      <stop offset="1" stop-color="#e9e2d2"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.6">
+      <stop offset="0" stop-color="#fff8ec" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#fff8ec" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- wall -->
+  <rect x="0" y="0" width="1600" height="840" fill="url(#wall)"/>
+  <!-- cove shadow at ceiling -->
+  <rect x="0" y="0" width="1600" height="70" fill="#000" opacity="0.05"/>
+  <!-- soft ambient glow over the media wall -->
+  <ellipse cx="800" cy="430" rx="520" ry="360" fill="url(#glow)"/>
+
+  <!-- floor -->
+  <rect x="0" y="820" width="1600" height="180" fill="#d7cab3"/>
+  <rect x="0" y="818" width="1600" height="6" fill="#bdae92"/>
+  <!-- skirting -->
+  <rect x="0" y="806" width="1600" height="14" fill="#e9e0cf"/>
+
+  <!-- window, left -->
+  <rect x="70" y="150" width="235" height="470" fill="#cdbfa6"/>
+  <rect x="82" y="162" width="211" height="446" fill="url(#winlight)"/>
+  <line x1="187" y1="162" x2="187" y2="608" stroke="#cdbfa6" stroke-width="7"/>
+  <line x1="82" y1="385" x2="293" y2="385" stroke="#cdbfa6" stroke-width="7"/>
+  <!-- light spill on floor -->
+  <polygon points="90,820 300,820 360,1000 150,1000" fill="#fbf4e6" opacity="0.35"/>
+
+  <!-- media wall alcove (empty) — a subtle recessed panel where the TV unit goes -->
+  <rect x="470" y="150" width="660" height="690" fill="#000" opacity="0.025"/>
+  <rect x="486" y="166" width="628" height="640" fill="#e8dfcd"/>
+  <rect x="486" y="166" width="628" height="640" fill="none" stroke="#000" stroke-opacity="0.06" stroke-width="2"/>
+  <!-- faint floor shadow under the alcove -->
+  <ellipse cx="800" cy="824" rx="360" ry="22" fill="#000" opacity="0.06"/>
+
+  <!-- placeholder note (only shows until a real render replaces this file) -->
+  <text x="800" y="470" text-anchor="middle" font-family="DM Sans, Arial, sans-serif" font-size="26" fill="#b7aa90" letter-spacing="2">EMPTY ROOM — PLACEHOLDER</text>
+  <text x="800" y="506" text-anchor="middle" font-family="DM Sans, Arial, sans-serif" font-size="16" fill="#c3b79e">replace ASSET/experience/room-shell.svg with your room render</text>
+</svg>
