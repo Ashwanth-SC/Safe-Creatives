@@ -1,18 +1,19 @@
 // ============================================================================
-// Sensory Rooms — scroll-driven product experience
+// Sensory Rooms — guided video tour / configurator
 // ============================================================================
 //
-// Reads experience.json and plays a single scene as the visitor scrolls:
+// Reads experience.json and plays the walkthrough video as a stepped tour:
 //
-//   1. the empty room shell, full view
-//   2. scroll "moves onto" the TV / media wall (the scene zooms to room.focus)
-//   3. it holds there while the product PNGs reveal in their exact positions
-//   4. tapping a product opens a feature-video preview
+//   intro  -> press "Start"
+//   each category: the video plays forward to that category's `pauseAt` frame
+//                  and stops; the options appear centred in the frame; the
+//                  visitor picks one (carried forward)
+//   outro  -> a summary of the picks + a CTA to build the package
 //
-// Everything is data-driven: edit experience.json and drop real assets at the
-// paths it references (room render, product PNGs, feature videos). Missing
-// assets fall back to a labelled placeholder, so the flow works before the art
-// is ready.
+// Everything is data-driven. Drop a web-optimised walkthrough video at
+// room.video, transparent product PNGs at each option's `png`, and set each
+// category's `pauseAt` (seconds) to the frame it should stop on. Missing assets
+// fall back to labelled placeholders, so the flow works before the art is ready.
 // ============================================================================
 
 (function () {
@@ -22,211 +23,229 @@
   const loading = document.getElementById("exp-loading");
   if (!root) return;
 
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const lerp = (a, b, t) => a + (b - a) * t;
-  const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
   const esc = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const el = (tag, cls) => { const n = document.createElement(tag); if (cls) n.className = cls; return n; };
 
   fetch("experience.json")
     .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(build)
-    .catch((err) => {
-      console.error("Experience load failed:", err);
-      if (loading) loading.textContent = "Could not load the experience.";
-    });
+    .catch((err) => { console.error("Experience load failed:", err); if (loading) loading.textContent = "Could not load the experience."; });
 
   function build(data) {
-    const room = data.room || {};
-    const focus = room.focus || { x: 50, y: 50, scale: 1.8 };
-    const products = data.products || [];
+    const cats = data.categories || [];
+    const selected = cats.map(() => 0); // default pick = first option
+    let step = -1;   // -1 intro, 0..n-1 categories, n outro
+    let busy = false;
 
-    // ---------------- DOM ----------------
-    const runway = el("section", "exp-runway");
-    runway.style.height = "360vh"; // scroll distance for the whole journey
+    // -------- DOM --------
+    const tour = el("div", "tour");
 
-    const sticky = el("div", "exp-sticky");
-    const stage = el("div", "exp-stage");
-    const scene = el("div", "exp-scene");
-    scene.style.setProperty("--aspect", String(room.aspect || 1.6));
-    scene.style.transformOrigin = `${focus.x}% ${focus.y}%`;
+    const poster = document.createElement("img");
+    poster.className = "tour-poster"; poster.alt = ""; poster.src = data.poster || "";
 
-    const bg = document.createElement("img");
-    bg.className = "exp-bg";
-    bg.alt = "";
-    bg.src = room.shell || "";
-    bg.onerror = () => bg.replaceWith(bgPlaceholder());
+    const video = document.createElement("video");
+    video.className = "tour-video";
+    video.muted = true; video.playsInline = true; video.preload = "auto";
+    video.setAttribute("muted", ""); video.setAttribute("playsinline", "");
+    const playSpeed = Number(data.playSpeed) > 0 ? Number(data.playSpeed) : 2.5; // brisk walk between stops
+    let videoOk = !!data.video;
+    if (data.video) video.src = data.video;
+    video.addEventListener("error", () => { videoOk = false; video.style.display = "none"; });
 
-    const layer = el("div", "exp-layer");
-    products.forEach((p, i) => layer.appendChild(hotspot(p, i)));
+    const scrim = el("div", "tour-scrim");
+    const catWrap = el("div");
 
-    scene.append(bg, layer, el("div", "exp-vignette"));
-    stage.appendChild(scene);
+    const introP = el("div", "tour-panel");
+    introP.innerHTML =
+      `<div class="tour-panel-inner">` +
+        `<p class="eyebrow">${esc((data.intro || {}).eyebrow || "SENSORY ROOMS")}</p>` +
+        `<h1>${esc((data.intro || {}).title || "Step inside")}</h1>` +
+        `<p>${esc((data.intro || {}).text || "")}</p>` +
+        `<button type="button" class="btn btn-primary" id="tour-start">${esc((data.intro || {}).button || "Start")}</button>` +
+      `</div>`;
 
-    const introCap = el("div", "exp-caption");
-    introCap.innerHTML =
-      `<p class="eyebrow">SENSORY ROOMS</p>` +
-      `<h1>${esc(data.title || "Step inside your room")}</h1>` +
-      `<p>${esc(data.intro || "")}</p>`;
+    const outroP = el("div", "tour-panel");
 
-    const focusCap = el("div", "exp-caption");
-    focusCap.style.opacity = "0";
-    focusCap.innerHTML =
-      `<p class="eyebrow">EXPLORE</p>` +
-      `<p>${esc(data.focusCaption || "Tap any piece to see its features.")}</p>`;
+    const nav = el("div", "tour-nav");
+    nav.style.display = "none";
+    const backBtn = el("button", "btn btn-ghost"); backBtn.type = "button"; backBtn.textContent = "← Back";
+    const dots = el("div", "tour-dots");
+    cats.forEach(() => dots.appendChild(document.createElement("i")));
+    const nextBtn = el("button", "btn btn-primary"); nextBtn.type = "button"; nextBtn.textContent = "Next →";
+    nav.append(backBtn, dots, nextBtn);
 
-    const hint = el("div", "exp-scrollhint");
-    hint.innerHTML = `Scroll to walk in<span></span>`;
+    tour.append(poster, video, scrim, catWrap, nav, introP, outroP);
+    root.appendChild(tour);
 
-    sticky.append(stage, introCap, focusCap, hint);
-    runway.appendChild(sticky);
+    introP.querySelector("#tour-start").addEventListener("click", () => goCategory(0));
+    nextBtn.addEventListener("click", () => { if (step < cats.length - 1) goCategory(step + 1); else goOutro(); });
+    backBtn.addEventListener("click", () => { if (step <= 0) goIntro(); else goCategory(step - 1); });
 
-    const prog = el("div", "exp-progress");
-    const progBar = el("i");
-    prog.appendChild(progBar);
-
-    const cta = el("section", "exp-cta");
-    const c = data.cta || {};
-    cta.innerHTML =
-      `<p class="eyebrow">READY WHEN YOU ARE</p>` +
-      `<h2>${esc(c.heading || "Make this room yours.")}</h2>` +
-      `<p>${esc(c.text || "")}</p>` +
-      (c.href ? `<a href="${esc(c.href)}">${esc(c.label || "Continue")}</a>` : "");
-
-    const modal = buildModal(products, data.cta);
-
-    root.append(prog, runway, cta, modal.el);
-
-    // ---------------- scroll engine ----------------
-    let ticking = false;
-    function onScroll() {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(() => {
-        ticking = false;
-        const rect = runway.getBoundingClientRect();
-        const total = rect.height - window.innerHeight;
-        const p = clamp(-rect.top / (total || 1), 0, 1);
-
-        // 1-2: zoom onto the media wall over the first ~42% of the runway
-        const zoom = easeInOut(clamp(p / 0.42, 0, 1));
-        scene.style.transform = `scale(${lerp(1, focus.scale, zoom)})`;
-
-        // 3: reveal the products once we've arrived
-        layer.classList.toggle("is-revealed", p >= 0.46);
-
-        introCap.style.opacity = String(clamp(1 - p / 0.14, 0, 1));
-        focusCap.style.opacity = String(clamp((p - 0.5) / 0.08, 0, 1));
-        hint.style.opacity = String(clamp(1 - p / 0.05, 0, 1));
-        progBar.style.width = (p * 100).toFixed(1) + "%";
-      });
-    }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    onScroll();
+    introP.classList.add("is-on");
     requestAnimationFrame(() => { if (loading) loading.classList.add("is-hidden"); });
 
-    // ---------------- builders ----------------
-    function hotspot(p, i) {
-      const pos = p.position || {};
-      const btn = el("button", "exp-hot");
-      btn.type = "button";
-      btn.style.left = (pos.left != null ? pos.left : 0) + "%";
-      btn.style.top = (pos.top != null ? pos.top : 0) + "%";
-      btn.style.width = (pos.width != null ? pos.width : 10) + "%";
-      if (pos.height != null) btn.style.height = pos.height + "%";
-      btn.style.zIndex = String(p.z != null ? p.z : i + 1);
-      btn.style.setProperty("--i", String(i));
-      btn.setAttribute("aria-label", p.name || "Product");
-
-      const img = document.createElement("img");
-      img.alt = p.name || "";
-      img.src = p.png || "";
-      img.onerror = () => img.replaceWith(phBox(p.name));
-      btn.appendChild(img);
-      btn.appendChild(el("span", "exp-dot"));
-
-      btn.addEventListener("click", () => { btn.classList.add("is-seen"); modal.open(i); });
-      return btn;
+    // -------- state --------
+    function goIntro() {
+      step = -1; busy = false;
+      nav.style.display = "none";
+      outroP.classList.remove("is-on");
+      catWrap.textContent = "";
+      introP.classList.add("is-on");
+      try { video.pause(); video.currentTime = 0; } catch (e) { /* not ready */ }
     }
-  }
 
-  function buildModal(products, cta) {
-    const wrap = el("div", "exp-modal");
-    const card = el("div", "exp-card");
-    card.innerHTML =
-      `<div class="exp-media"><button class="exp-close" aria-label="Close">×</button><div class="exp-media-slot"></div></div>` +
-      `<div class="exp-card-body">` +
-        `<p class="eyebrow">FEATURE PREVIEW</p>` +
-        `<h2 class="exp-name"></h2>` +
-        `<p class="blurb exp-blurb"></p>` +
-        `<ul class="exp-feats"></ul>` +
-        `<div class="exp-card-nav">` +
-          `<div class="nav-btns"><button class="exp-btn exp-prev" type="button">← Previous</button><button class="exp-btn exp-next" type="button">Next →</button></div>` +
-          (cta && cta.href ? `<a class="exp-btn primary" href="${esc(cta.href)}">${esc(cta.label || "Reserve")}</a>` : "") +
+    async function goCategory(i) {
+      if (busy || i < 0 || i >= cats.length) return;
+      busy = true;
+      const forward = i > step;
+      introP.classList.remove("is-on");
+      outroP.classList.remove("is-on");
+      catWrap.textContent = ""; // clear old stop while the camera moves
+      step = i;
+      setDots();
+      backBtn.textContent = i === 0 ? "← Intro" : "← Back";
+      nextBtn.textContent = i === cats.length - 1 ? "See your room →" : "Next →";
+      nav.style.display = "";
+
+      await playTo(cats[i].pauseAt != null ? cats[i].pauseAt : 0, forward);
+      renderCat(i);
+      busy = false;
+    }
+
+    function goOutro() {
+      step = cats.length; busy = false;
+      nav.style.display = "none";
+      catWrap.textContent = "";
+      outroP.innerHTML = outroHtml();
+      outroP.classList.add("is-on");
+      const r = outroP.querySelector("#tour-restart");
+      if (r) r.addEventListener("click", goIntro);
+      outroP.querySelectorAll(".tour-sum img").forEach((img) => (img.onerror = () => img.replaceWith(phSpan())));
+      try { video.pause(); } catch (e) { /* ignore */ }
+    }
+
+    function setDots() {
+      [...dots.children].forEach((d, i) => {
+        d.classList.toggle("is-on", i === step);
+        d.classList.toggle("is-done", i < step);
+      });
+    }
+
+    // Play the video forward to `target` seconds and pause there. Going back (or
+    // when the video isn't available) it just seeks/returns so the UI still runs.
+    function playTo(target, forward) {
+      return new Promise((resolve) => {
+        const v = video;
+        if (!videoOk) { resolve(); return; }
+
+        const run = () => {
+          if (isNaN(v.duration)) { resolve(); return; }
+          const t = Math.min(target, v.duration || target);
+          // Going back, or already there: seek to the stop (works on a host that
+          // serves byte ranges — Netlify does; a plain dev server may not).
+          if (!forward || t <= v.currentTime + 0.1) {
+            try { v.pause(); if (Math.abs(v.currentTime - t) > 0.15) v.currentTime = t; } catch (e) { /* ignore */ }
+            resolve();
+            return;
+          }
+          // Going forward: just play up to the stop and pause there — no seek, so
+          // it's reliable even where seeking isn't supported.
+          try { v.playbackRate = playSpeed; } catch (e) { /* ignore */ }
+          let raf;
+          const tick = () => {
+            if (v.currentTime >= t - 0.05) {
+              try { v.pause(); v.playbackRate = 1; } catch (e) { /* ignore */ }
+              cancelAnimationFrame(raf);
+              resolve();
+              return;
+            }
+            raf = requestAnimationFrame(tick);
+          };
+          const pr = v.play();
+          if (pr && pr.then) pr.then(() => { raf = requestAnimationFrame(tick); }).catch(() => { try { v.currentTime = t; } catch (e) {} resolve(); });
+          else raf = requestAnimationFrame(tick);
+        };
+
+        // The first stop may be reached before the video's metadata has loaded,
+        // so wait until it's ready (with a safety timeout) before playing.
+        if (v.readyState >= 1 && !isNaN(v.duration)) { run(); return; }
+        let done = false;
+        const onReady = () => {
+          if (done) return; done = true;
+          v.removeEventListener("loadedmetadata", onReady);
+          v.removeEventListener("canplay", onReady);
+          run();
+        };
+        v.addEventListener("loadedmetadata", onReady);
+        v.addEventListener("canplay", onReady);
+        setTimeout(onReady, 4000);
+      });
+    }
+
+    // -------- category view --------
+    function renderCat(i) {
+      const cat = cats[i];
+      const sel = selected[i];
+      const opt = cat.options[sel] || {};
+      const view = el("div", "tour-cat is-on");
+      view.innerHTML =
+        `<div class="tour-cat-head">` +
+          `<div class="step">STOP ${i + 1} / ${cats.length}</div>` +
+          `<h2>${esc(cat.name || "")}</h2>` +
+          (cat.note ? `<p class="note">${esc(cat.note)}</p>` : "") +
         `</div>` +
-      `</div>`;
-    wrap.appendChild(card);
+        `<div class="tour-hero"><figure>${opt.png ? `<img src="${esc(opt.png)}" alt="${esc(opt.name || "")}">` : heroPh(opt.name)}</figure></div>` +
+        `<div class="tour-info">` +
+          `<p class="eyebrow">THIS PIECE</p>` +
+          `<h3>${esc(opt.name || "")}</h3>` +
+          (opt.blurb ? `<p class="blurb">${esc(opt.blurb)}</p>` : "") +
+          `<ul class="tour-feats">${(opt.features || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` +
+        `</div>` +
+        `<div class="tour-options">` +
+          `<span class="pick-label">Choose one</span>` +
+          cat.options.map((o, oi) => optHtml(o, oi === sel)).join("") +
+        `</div>`;
 
-    const slot = card.querySelector(".exp-media-slot");
-    const nameEl = card.querySelector(".exp-name");
-    const blurbEl = card.querySelector(".exp-blurb");
-    const featsEl = card.querySelector(".exp-feats");
-    let idx = 0;
+      catWrap.textContent = "";
+      catWrap.appendChild(view);
 
-    function mediaPh() {
-      const d = el("div", "exp-media-ph");
-      d.innerHTML = `<div class="play"></div><small>FEATURE VIDEO GOES HERE</small>`;
-      return d;
-    }
-    function render(i) {
-      idx = (i + products.length) % products.length;
-      const p = products[idx];
-      nameEl.textContent = p.name || "";
-      blurbEl.textContent = p.blurb || "";
-      featsEl.innerHTML = (p.features || []).map((f) => `<li>${esc(f)}</li>`).join("");
-      slot.innerHTML = "";
-      if (p.video) {
-        const v = document.createElement("video");
-        v.src = p.video;
-        v.autoplay = true; v.muted = true; v.loop = true; v.playsInline = true; v.controls = true;
-        v.onerror = () => { slot.innerHTML = ""; slot.appendChild(mediaPh()); };
-        slot.appendChild(v);
-      } else {
-        slot.appendChild(mediaPh());
-      }
-    }
-    function open(i) { render(i); wrap.classList.add("is-open"); document.body.style.overflow = "hidden"; }
-    function close() {
-      wrap.classList.remove("is-open");
-      document.body.style.overflow = "";
-      const v = slot.querySelector("video");
-      if (v) v.pause();
+      const heroImg = view.querySelector(".tour-hero img");
+      if (heroImg) heroImg.onerror = () => { const d = el("div", "tour-hero-ph"); d.innerHTML = `<b>${esc(opt.name || "Product")}</b><small>PNG goes here</small>`; heroImg.replaceWith(d); };
+      view.querySelectorAll(".tour-opt-thumb img").forEach((img) => (img.onerror = () => img.replaceWith(phSpan())));
+      view.querySelectorAll(".tour-opt").forEach((b, oi) => b.addEventListener("click", () => { if (selected[i] === oi) return; selected[i] = oi; renderCat(i); }));
     }
 
-    card.querySelector(".exp-close").addEventListener("click", close);
-    card.querySelector(".exp-prev").addEventListener("click", () => render(idx - 1));
-    card.querySelector(".exp-next").addEventListener("click", () => render(idx + 1));
-    wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && wrap.classList.contains("is-open")) close(); });
+    function optHtml(o, isSel) {
+      return (
+        `<button type="button" class="tour-opt${isSel ? " is-selected" : ""}">` +
+          `<span class="tour-opt-thumb">${o.png ? `<img src="${esc(o.png)}" alt="">` : `<span>PNG</span>`}</span>` +
+          `<b>${esc(o.name || "")}</b>` +
+          `<span class="tick">✓</span>` +
+        `</button>`
+      );
+    }
 
-    return { el: wrap, open };
-  }
+    function outroHtml() {
+      const o = data.outro || {};
+      const sum = cats.map((c, i) => {
+        const opt = c.options[selected[i]] || {};
+        return `<div class="tour-sum"><span class="t">${opt.png ? `<img src="${esc(opt.png)}" alt="">` : `<span>PNG</span>`}</span><div><small>${esc(c.name)}</small><b>${esc(opt.name || "")}</b></div></div>`;
+      }).join("");
+      return (
+        `<div class="tour-panel-inner">` +
+          `<p class="eyebrow">${esc(o.eyebrow || "YOUR ROOM")}</p>` +
+          `<h1>${esc(o.title || "Here's your room.")}</h1>` +
+          `<div class="tour-summary">${sum}</div>` +
+          (o.text ? `<p>${esc(o.text)}</p>` : "") +
+          `<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">` +
+            `<button type="button" class="btn btn-ghost" id="tour-restart">↺ Start over</button>` +
+            (o.href ? `<a class="btn btn-primary" href="${esc(o.href)}">${esc(o.button || "Continue")}</a>` : "") +
+          `</div>` +
+        `</div>`
+      );
+    }
 
-  // ---------------- small helpers ----------------
-  function el(tag, className) {
-    const n = document.createElement(tag);
-    if (className) n.className = className;
-    return n;
-  }
-  function phBox(name) {
-    const d = el("div", "exp-hot-ph");
-    d.innerHTML = `<b>${esc(name || "Product")}</b><small>PNG goes here</small>`;
-    return d;
-  }
-  function bgPlaceholder() {
-    const d = el("div", "exp-bg");
-    d.style.cssText = "display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#efe7da,#d9ccb6);color:#b7aa90;font:600 18px 'DM Mono',monospace;letter-spacing:.1em";
-    d.textContent = "ROOM RENDER GOES HERE";
-    return d;
+    function heroPh(name) { return `<div class="tour-hero-ph"><b>${esc(name || "Product")}</b><small>PNG goes here</small></div>`; }
+    function phSpan() { const s = document.createElement("span"); s.textContent = "PNG"; return s; }
   }
 })();

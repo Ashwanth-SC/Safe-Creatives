@@ -1,81 +1,64 @@
 {
-  "title": "Step inside your living room",
-  "intro": "Scroll to walk in — the room takes shape, then explore every piece.",
-  "focusCaption": "This is your media wall. Tap any piece to see its features.",
-
-  "room": {
-    "shell": "ASSET/experience/room-shell.svg",
-    "aspect": 1.6,
-    "focus": { "x": 50, "y": 46, "scale": 1.85 }
+  "intro": {
+    "eyebrow": "SENSORY ROOMS · LIVING ROOM",
+    "title": "Walk the room. Choose each piece.",
+    "text": "A guided tour of your living room. At each stop, pick the option that feels right and see exactly what makes it special — your choices come together at the end.",
+    "button": "Start the tour"
   },
 
-  "products": [
+  "video": "ASSET/experience/walkthrough.mp4",
+  "poster": "ASSET/experience/room-shell.svg",
+
+  "categories": [
     {
-      "id": "slat-wall",
-      "name": "Acoustic Slat Wall",
-      "png": "ASSET/experience/products/slat-wall.png",
-      "position": { "left": 31, "top": 22, "width": 38, "height": 46 },
-      "z": 1,
-      "blurb": "Warm oak slats that soften sound and anchor the whole wall.",
-      "features": ["Sound-absorbing felt backing", "Real oak veneer slats", "Hides cables and wiring"],
-      "video": "ASSET/experience/videos/slat-wall.mp4"
+      "id": "media-wall",
+      "name": "TV & Media Wall",
+      "note": "The heart of the room.",
+      "pauseAt": 8,
+      "options": [
+        { "id": "oak-console", "name": "Oak Media Console", "png": "ASSET/experience/products/oak-console.png",
+          "blurb": "Warm oak with soft-close, cable-free drawers.",
+          "features": ["Soft-close push-to-open drawers", "Hidden cable routing", "Wall-hung — floor stays clear"] },
+        { "id": "walnut-console", "name": "Walnut Media Console", "png": "ASSET/experience/products/walnut-console.png",
+          "blurb": "Rich walnut with a fluted front.",
+          "features": ["Fluted solid-wood front", "Soft-close drawers", "Reconfigurable modules"] }
+      ]
     },
     {
-      "id": "tv",
-      "name": "Low-glare Display",
-      "png": "ASSET/experience/products/tv.png",
-      "position": { "left": 38, "top": 31, "width": 24, "height": 16 },
-      "z": 3,
-      "blurb": "A matte, low-glare screen tuned for calm, flicker-free viewing.",
-      "features": ["Anti-glare matte panel", "Flicker-free dimming", "Recessed, flush mount"],
-      "video": "ASSET/experience/videos/tv.mp4"
+      "id": "seating",
+      "name": "Seating",
+      "note": "Where everyone lands.",
+      "pauseAt": 20,
+      "options": [
+        { "id": "corner-sofa", "name": "Corner Sofa", "png": "ASSET/experience/products/corner-sofa.png",
+          "blurb": "A deep, modular corner for the whole family.",
+          "features": ["Modular, reconfigurable", "Stain-resistant weave", "Memory-foam seats"] },
+        { "id": "two-seater", "name": "Two-seater + Ottoman", "png": "ASSET/experience/products/two-seater.png",
+          "blurb": "A lighter pairing for smaller spaces.",
+          "features": ["Compact footprint", "Storage ottoman", "Removable, washable covers"] }
+      ]
     },
     {
-      "id": "console",
-      "name": "Floating Media Console",
-      "png": "ASSET/experience/products/console.png",
-      "position": { "left": 30, "top": 61, "width": 40, "height": 9 },
-      "z": 2,
-      "blurb": "A wall-hung console with soft-close drawers and a cable-free finish.",
-      "features": ["Soft-close push-to-open drawers", "Wall-hung, floor stays clear", "Reconfigurable modules"],
-      "video": "ASSET/experience/videos/console.mp4"
-    },
-    {
-      "id": "shelf",
-      "name": "Display Shelf",
-      "png": "ASSET/experience/products/shelf.png",
-      "position": { "left": 62, "top": 30, "width": 11, "height": 3 },
-      "z": 2,
-      "blurb": "A slim floating shelf for the pieces that make the room yours.",
-      "features": ["Concealed bracket", "Scratch-resistant top", "Holds up to 15 kg"],
-      "video": "ASSET/experience/videos/shelf.mp4"
-    },
-    {
-      "id": "lamp",
-      "name": "Ambient Floor Lamp",
-      "png": "ASSET/experience/products/lamp.png",
-      "position": { "left": 78, "top": 48, "width": 6.5, "height": 34 },
-      "z": 2,
-      "blurb": "Warm, dimmable light that fills the corner without a harsh glare.",
-      "features": ["2200–3000K warm dimming", "Touch control", "Tip-over safe base"],
-      "video": "ASSET/experience/videos/lamp.mp4"
-    },
-    {
-      "id": "planter",
-      "name": "Calm Corner Planter",
-      "png": "ASSET/experience/products/planter.png",
-      "position": { "left": 23, "top": 57, "width": 7.5, "height": 25 },
-      "z": 2,
-      "blurb": "A low-maintenance green corner for a softer, grounding feel.",
-      "features": ["Self-watering reservoir", "Air-purifying planting", "Felt floor protection"],
-      "video": "ASSET/experience/videos/planter.mp4"
+      "id": "lighting",
+      "name": "Lighting",
+      "note": "Set the mood.",
+      "pauseAt": 33,
+      "options": [
+        { "id": "arc-lamp", "name": "Arc Floor Lamp", "png": "ASSET/experience/products/arc-lamp.png",
+          "blurb": "Warm, dimmable light that arcs over the seating.",
+          "features": ["2200–3000K warm dimming", "Touch control", "Tip-over safe base"] },
+        { "id": "ambient-set", "name": "Ambient Light Set", "png": "ASSET/experience/products/ambient-set.png",
+          "blurb": "Layered table and cove lighting for a softer glow.",
+          "features": ["Scene presets", "App + touch control", "Flicker-free"] }
+      ]
     }
   ],
 
-  "cta": {
-    "heading": "Make this room yours.",
-    "text": "Choose your sizes, colours and add-ons, then reserve with a fully refundable advance.",
-    "label": "Build the living room package",
+  "outro": {
+    "eyebrow": "YOUR ROOM",
+    "title": "Here's your living room.",
+    "text": "Reserve this configuration with a fully refundable advance — we visit and verify your space before anything is built.",
+    "button": "Build this package",
     "href": "living-room-package.html"
   }
 }
