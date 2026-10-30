@@ -8,48 +8,65 @@
 
   "video": "ASSET/experience/walkthrough.mp4",
   "poster": "ASSET/experience/room-shell.svg",
+  "playSpeed": 2.5,
+
+  "_note": "pauseAt = the second the walkthrough stops for each category (from your keyframes: 6,12,18,24,30,36,42,48). Replace the category names, option names, PNGs, blurbs, features and videos with your real products.",
 
   "categories": [
     {
-      "id": "media-wall",
-      "name": "TV & Media Wall",
-      "note": "The heart of the room.",
-      "pauseAt": 8,
+      "id": "cat-1", "name": "TV & Media Wall", "note": "The heart of the room.", "pauseAt": 6,
       "options": [
-        { "id": "oak-console", "name": "Oak Media Console", "png": "ASSET/experience/products/oak-console.png",
-          "blurb": "Warm oak with soft-close, cable-free drawers.",
-          "features": ["Soft-close push-to-open drawers", "Hidden cable routing", "Wall-hung — floor stays clear"] },
-        { "id": "walnut-console", "name": "Walnut Media Console", "png": "ASSET/experience/products/walnut-console.png",
-          "blurb": "Rich walnut with a fluted front.",
-          "features": ["Fluted solid-wood front", "Soft-close drawers", "Reconfigurable modules"] }
+        { "id": "c1-a", "name": "Option A — Media Wall", "png": "ASSET/experience/products/cat1-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
+        { "id": "c1-b", "name": "Option B — Media Wall", "png": "ASSET/experience/products/cat1-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
       ]
     },
     {
-      "id": "seating",
-      "name": "Seating",
-      "note": "Where everyone lands.",
-      "pauseAt": 20,
+      "id": "cat-2", "name": "Seating", "note": "Where everyone lands.", "pauseAt": 12,
       "options": [
-        { "id": "corner-sofa", "name": "Corner Sofa", "png": "ASSET/experience/products/corner-sofa.png",
-          "blurb": "A deep, modular corner for the whole family.",
-          "features": ["Modular, reconfigurable", "Stain-resistant weave", "Memory-foam seats"] },
-        { "id": "two-seater", "name": "Two-seater + Ottoman", "png": "ASSET/experience/products/two-seater.png",
-          "blurb": "A lighter pairing for smaller spaces.",
-          "features": ["Compact footprint", "Storage ottoman", "Removable, washable covers"] }
+        { "id": "c2-a", "name": "Option A — Seating", "png": "ASSET/experience/products/cat2-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
+        { "id": "c2-b", "name": "Option B — Seating", "png": "ASSET/experience/products/cat2-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
       ]
     },
     {
-      "id": "lighting",
-      "name": "Lighting",
-      "note": "Set the mood.",
-      "pauseAt": 33,
+      "id": "cat-3", "name": "Tables", "note": "Coffee & side tables.", "pauseAt": 18,
       "options": [
-        { "id": "arc-lamp", "name": "Arc Floor Lamp", "png": "ASSET/experience/products/arc-lamp.png",
-          "blurb": "Warm, dimmable light that arcs over the seating.",
-          "features": ["2200–3000K warm dimming", "Touch control", "Tip-over safe base"] },
-        { "id": "ambient-set", "name": "Ambient Light Set", "png": "ASSET/experience/products/ambient-set.png",
-          "blurb": "Layered table and cove lighting for a softer glow.",
-          "features": ["Scene presets", "App + touch control", "Flicker-free"] }
+        { "id": "c3-a", "name": "Option A — Tables", "png": "ASSET/experience/products/cat3-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
+        { "id": "c3-b", "name": "Option B — Tables", "png": "ASSET/experience/products/cat3-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
+      ]
+    },
+    {
+      "id": "cat-4", "name": "Lighting", "note": "Set the mood.", "pauseAt": 24,
+      "options": [
+        { "id": "c4-a", "name": "Option A — Lighting", "png": "ASSET/experience/products/cat4-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
+        { "id": "c4-b", "name": "Option B — Lighting", "png": "ASSET/experience/products/cat4-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
+      ]
+    },
+    {
+      "id": "cat-5", "name": "Rug & Flooring", "note": "Grounding textures.", "pauseAt": 30,
+      "options": [
+        { "id": "c5-a", "name": "Option A — Rug", "png": "ASSET/experience/products/cat5-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
+        { "id": "c5-b", "name": "Option B — Rug", "png": "ASSET/experience/products/cat5-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
+      ]
+    },
+    {
+      "id": "cat-6", "name": "Window & Blinds", "note": "Light, the way you like it.", "pauseAt": 36,
+      "options": [
+        { "id": "c6-a", "name": "Option A — Blinds", "png": "ASSET/experience/products/cat6-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
+        { "id": "c6-b", "name": "Option B — Blinds", "png": "ASSET/experience/products/cat6-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
+      ]
+    },
+    {
+      "id": "cat-7", "name": "Shelving & Storage", "note": "A place for everything.", "pauseAt": 42,
+      "options": [
+        { "id": "c7-a", "name": "Option A — Storage", "png": "ASSET/experience/products/cat7-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
+        { "id": "c7-b", "name": "Option B — Storage", "png": "ASSET/experience/products/cat7-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
+      ]
+    },
+    {
+      "id": "cat-8", "name": "Accents & Greenery", "note": "The finishing touches.", "pauseAt": 48,
+      "options": [
+        { "id": "c8-a", "name": "Option A — Accents", "png": "ASSET/experience/products/cat8-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
+        { "id": "c8-b", "name": "Option B — Accents", "png": "ASSET/experience/products/cat8-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
       ]
     }
   ],
