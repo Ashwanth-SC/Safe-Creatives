@@ -2,18 +2,16 @@
 // Sensory Rooms — guided video tour / configurator
 // ============================================================================
 //
-// Reads experience.json and plays the walkthrough video as a stepped tour:
+//   experience.html?pkg=radiance   (Living room — Aurem Radiance)
+//   experience.html?pkg=revive     (Bedroom    — Aurem Revive)
 //
-//   intro  -> press "Start"
-//   each category: the video plays forward to that category's `pauseAt` frame
-//                  and stops; the options appear centred in the frame; the
-//                  visitor picks one (carried forward)
-//   outro  -> a summary of the picks + a CTA to build the package
+// The package's walkthrough video plays forward to each category's keyframe
+// (pauseAt) and stops; at each stop the visitor chooses a SIZE and a COLOUR,
+// the product PNG (derived from pngPattern) shows centred in the frame, and the
+// choices carry forward to a summary at the end.
 //
-// Everything is data-driven. Drop a web-optimised walkthrough video at
-// room.video, transparent product PNGs at each option's `png`, and set each
-// category's `pauseAt` (seconds) to the frame it should stop on. Missing assets
-// fall back to labelled placeholders, so the flow works before the art is ready.
+// Data-driven from experience.json. Missing assets fall back to placeholders,
+// so the flow works before the art is ready.
 // ============================================================================
 
 (function () {
@@ -28,18 +26,24 @@
 
   fetch("experience.json")
     .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-    .then(build)
+    .then((all) => {
+      const packages = all.packages || {};
+      const key = new URLSearchParams(location.search).get("pkg");
+      const data = (key && packages[key]) || packages[Object.keys(packages)[0]];
+      if (!data) throw new Error("No package data");
+      build(data);
+    })
     .catch((err) => { console.error("Experience load failed:", err); if (loading) loading.textContent = "Could not load the experience."; });
 
   function build(data) {
     const cats = data.categories || [];
-    const selected = cats.map(() => 0); // default pick = first option
-    let step = -1;   // -1 intro, 0..n-1 categories, n outro
+    const playSpeed = Number(data.playSpeed) > 0 ? Number(data.playSpeed) : 2;
+    const sel = cats.map(() => ({ size: 0, color: 0 })); // chosen size/colour index per category
+    let step = -1;  // -1 intro, 0..n-1 categories, n outro
     let busy = false;
 
     // -------- DOM --------
     const tour = el("div", "tour");
-
     const poster = document.createElement("img");
     poster.className = "tour-poster"; poster.alt = ""; poster.src = data.poster || "";
 
@@ -47,7 +51,6 @@
     video.className = "tour-video";
     video.muted = true; video.playsInline = true; video.preload = "auto";
     video.setAttribute("muted", ""); video.setAttribute("playsinline", "");
-    const playSpeed = Number(data.playSpeed) > 0 ? Number(data.playSpeed) : 2.5; // brisk walk between stops
     let videoOk = !!data.video;
     if (data.video) video.src = data.video;
     video.addEventListener("error", () => { videoOk = false; video.style.display = "none"; });
@@ -58,8 +61,8 @@
     const introP = el("div", "tour-panel");
     introP.innerHTML =
       `<div class="tour-panel-inner">` +
-        `<p class="eyebrow">${esc((data.intro || {}).eyebrow || "SENSORY ROOMS")}</p>` +
-        `<h1>${esc((data.intro || {}).title || "Step inside")}</h1>` +
+        `<p class="eyebrow">${esc((data.intro || {}).eyebrow || data.name || "SENSORY ROOMS")}</p>` +
+        `<h1>${esc((data.intro || {}).title || data.name || "Step inside")}</h1>` +
         `<p>${esc((data.intro || {}).text || "")}</p>` +
         `<button type="button" class="btn btn-primary" id="tour-start">${esc((data.intro || {}).button || "Start")}</button>` +
       `</div>`;
@@ -84,6 +87,19 @@
     introP.classList.add("is-on");
     requestAnimationFrame(() => { if (loading) loading.classList.add("is-hidden"); });
 
+    // -------- helpers --------
+    function productPng(cat, s) {
+      if (!cat.pngPattern) return "";
+      const size = (cat.sizes[s.size] || {}).id || "";
+      const color = (cat.colors[s.color] || {}).id || "";
+      return cat.pngPattern.replace(/\{size\}/g, size).replace(/\{color\}/g, color);
+    }
+    function variantLabel(cat, s) {
+      const size = (cat.sizes[s.size] || {}).name || "";
+      const color = (cat.colors[s.color] || {}).name || "";
+      return [size, color].filter(Boolean).join(" · ");
+    }
+
     // -------- state --------
     function goIntro() {
       step = -1; busy = false;
@@ -100,13 +116,12 @@
       const forward = i > step;
       introP.classList.remove("is-on");
       outroP.classList.remove("is-on");
-      catWrap.textContent = ""; // clear old stop while the camera moves
+      catWrap.textContent = "";
       step = i;
       setDots();
       backBtn.textContent = i === 0 ? "← Intro" : "← Back";
       nextBtn.textContent = i === cats.length - 1 ? "See your room →" : "Next →";
       nav.style.display = "";
-
       await playTo(cats[i].pauseAt != null ? cats[i].pauseAt : 0, forward);
       renderCat(i);
       busy = false;
@@ -131,25 +146,18 @@
       });
     }
 
-    // Play the video forward to `target` seconds and pause there. Going back (or
-    // when the video isn't available) it just seeks/returns so the UI still runs.
     function playTo(target, forward) {
       return new Promise((resolve) => {
         const v = video;
         if (!videoOk) { resolve(); return; }
-
         const run = () => {
           if (isNaN(v.duration)) { resolve(); return; }
           const t = Math.min(target, v.duration || target);
-          // Going back, or already there: seek to the stop (works on a host that
-          // serves byte ranges — Netlify does; a plain dev server may not).
           if (!forward || t <= v.currentTime + 0.1) {
             try { v.pause(); if (Math.abs(v.currentTime - t) > 0.15) v.currentTime = t; } catch (e) { /* ignore */ }
             resolve();
             return;
           }
-          // Going forward: just play up to the stop and pause there — no seek, so
-          // it's reliable even where seeking isn't supported.
           try { v.playbackRate = playSpeed; } catch (e) { /* ignore */ }
           let raf;
           const tick = () => {
@@ -165,17 +173,9 @@
           if (pr && pr.then) pr.then(() => { raf = requestAnimationFrame(tick); }).catch(() => { try { v.currentTime = t; } catch (e) {} resolve(); });
           else raf = requestAnimationFrame(tick);
         };
-
-        // The first stop may be reached before the video's metadata has loaded,
-        // so wait until it's ready (with a safety timeout) before playing.
         if (v.readyState >= 1 && !isNaN(v.duration)) { run(); return; }
         let done = false;
-        const onReady = () => {
-          if (done) return; done = true;
-          v.removeEventListener("loadedmetadata", onReady);
-          v.removeEventListener("canplay", onReady);
-          run();
-        };
+        const onReady = () => { if (done) return; done = true; v.removeEventListener("loadedmetadata", onReady); v.removeEventListener("canplay", onReady); run(); };
         v.addEventListener("loadedmetadata", onReady);
         v.addEventListener("canplay", onReady);
         setTimeout(onReady, 4000);
@@ -185,8 +185,8 @@
     // -------- category view --------
     function renderCat(i) {
       const cat = cats[i];
-      const sel = selected[i];
-      const opt = cat.options[sel] || {};
+      const s = sel[i];
+      const png = productPng(cat, s);
       const view = el("div", "tour-cat is-on");
       view.innerHTML =
         `<div class="tour-cat-head">` +
@@ -194,42 +194,61 @@
           `<h2>${esc(cat.name || "")}</h2>` +
           (cat.note ? `<p class="note">${esc(cat.note)}</p>` : "") +
         `</div>` +
-        `<div class="tour-hero"><figure>${opt.png ? `<img src="${esc(opt.png)}" alt="${esc(opt.name || "")}">` : heroPh(opt.name)}</figure></div>` +
+        `<div class="tour-hero"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure></div>` +
         `<div class="tour-info">` +
-          `<p class="eyebrow">THIS PIECE</p>` +
-          `<h3>${esc(opt.name || "")}</h3>` +
-          (opt.blurb ? `<p class="blurb">${esc(opt.blurb)}</p>` : "") +
-          `<ul class="tour-feats">${(opt.features || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` +
+          `<p class="eyebrow">YOUR CHOICE</p>` +
+          `<h3>${esc(cat.name || "")}</h3>` +
+          `<p class="variant" id="variant-line">${esc(variantLabel(cat, s))}</p>` +
+          (cat.blurb ? `<p class="blurb">${esc(cat.blurb)}</p>` : "") +
+          `<ul class="tour-feats">${(cat.features || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` +
         `</div>` +
-        `<div class="tour-options">` +
-          `<span class="pick-label">Choose one</span>` +
-          cat.options.map((o, oi) => optHtml(o, oi === sel)).join("") +
+        `<div class="tour-choose">` +
+          `<div class="choose-group"><span class="choose-label">Size</span><div class="choose-pills">` +
+            cat.sizes.map((sz, si) => `<button type="button" class="choose-pill${si === s.size ? " is-on" : ""}" data-size="${si}">${esc(sz.name)}</button>`).join("") +
+          `</div></div>` +
+          `<div class="choose-group"><span class="choose-label">Colour — <em id="color-name">${esc((cat.colors[s.color] || {}).name || "")}</em></span><div class="choose-swatches">` +
+            cat.colors.map((c, ci) => `<button type="button" class="choose-swatch${ci === s.color ? " is-on" : ""}" data-color="${ci}" title="${esc(c.name)}" style="--sw:${esc(c.swatch || "#999")}"><span></span></button>`).join("") +
+          `</div></div>` +
         `</div>`;
 
       catWrap.textContent = "";
       catWrap.appendChild(view);
 
+      const heroFig = view.querySelector(".tour-hero figure");
       const heroImg = view.querySelector(".tour-hero img");
-      if (heroImg) heroImg.onerror = () => { const d = el("div", "tour-hero-ph"); d.innerHTML = `<b>${esc(opt.name || "Product")}</b><small>PNG goes here</small>`; heroImg.replaceWith(d); };
-      view.querySelectorAll(".tour-opt-thumb img").forEach((img) => (img.onerror = () => img.replaceWith(phSpan())));
-      view.querySelectorAll(".tour-opt").forEach((b, oi) => b.addEventListener("click", () => { if (selected[i] === oi) return; selected[i] = oi; renderCat(i); }));
-    }
+      if (heroImg) heroImg.onerror = () => { heroImg.outerHTML = heroPh(cat.name); };
 
-    function optHtml(o, isSel) {
-      return (
-        `<button type="button" class="tour-opt${isSel ? " is-selected" : ""}">` +
-          `<span class="tour-opt-thumb">${o.png ? `<img src="${esc(o.png)}" alt="">` : `<span>PNG</span>`}</span>` +
-          `<b>${esc(o.name || "")}</b>` +
-          `<span class="tick">✓</span>` +
-        `</button>`
-      );
+      // Update the hero + labels in place when size/colour changes.
+      const refresh = () => {
+        const url = productPng(cat, s);
+        heroFig.innerHTML = url ? `<img src="${esc(url)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name);
+        const im = heroFig.querySelector("img");
+        if (im) im.onerror = () => { im.outerHTML = heroPh(cat.name); };
+        const vl = view.querySelector("#variant-line"); if (vl) vl.textContent = variantLabel(cat, s);
+        const cn = view.querySelector("#color-name"); if (cn) cn.textContent = (cat.colors[s.color] || {}).name || "";
+      };
+
+      view.querySelectorAll(".choose-pill").forEach((b) => b.addEventListener("click", () => {
+        const si = Number(b.dataset.size);
+        if (si === s.size) return;
+        s.size = si;
+        view.querySelectorAll(".choose-pill").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.size) === si));
+        refresh();
+      }));
+      view.querySelectorAll(".choose-swatch").forEach((b) => b.addEventListener("click", () => {
+        const ci = Number(b.dataset.color);
+        if (ci === s.color) return;
+        s.color = ci;
+        view.querySelectorAll(".choose-swatch").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.color) === ci));
+        refresh();
+      }));
     }
 
     function outroHtml() {
       const o = data.outro || {};
       const sum = cats.map((c, i) => {
-        const opt = c.options[selected[i]] || {};
-        return `<div class="tour-sum"><span class="t">${opt.png ? `<img src="${esc(opt.png)}" alt="">` : `<span>PNG</span>`}</span><div><small>${esc(c.name)}</small><b>${esc(opt.name || "")}</b></div></div>`;
+        const png = productPng(c, sel[i]);
+        return `<div class="tour-sum"><span class="t">${png ? `<img src="${esc(png)}" alt="">` : `<span>PNG</span>`}</span><div><small>${esc(c.name)}</small><b>${esc(variantLabel(c, sel[i]))}</b></div></div>`;
       }).join("");
       return (
         `<div class="tour-panel-inner">` +
@@ -246,6 +265,6 @@
     }
 
     function heroPh(name) { return `<div class="tour-hero-ph"><b>${esc(name || "Product")}</b><small>PNG goes here</small></div>`; }
-    function phSpan() { const s = document.createElement("span"); s.textContent = "PNG"; return s; }
+    function phSpan() { const s2 = document.createElement("span"); s2.textContent = "PNG"; return s2; }
   }
 })();

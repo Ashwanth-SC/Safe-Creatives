@@ -1,81 +1,77 @@
 {
-  "intro": {
-    "eyebrow": "SENSORY ROOMS · LIVING ROOM",
-    "title": "Walk the room. Choose each piece.",
-    "text": "A guided tour of your living room. At each stop, pick the option that feels right and see exactly what makes it special — your choices come together at the end.",
-    "button": "Start the tour"
-  },
+  "_note": "Two packages. Each has 3 categories (the 3 video stops at 5 / 11 / 16.5 s). Each category offers sizes (~3) and colours (4). The product PNG is derived from pngPattern with {size} and {color}. Replace names, swatches, blurbs, features and drop transparent PNGs at the derived paths. Missing assets fall back to placeholders.",
 
-  "video": "ASSET/experience/walkthrough.mp4",
-  "poster": "ASSET/experience/room-shell.svg",
-  "playSpeed": 2.5,
+  "packages": {
+    "radiance": {
+      "name": "Aurem Radiance",
+      "room": "Living Room",
+      "video": "ASSET/experience/radiance.mp4",
+      "poster": "ASSET/experience/room-shell.svg",
+      "playSpeed": 2,
+      "intro": { "eyebrow": "AUREM · LIVING ROOM", "title": "Aurem Radiance", "text": "Walk through your living room. At each stop, choose a size and a finish — your room comes together as you go.", "button": "Begin the walk" },
+      "categories": [
+        {
+          "id": "seating", "name": "Seating", "note": "Where everyone lands.", "pauseAt": 5,
+          "pngPattern": "ASSET/experience/products/radiance/seating/{size}-{color}.png",
+          "blurb": "Deep, modular seating built around comfort and calm.",
+          "features": ["Modular, reconfigurable", "Stain-resistant weave", "Memory-foam seats"],
+          "sizes": [ { "id": "two", "name": "2-seater" }, { "id": "three", "name": "3-seater" }, { "id": "corner", "name": "Corner" } ],
+          "colors": [ { "id": "oat", "name": "Oat", "swatch": "#d8cdb8" }, { "id": "clay", "name": "Clay", "swatch": "#b08968" }, { "id": "moss", "name": "Moss", "swatch": "#6b705c" }, { "id": "graphite", "name": "Graphite", "swatch": "#3a3a3a" } ]
+        },
+        {
+          "id": "media", "name": "Media & Storage", "note": "The heart of the wall.", "pauseAt": 11,
+          "pngPattern": "ASSET/experience/products/radiance/media/{size}-{color}.png",
+          "blurb": "A wall-hung console with soft-close, cable-free drawers.",
+          "features": ["Soft-close drawers", "Hidden cable routing", "Reconfigurable modules"],
+          "sizes": [ { "id": "compact", "name": "Compact" }, { "id": "standard", "name": "Standard" }, { "id": "wide", "name": "Wide" } ],
+          "colors": [ { "id": "oak", "name": "Oak", "swatch": "#b5894e" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" }, { "id": "graphite", "name": "Graphite", "swatch": "#3a3a3a" }, { "id": "linen", "name": "Linen", "swatch": "#e7ded0" } ]
+        },
+        {
+          "id": "accent", "name": "Lighting & Accent", "note": "Set the mood.", "pauseAt": 16.5,
+          "pngPattern": "ASSET/experience/products/radiance/accent/{size}-{color}.png",
+          "blurb": "Warm, dimmable light with a grounding accent piece.",
+          "features": ["2200–3000K warm dimming", "Touch control", "Tip-over safe base"],
+          "sizes": [ { "id": "floor", "name": "Floor" }, { "id": "table", "name": "Table" }, { "id": "set", "name": "Set" } ],
+          "colors": [ { "id": "brass", "name": "Brass", "swatch": "#b08d57" }, { "id": "black", "name": "Black", "swatch": "#2b2b2b" }, { "id": "white", "name": "White", "swatch": "#efe9df" }, { "id": "wood", "name": "Wood", "swatch": "#9c6b43" } ]
+        }
+      ],
+      "outro": { "eyebrow": "YOUR LIVING ROOM", "title": "Here's your Aurem Radiance.", "text": "Pricing and reserve are coming next — for now, your choices are saved below.", "button": "Explore the package", "href": "living-room-package.html" }
+    },
 
-  "_note": "pauseAt = the second the walkthrough stops for each category (from your keyframes: 6,12,18,24,30,36,42,48). Replace the category names, option names, PNGs, blurbs, features and videos with your real products.",
-
-  "categories": [
-    {
-      "id": "cat-1", "name": "TV & Media Wall", "note": "The heart of the room.", "pauseAt": 6,
-      "options": [
-        { "id": "c1-a", "name": "Option A — Media Wall", "png": "ASSET/experience/products/cat1-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
-        { "id": "c1-b", "name": "Option B — Media Wall", "png": "ASSET/experience/products/cat1-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
-      ]
-    },
-    {
-      "id": "cat-2", "name": "Seating", "note": "Where everyone lands.", "pauseAt": 12,
-      "options": [
-        { "id": "c2-a", "name": "Option A — Seating", "png": "ASSET/experience/products/cat2-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
-        { "id": "c2-b", "name": "Option B — Seating", "png": "ASSET/experience/products/cat2-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
-      ]
-    },
-    {
-      "id": "cat-3", "name": "Tables", "note": "Coffee & side tables.", "pauseAt": 18,
-      "options": [
-        { "id": "c3-a", "name": "Option A — Tables", "png": "ASSET/experience/products/cat3-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
-        { "id": "c3-b", "name": "Option B — Tables", "png": "ASSET/experience/products/cat3-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
-      ]
-    },
-    {
-      "id": "cat-4", "name": "Lighting", "note": "Set the mood.", "pauseAt": 24,
-      "options": [
-        { "id": "c4-a", "name": "Option A — Lighting", "png": "ASSET/experience/products/cat4-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
-        { "id": "c4-b", "name": "Option B — Lighting", "png": "ASSET/experience/products/cat4-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
-      ]
-    },
-    {
-      "id": "cat-5", "name": "Rug & Flooring", "note": "Grounding textures.", "pauseAt": 30,
-      "options": [
-        { "id": "c5-a", "name": "Option A — Rug", "png": "ASSET/experience/products/cat5-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
-        { "id": "c5-b", "name": "Option B — Rug", "png": "ASSET/experience/products/cat5-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
-      ]
-    },
-    {
-      "id": "cat-6", "name": "Window & Blinds", "note": "Light, the way you like it.", "pauseAt": 36,
-      "options": [
-        { "id": "c6-a", "name": "Option A — Blinds", "png": "ASSET/experience/products/cat6-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
-        { "id": "c6-b", "name": "Option B — Blinds", "png": "ASSET/experience/products/cat6-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
-      ]
-    },
-    {
-      "id": "cat-7", "name": "Shelving & Storage", "note": "A place for everything.", "pauseAt": 42,
-      "options": [
-        { "id": "c7-a", "name": "Option A — Storage", "png": "ASSET/experience/products/cat7-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
-        { "id": "c7-b", "name": "Option B — Storage", "png": "ASSET/experience/products/cat7-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
-      ]
-    },
-    {
-      "id": "cat-8", "name": "Accents & Greenery", "note": "The finishing touches.", "pauseAt": 48,
-      "options": [
-        { "id": "c8-a", "name": "Option A — Accents", "png": "ASSET/experience/products/cat8-a.png", "blurb": "Replace with your first option for this category.", "features": ["Feature one", "Feature two", "Feature three"] },
-        { "id": "c8-b", "name": "Option B — Accents", "png": "ASSET/experience/products/cat8-b.png", "blurb": "Replace with your second option for this category.", "features": ["Feature one", "Feature two", "Feature three"] }
-      ]
+    "revive": {
+      "name": "Aurem Revive",
+      "room": "Bedroom",
+      "video": "ASSET/experience/revive.mp4",
+      "poster": "ASSET/experience/room-shell.svg",
+      "playSpeed": 2,
+      "intro": { "eyebrow": "AUREM · BEDROOM", "title": "Aurem Revive", "text": "Walk through your bedroom. At each stop, choose a size and a finish — your room comes together as you go.", "button": "Begin the walk" },
+      "categories": [
+        {
+          "id": "bed", "name": "Bed", "note": "The centre of rest.", "pauseAt": 5,
+          "pngPattern": "ASSET/experience/products/revive/bed/{size}-{color}.png",
+          "blurb": "An upholstered bed tuned for calm, restful nights.",
+          "features": ["Upholstered headboard", "Under-bed storage option", "Solid, quiet frame"],
+          "sizes": [ { "id": "single", "name": "Single" }, { "id": "queen", "name": "Queen" }, { "id": "king", "name": "King" } ],
+          "colors": [ { "id": "oat", "name": "Oat", "swatch": "#d8cdb8" }, { "id": "clay", "name": "Clay", "swatch": "#b08968" }, { "id": "charcoal", "name": "Charcoal", "swatch": "#3a3a3a" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" } ]
+        },
+        {
+          "id": "wardrobe", "name": "Wardrobe & Storage", "note": "A place for everything.", "pauseAt": 11,
+          "pngPattern": "ASSET/experience/products/revive/wardrobe/{size}-{color}.png",
+          "blurb": "Soft-close wardrobe with a clean, handle-free front.",
+          "features": ["Soft-close doors", "Handle-free push-open", "Adjustable interiors"],
+          "sizes": [ { "id": "two", "name": "2-door" }, { "id": "three", "name": "3-door" }, { "id": "four", "name": "4-door" } ],
+          "colors": [ { "id": "oak", "name": "Oak", "swatch": "#b5894e" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" }, { "id": "graphite", "name": "Graphite", "swatch": "#3a3a3a" }, { "id": "linen", "name": "Linen", "swatch": "#e7ded0" } ]
+        },
+        {
+          "id": "accent", "name": "Lighting & Accent", "note": "Wind down softly.", "pauseAt": 16.5,
+          "pngPattern": "ASSET/experience/products/revive/accent/{size}-{color}.png",
+          "blurb": "Gentle bedside light with a calming accent piece.",
+          "features": ["Warm dimming", "Touch control", "Low-glare shade"],
+          "sizes": [ { "id": "floor", "name": "Floor" }, { "id": "bedside", "name": "Bedside" }, { "id": "set", "name": "Set" } ],
+          "colors": [ { "id": "brass", "name": "Brass", "swatch": "#b08d57" }, { "id": "black", "name": "Black", "swatch": "#2b2b2b" }, { "id": "white", "name": "White", "swatch": "#efe9df" }, { "id": "wood", "name": "Wood", "swatch": "#9c6b43" } ]
+        }
+      ],
+      "outro": { "eyebrow": "YOUR BEDROOM", "title": "Here's your Aurem Revive.", "text": "Pricing and reserve are coming next — for now, your choices are saved below.", "button": "Explore the package", "href": "bedroom-package.html" }
     }
-  ],
-
-  "outro": {
-    "eyebrow": "YOUR ROOM",
-    "title": "Here's your living room.",
-    "text": "Reserve this configuration with a fully refundable advance — we visit and verify your space before anything is built.",
-    "button": "Build this package",
-    "href": "living-room-package.html"
   }
 }
