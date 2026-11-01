@@ -24,16 +24,29 @@
   const esc = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const el = (tag, cls) => { const n = document.createElement(tag); if (cls) n.className = cls; return n; };
 
-  fetch("experience.json")
-    .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-    .then((all) => {
-      const packages = all.packages || {};
-      const key = new URLSearchParams(location.search).get("pkg");
-      const data = (key && packages[key]) || packages[Object.keys(packages)[0]];
-      if (!data) throw new Error("No package data");
-      build(data);
-    })
-    .catch((err) => { console.error("Experience load failed:", err); if (loading) loading.textContent = "Could not load the experience."; });
+  function begin() {
+    fetch("experience.json")
+      .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then((all) => {
+        const packages = all.packages || {};
+        const key = new URLSearchParams(location.search).get("pkg");
+        const data = (key && packages[key]) || packages[Object.keys(packages)[0]];
+        if (!data) throw new Error("No package data");
+        build(data);
+      })
+      .catch((err) => { console.error("Experience load failed:", err); if (loading) loading.textContent = "Could not load the experience."; });
+  }
+
+  // Admin gate (preview): the tours are admin-only for now; everyone else keeps
+  // the "coming soon" overlay. Fail closed if auth isn't available.
+  if (window.SC && SC.ready) {
+    SC.ready.then(function () {
+      if (!SC.isAdmin) return;
+      const gate = document.getElementById("sc-gate");
+      if (gate) gate.remove();
+      begin();
+    });
+  }
 
   function build(data) {
     const cats = data.categories || [];

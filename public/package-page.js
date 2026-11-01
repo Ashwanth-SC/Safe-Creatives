@@ -18,6 +18,12 @@
 (async function () {
   await SC.ready;
 
+  // Admin gate (preview): the sensory-rooms flow is admin-only for now; a
+  // non-admin keeps the "coming soon" overlay instead of the configurator.
+  if (!SC.isAdmin) return;
+  const gateEl = document.getElementById("sc-gate");
+  if (gateEl) gateEl.remove();
+
   const packageKey = document.body.dataset.packageKey;
   const editItemId = new URLSearchParams(window.location.search).get("item");
 

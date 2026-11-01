@@ -11,8 +11,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&family=DM+Sans:wght@400;500;600&family=Playfair+Display:wght@500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="experience.css" />
+    <link rel="stylesheet" href="gate.css" />
   </head>
   <body class="exp-body">
+    <div id="sc-gate" class="sc-gate" style="position:fixed;inset:0;z-index:99999;background:#14110d">
+      <div class="sc-gate-inner">
+        <img src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" />
+        <p class="sc-gate-eyebrow">SENSORY ROOMS</p>
+        <h1>Coming soon.</h1>
+        <p>We're putting the finishing touches on something special. Please check back shortly.</p>
+        <a class="sc-gate-link" href="index.html">← Back to Safe Creatives</a>
+      </div>
+    </div>
     <div class="exp-topbar">
       <a class="exp-brand" href="index.html"><img src="./ASSET/SC_Logo_Logomark_Secondary.png" alt="" onerror="this.style.display='none'" />SAFE CREATIVES</a>
       <a class="exp-back" href="sensory-rooms.html">← Sensory rooms</a>
@@ -22,6 +32,9 @@
 
     <div id="exp"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="auth.js"></script>
     <script src="experience.js"></script>
   </body>
 </html>

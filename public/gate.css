@@ -1,0 +1,19 @@
+/* ============================================================================
+   Admin gate — "coming soon" overlay for the sensory-rooms flow
+   ============================================================================
+   The overlay is in each gated page's HTML and visible by default (with inline
+   fallback styles so it covers instantly). gate logic in the page's own script
+   removes it only for signed-in admins; everyone else keeps "coming soon".
+   ========================================================================== */
+.sc-gate {
+  position: fixed; inset: 0; z-index: 99999; display: grid; place-items: center; text-align: center; padding: 28px;
+  background: linear-gradient(150deg, #14110d, #0c2020);
+  color: #f4efe6; font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.sc-gate-inner { max-width: 460px; }
+.sc-gate-inner img { height: 40px; width: auto; margin-bottom: 22px; opacity: .92; }
+.sc-gate-eyebrow { font: 600 11px "DM Mono", monospace; letter-spacing: .24em; text-transform: uppercase; color: #e9c6a8; margin: 0 0 10px; }
+.sc-gate h1 { font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: clamp(34px, 6vw, 56px); line-height: 1.02; letter-spacing: -.02em; margin: 0 0 14px; }
+.sc-gate p { color: rgba(244,239,230,.7); font-size: 15px; line-height: 1.6; margin: 0 auto 26px; max-width: 380px; }
+.sc-gate-link { display: inline-block; color: #f4efe6; text-decoration: none; font: 500 13px "DM Sans", sans-serif; border: 1px solid rgba(255,255,255,.28); padding: 11px 22px; border-radius: 999px; }
+.sc-gate-link:hover { border-color: #fff; }
