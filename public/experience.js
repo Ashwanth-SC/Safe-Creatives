@@ -227,6 +227,17 @@
       catWrap.textContent = "";
       catWrap.appendChild(view);
 
+      // Per-category placement: scale the product to the room and ground it.
+      const heroWrap = view.querySelector(".tour-hero");
+      const hero = cat.hero || {};
+      if (heroWrap) {
+        if (hero.scale > 0) heroWrap.style.setProperty("--hero-h", (hero.scale * 100) + "vh");
+        if (hero.bottom != null) {
+          heroWrap.style.setProperty("--hero-bottom", hero.bottom + "%");
+          heroWrap.classList.add("is-grounded");
+        }
+      }
+
       const heroFig = view.querySelector(".tour-hero figure");
       const heroImg = view.querySelector(".tour-hero img");
       if (heroImg) heroImg.onerror = () => { heroImg.outerHTML = heroPh(cat.name); };
