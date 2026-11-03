@@ -70,10 +70,14 @@
 
     // --- product placement -------------------------------------------------
     // A product can be pinned to the room instead of floating in the centre.
-    // Its category's `hero` gives frame-relative coords (fractions of the
-    // paused video frame): cx = horizontal centre, baseY = floor line the
-    // product stands on, h = product height. We map those through the video's
-    // object-fit:cover transform so the product tracks the room on any screen.
+    // Its category's `hero` gives frame-relative coords (fractions of the paused
+    // video frame), in one of two modes, with `baseY` = the floor line it stands on:
+    //   • width span  { x0, x1, baseY } — left/right edges (e.g. door frame -> wall);
+    //                   height follows the image's aspect.
+    //   • height      { cx, baseY, h }  — centred at cx, product height h; width
+    //                   follows the image's aspect.
+    // We map these through the video's object-fit:cover transform so the product
+    // tracks the room on any screen, keeping the image's real proportions.
     let placed = null; // { fig, hero } currently pinned, or null (centred)
     function videoAspect() {
       return (video.videoWidth > 0 && video.videoHeight > 0)
@@ -84,11 +88,21 @@
       const vw = window.innerWidth, vh = window.innerHeight, a = videoAspect();
       const dw = Math.max(vw, vh * a), dh = dw / a;   // displayed video size (cover)
       const offX = (vw - dw) / 2, offY = (vh - dh) / 2; // crop offsets (<= 0)
-      const h = placed.hero, hpx = h.h * dh;
+      const h = placed.hero;
+      const img = placed.fig.querySelector("img");
+      const asp = (img && img.naturalWidth > 0) ? img.naturalWidth / img.naturalHeight : (h.aspect || 1);
+      let wpx, hpx, leftpx;
+      if (h.x0 != null && h.x1 != null) {        // width span (door frame -> wall)
+        wpx = (h.x1 - h.x0) * dw; hpx = wpx / asp; leftpx = offX + h.x0 * dw;
+        placed.fig.style.transform = "none";
+      } else {                                    // height-based, centred on cx
+        hpx = h.h * dh; wpx = hpx * asp; leftpx = offX + (h.cx != null ? h.cx : 0.5) * dw;
+        placed.fig.style.transform = "translateX(-50%)";
+      }
+      placed.fig.style.width = wpx + "px";
       placed.fig.style.height = hpx + "px";
-      placed.fig.style.left = (offX + h.cx * dw) + "px";
+      placed.fig.style.left = leftpx + "px";
       placed.fig.style.top = (offY + h.baseY * dh - hpx) + "px";
-      placed.fig.style.transform = "translateX(-50%)";
     }
     window.addEventListener("resize", placeHero);
     video.addEventListener("loadedmetadata", placeHero);
@@ -227,41 +241,43 @@
       const png = productPng(cat, s);
       const view = el("div", "tour-cat is-on");
       view.innerHTML =
-        `<div class="tour-cat-head">` +
-          `<div class="step">STOP ${i + 1} / ${cats.length}</div>` +
-          `<h2>${esc(cat.name || "")}</h2>` +
-          (cat.note ? `<p class="note">${esc(cat.note)}</p>` : "") +
-        `</div>` +
         `<div class="tour-hero"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure></div>` +
+        // LEFT card: unit name + size / colour selectors
         `<div class="tour-info">` +
           `<p class="eyebrow">YOUR CHOICE</p>` +
           `<h3>${esc(cat.name || "")}</h3>` +
-          `<p class="variant" id="variant-line">${esc(variantLabel(cat, s))}</p>` +
-          (cat.blurb ? `<p class="blurb">${esc(cat.blurb)}</p>` : "") +
-          `<ul class="tour-feats">${(cat.features || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` +
-        `</div>` +
-        `<div class="tour-choose">` +
           `<div class="choose-group"><span class="choose-label">Size</span><div class="choose-pills">` +
             cat.sizes.map((sz, si) => `<button type="button" class="choose-pill${si === s.size ? " is-on" : ""}" data-size="${si}">${esc(sz.name)}</button>`).join("") +
           `</div></div>` +
           `<div class="choose-group"><span class="choose-label">Colour — <em id="color-name">${esc((cat.colors[s.color] || {}).name || "")}</em></span><div class="choose-swatches">` +
             cat.colors.map((c, ci) => `<button type="button" class="choose-swatch${ci === s.color ? " is-on" : ""}" data-color="${ci}" title="${esc(c.name)}" style="--sw:${esc(c.swatch || "#999")}"><span></span></button>`).join("") +
           `</div></div>` +
+        `</div>` +
+        // RIGHT card: features
+        `<div class="tour-feats-card">` +
+          `<p class="eyebrow">FEATURES</p>` +
+          ((cat.features && cat.features.length)
+            ? `<ul class="tour-feats">${cat.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>`
+            : `<p class="feats-empty">Details coming soon.</p>`) +
         `</div>`;
 
       catWrap.textContent = "";
       catWrap.appendChild(view);
 
-      // Per-category placement. Preferred: frame coords (cx/baseY/h) pin the
-      // product into the room. Fallback: scale/bottom, else centred default.
+      // Per-category placement. Preferred: frame coords pin the product into the
+      // room — width span (x0/x1/baseY) or height (cx/baseY/h). Fallback:
+      // scale/bottom, else centred default.
       const heroWrap = view.querySelector(".tour-hero");
       const heroFig = view.querySelector(".tour-hero figure");
       const hero = cat.hero || {};
-      const framePinned = hero.cx != null && hero.baseY != null && hero.h > 0;
+      const framePinned = hero.baseY != null &&
+        ((hero.x0 != null && hero.x1 != null) || hero.h > 0);
       placed = null;
       if (heroWrap && framePinned) {
         heroWrap.classList.add("is-placed");
         placed = { fig: heroFig, hero };
+        const pimg = heroFig.querySelector("img");
+        if (pimg) pimg.addEventListener("load", placeHero);
         placeHero();
       } else if (heroWrap) {
         if (hero.scale > 0) heroWrap.style.setProperty("--hero-h", (hero.scale * 100) + "vh");
@@ -278,8 +294,8 @@
         const url = productPng(cat, s);
         heroFig.innerHTML = url ? `<img src="${esc(url)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name);
         const im = heroFig.querySelector("img");
-        if (im) im.onerror = () => { im.outerHTML = heroPh(cat.name); };
-        const vl = view.querySelector("#variant-line"); if (vl) vl.textContent = variantLabel(cat, s);
+        if (im) { im.onerror = () => { im.outerHTML = heroPh(cat.name); }; if (placed) im.addEventListener("load", placeHero); }
+        if (placed) placeHero();
         const cn = view.querySelector("#color-name"); if (cn) cn.textContent = (cat.colors[s.color] || {}).name || "";
       };
 
