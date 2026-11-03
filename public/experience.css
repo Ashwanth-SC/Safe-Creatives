@@ -91,6 +91,11 @@ body.exp-body {
    matching the image's aspect); the image fills it, uncapped and undistorted */
 .tour-hero.is-placed figure { top: auto; display: block; }
 .tour-hero.is-placed img { display: block; width: 100%; height: 100%; max-width: none; object-fit: contain; }
+/* full-frame render: a composite keyframe (room + product) that matches the video
+   frame exactly; overlays the video edge-to-edge (same object-fit) and fades in */
+.tour-hero.is-cover figure { position: absolute; inset: 0; left: 0; top: 0; transform: none; margin: 0; width: 100%; height: 100%; display: block; }
+.tour-hero.is-cover img { display: block; width: 100%; height: 100%; max-width: none; object-fit: cover; filter: none; animation: hero-fade .9s ease both; }
+@keyframes hero-fade { from { opacity: 0; } to { opacity: 1; } }
 .tour-hero-ph {
   width: min(46vw, 520px); height: min(34vh, 360px); border: 2px dashed rgba(255,250,241,.55); border-radius: 12px;
   background: rgba(47,125,116,.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 10px;

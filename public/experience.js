@@ -239,9 +239,13 @@
       const cat = cats[i];
       const s = sel[i];
       const png = productPng(cat, s);
+      const hero = cat.hero || {};
+      // "cover": the product image is a full-frame render matching the video
+      // frame; overlay it edge-to-edge (object-fit:cover) and fade it in.
+      const coverMode = hero.cover === true;
       const view = el("div", "tour-cat is-on");
       view.innerHTML =
-        `<div class="tour-hero"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure></div>` +
+        `<div class="tour-hero${coverMode ? " is-cover" : ""}"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure></div>` +
         // LEFT card: unit name + size / colour selectors
         `<div class="tour-info">` +
           `<p class="eyebrow">YOUR CHOICE</p>` +
@@ -264,16 +268,17 @@
       catWrap.textContent = "";
       catWrap.appendChild(view);
 
-      // Per-category placement. Preferred: frame coords pin the product into the
-      // room — width span (x0/x1/baseY) or height (cx/baseY/h). Fallback:
-      // scale/bottom, else centred default.
+      // Per-category placement. cover → full-frame (handled by class, no pinning).
+      // Else frame coords pin the product into the room — width span (x0/x1/baseY)
+      // or height (cx/baseY/h). Fallback: scale/bottom, else centred default.
       const heroWrap = view.querySelector(".tour-hero");
       const heroFig = view.querySelector(".tour-hero figure");
-      const hero = cat.hero || {};
-      const framePinned = hero.baseY != null &&
+      const framePinned = !coverMode && hero.baseY != null &&
         ((hero.x0 != null && hero.x1 != null) || hero.h > 0);
       placed = null;
-      if (heroWrap && framePinned) {
+      if (heroWrap && coverMode) {
+        // full-frame overlay; nothing to position
+      } else if (heroWrap && framePinned) {
         heroWrap.classList.add("is-placed");
         placed = { fig: heroFig, hero };
         const pimg = heroFig.querySelector("img");
