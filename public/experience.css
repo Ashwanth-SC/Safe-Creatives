@@ -87,6 +87,10 @@ body.exp-body {
 .tour-hero figure { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; height: var(--hero-h); width: auto; display: grid; place-items: center; }
 .tour-hero.is-grounded figure { top: auto; bottom: var(--hero-bottom); transform: translateX(-50%); }
 .tour-hero img { height: 100%; width: auto; max-width: 92vw; object-fit: contain; filter: drop-shadow(0 26px 40px rgba(0,0,0,.45)); animation: hero-in .45s ease both; }
+/* pinned-to-room product: JS sets figure left/top/height in px; block layout so
+   the image's height:100% resolves against that definite height, width follows it */
+.tour-hero.is-placed figure { top: auto; display: block; }
+.tour-hero.is-placed img { display: block; height: 100%; width: auto; max-width: none; }
 .tour-hero-ph {
   width: min(46vw, 520px); height: min(34vh, 360px); border: 2px dashed rgba(255,250,241,.55); border-radius: 12px;
   background: rgba(47,125,116,.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 10px;

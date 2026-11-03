@@ -56,7 +56,7 @@
         },
         {
           "id": "wardrobe", "name": "Wardrobe & Storage", "note": "A place for everything.", "pauseAt": 11,
-          "hero": { "scale": 0.64, "bottom": 6 },
+          "hero": { "cx": 0.497, "baseY": 0.875, "h": 0.669 },
           "pngPattern": "ASSET/experience/products/revive/wardrobe/{size}-{color}.png",
           "blurb": "Soft-close wardrobe with a clean, handle-free front.",
           "features": ["Soft-close doors", "Handle-free push-open", "Adjustable interiors"],

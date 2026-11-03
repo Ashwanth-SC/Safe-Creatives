@@ -68,6 +68,31 @@
     if (data.video) video.src = data.video;
     video.addEventListener("error", () => { videoOk = false; video.style.display = "none"; });
 
+    // --- product placement -------------------------------------------------
+    // A product can be pinned to the room instead of floating in the centre.
+    // Its category's `hero` gives frame-relative coords (fractions of the
+    // paused video frame): cx = horizontal centre, baseY = floor line the
+    // product stands on, h = product height. We map those through the video's
+    // object-fit:cover transform so the product tracks the room on any screen.
+    let placed = null; // { fig, hero } currently pinned, or null (centred)
+    function videoAspect() {
+      return (video.videoWidth > 0 && video.videoHeight > 0)
+        ? video.videoWidth / video.videoHeight : 16 / 9;
+    }
+    function placeHero() {
+      if (!placed || !placed.fig.isConnected) return;
+      const vw = window.innerWidth, vh = window.innerHeight, a = videoAspect();
+      const dw = Math.max(vw, vh * a), dh = dw / a;   // displayed video size (cover)
+      const offX = (vw - dw) / 2, offY = (vh - dh) / 2; // crop offsets (<= 0)
+      const h = placed.hero, hpx = h.h * dh;
+      placed.fig.style.height = hpx + "px";
+      placed.fig.style.left = (offX + h.cx * dw) + "px";
+      placed.fig.style.top = (offY + h.baseY * dh - hpx) + "px";
+      placed.fig.style.transform = "translateX(-50%)";
+    }
+    window.addEventListener("resize", placeHero);
+    video.addEventListener("loadedmetadata", placeHero);
+
     const scrim = el("div", "tour-scrim");
     const catWrap = el("div");
 
@@ -227,18 +252,24 @@
       catWrap.textContent = "";
       catWrap.appendChild(view);
 
-      // Per-category placement: scale the product to the room and ground it.
+      // Per-category placement. Preferred: frame coords (cx/baseY/h) pin the
+      // product into the room. Fallback: scale/bottom, else centred default.
       const heroWrap = view.querySelector(".tour-hero");
+      const heroFig = view.querySelector(".tour-hero figure");
       const hero = cat.hero || {};
-      if (heroWrap) {
+      const framePinned = hero.cx != null && hero.baseY != null && hero.h > 0;
+      placed = null;
+      if (heroWrap && framePinned) {
+        heroWrap.classList.add("is-placed");
+        placed = { fig: heroFig, hero };
+        placeHero();
+      } else if (heroWrap) {
         if (hero.scale > 0) heroWrap.style.setProperty("--hero-h", (hero.scale * 100) + "vh");
         if (hero.bottom != null) {
           heroWrap.style.setProperty("--hero-bottom", hero.bottom + "%");
           heroWrap.classList.add("is-grounded");
         }
       }
-
-      const heroFig = view.querySelector(".tour-hero figure");
       const heroImg = view.querySelector(".tour-hero img");
       if (heroImg) heroImg.onerror = () => { heroImg.outerHTML = heroPh(cat.name); };
 
