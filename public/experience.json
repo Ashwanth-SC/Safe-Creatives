@@ -47,29 +47,31 @@
       "intro": { "eyebrow": "AUREM · BEDROOM", "title": "Aurem Revive", "text": "Walk through your bedroom. At each stop, choose a size and a finish — your room comes together as you go.", "button": "Begin the walk" },
       "categories": [
         {
-          "id": "bed", "name": "Bed", "note": "The centre of rest.", "pauseAt": 5,
-          "pngPattern": "ASSET/experience/products/revive/bed/{size}-{color}.png",
-          "blurb": "An upholstered bed tuned for calm, restful nights.",
-          "features": ["Upholstered headboard", "Under-bed storage option", "Solid, quiet frame"],
-          "sizes": [ { "id": "single", "name": "Single" }, { "id": "queen", "name": "Queen" }, { "id": "king", "name": "King" } ],
-          "colors": [ { "id": "oat", "name": "Oat", "swatch": "#d8cdb8" }, { "id": "clay", "name": "Clay", "swatch": "#b08968" }, { "id": "charcoal", "name": "Charcoal", "swatch": "#3a3a3a" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" } ]
+          "id": "study", "name": "Study Unit", "note": "A focused corner.", "pauseAt": 3,
+          "hero": { "cover": true },
+          "pngPattern": "ASSET/experience/products/revive/study/{size}-{color}.webp",
+          "blurb": "A compact floating study with soft task lighting.",
+          "features": [],
+          "sizes": [ { "id": "standard", "name": "Standard" }, { "id": "wide", "name": "Wide" } ],
+          "colors": [ { "id": "beige", "name": "Beige", "swatch": "#cdb79b" }, { "id": "oak", "name": "Oak", "swatch": "#b5894e" }, { "id": "grey", "name": "Grey", "swatch": "#9a9a9a" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" } ]
         },
         {
-          "id": "wardrobe", "name": "Wardrobe & Storage", "note": "A place for everything.", "pauseAt": 11,
+          "id": "wardrobe", "name": "Wardrobe & Storage", "note": "A place for everything.", "pauseAt": 7,
           "hero": { "cover": true },
           "pngPattern": "ASSET/experience/products/revive/wardrobe/{size}-{color}.webp",
           "blurb": "Soft-close wardrobe with a clean, handle-free front.",
-          "features": ["Soft-close doors", "Handle-free push-open", "Adjustable interiors"],
-          "sizes": [ { "id": "two", "name": "2-door" }, { "id": "three", "name": "3-door" }, { "id": "four", "name": "4-door" } ],
-          "colors": [ { "id": "oak", "name": "Oak", "swatch": "#b5894e" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" }, { "id": "graphite", "name": "Graphite", "swatch": "#3a3a3a" }, { "id": "linen", "name": "Linen", "swatch": "#e7ded0" } ]
+          "features": [],
+          "sizes": [ { "id": "four", "name": "4-door" }, { "id": "three", "name": "3-door" }, { "id": "two", "name": "2-door" } ],
+          "colors": [ { "id": "beige", "name": "Beige", "swatch": "#cdb79b" }, { "id": "oak", "name": "Oak", "swatch": "#b5894e" }, { "id": "grey", "name": "Grey", "swatch": "#9a9a9a" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" } ]
         },
         {
-          "id": "accent", "name": "Lighting & Accent", "note": "Wind down softly.", "pauseAt": 16.5,
-          "pngPattern": "ASSET/experience/products/revive/accent/{size}-{color}.png",
-          "blurb": "Gentle bedside light with a calming accent piece.",
-          "features": ["Warm dimming", "Touch control", "Low-glare shade"],
-          "sizes": [ { "id": "floor", "name": "Floor" }, { "id": "bedside", "name": "Bedside" }, { "id": "set", "name": "Set" } ],
-          "colors": [ { "id": "brass", "name": "Brass", "swatch": "#b08d57" }, { "id": "black", "name": "Black", "swatch": "#2b2b2b" }, { "id": "white", "name": "White", "swatch": "#efe9df" }, { "id": "wood", "name": "Wood", "swatch": "#9c6b43" } ]
+          "id": "panel", "name": "Panelling", "note": "Finishing overhead.", "pauseAt": 11,
+          "hero": { "cover": true },
+          "pngPattern": "ASSET/experience/products/revive/panel/{size}-{color}.webp",
+          "blurb": "A warm ceiling detail that frames the room.",
+          "features": [],
+          "sizes": [ { "id": "standard", "name": "Standard" } ],
+          "colors": [ { "id": "warm", "name": "Warm Oak", "swatch": "#b89b78" }, { "id": "natural", "name": "Natural", "swatch": "#cdb79b" } ]
         }
       ],
       "outro": { "eyebrow": "YOUR BEDROOM", "title": "Here's your Aurem Revive.", "text": "Pricing and reserve are coming next — for now, your choices are saved below.", "button": "Explore the package", "href": "bedroom-package.html" }
