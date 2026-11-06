@@ -73,8 +73,11 @@ body.exp-body {
 .btn:disabled { opacity: .4; cursor: default; }
 
 /* --- a category stop --- */
-.tour-cat { position: absolute; inset: 0; z-index: 5; display: none; }
+/* The whole stop (full-frame image + cards) fades in on arrival and out on
+   leave, via .is-shown toggled by the tour script — works both directions. */
+.tour-cat { position: absolute; inset: 0; z-index: 5; display: none; opacity: 0; transition: opacity .42s ease; }
 .tour-cat.is-on { display: block; }
+.tour-cat.is-shown { opacity: 1; }
 .tour-cat-head { position: absolute; top: 78px; left: 0; right: 0; text-align: center; padding: 0 20px; animation: cat-in .5s ease both; }
 .tour-cat-head .step { font: 600 11px "DM Mono", monospace; letter-spacing: .2em; color: var(--exp-muted); }
 .tour-cat-head h2 { margin: 6px 0 2px; font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: clamp(24px, 3.4vw, 38px); }
@@ -94,8 +97,8 @@ body.exp-body {
 /* full-frame render: a composite keyframe (room + product) that matches the video
    frame exactly; overlays the video edge-to-edge (same object-fit) and fades in */
 .tour-hero.is-cover figure { position: absolute; inset: 0; left: 0; top: 0; transform: none; margin: 0; width: 100%; height: 100%; display: block; }
-.tour-hero.is-cover img { display: block; width: 100%; height: 100%; max-width: none; object-fit: cover; filter: none; animation: hero-fade .9s ease both; }
-@keyframes hero-fade { from { opacity: 0; } to { opacity: 1; } }
+/* no per-image animation: the whole .tour-cat fades in/out (see above) */
+.tour-hero.is-cover img { display: block; width: 100%; height: 100%; max-width: none; object-fit: cover; filter: none; animation: none; }
 .tour-hero-ph {
   width: min(46vw, 520px); height: min(34vh, 360px); border: 2px dashed rgba(255,250,241,.55); border-radius: 12px;
   background: rgba(47,125,116,.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 10px;

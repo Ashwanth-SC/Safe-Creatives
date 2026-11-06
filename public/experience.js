@@ -137,9 +137,30 @@
     backBtn.addEventListener("click", () => { if (step <= 0) goIntro(); else goCategory(step - 1); });
 
     introP.classList.add("is-on");
-    requestAnimationFrame(() => { if (loading) loading.classList.add("is-hidden"); });
+    // Hold the loader until the video + the first composite of every stop are
+    // decoded, so the first fade-in never shows a half-loaded image.
+    preloadAssets().then(() => { if (loading) loading.classList.add("is-hidden"); });
 
     // -------- helpers --------
+    // Warm the browser cache for the video's first frame and each category's
+    // first-option image, with a timeout so we never hang on a missing asset.
+    function preloadAssets() {
+      const imgs = cats
+        .map((c) => productPng(c, { size: 0, color: 0 }))
+        .filter(Boolean)
+        .map((u) => new Promise((res) => { const im = new Image(); im.onload = im.onerror = () => res(); im.src = u; }));
+      const vid = new Promise((res) => {
+        if (!videoOk || video.readyState >= 2) { res(); return; }
+        const done = () => { video.removeEventListener("loadeddata", done); video.removeEventListener("canplay", done); res(); };
+        video.addEventListener("loadeddata", done);
+        video.addEventListener("canplay", done);
+      });
+      return Promise.race([
+        Promise.all([...imgs, vid]),
+        new Promise((res) => setTimeout(res, 8000)),
+      ]);
+    }
+
     function productPng(cat, s) {
       if (!cat.pngPattern) return "";
       const size = (cat.sizes[s.size] || {}).id || "";
@@ -162,12 +183,23 @@
       try { video.pause(); video.currentTime = 0; } catch (e) { /* not ready */ }
     }
 
+    // Fade the current category (image + cards) out before we move the camera,
+    // so every transition — forward or back — is a clean fade, not a cut.
+    const FADE_MS = 420;
+    function fadeOutCurrent() {
+      const cur = catWrap.firstElementChild;
+      if (!cur) return Promise.resolve();
+      cur.classList.remove("is-shown");
+      return new Promise((res) => setTimeout(res, FADE_MS));
+    }
+
     async function goCategory(i) {
       if (busy || i < 0 || i >= cats.length) return;
       busy = true;
       const forward = i > step;
       introP.classList.remove("is-on");
       outroP.classList.remove("is-on");
+      await fadeOutCurrent();
       catWrap.textContent = "";
       step = i;
       setDots();
@@ -179,9 +211,10 @@
       busy = false;
     }
 
-    function goOutro() {
+    async function goOutro() {
       step = cats.length; busy = false;
       nav.style.display = "none";
+      await fadeOutCurrent();
       catWrap.textContent = "";
       outroP.innerHTML = outroHtml();
       outroP.classList.add("is-on");
@@ -267,6 +300,8 @@
 
       catWrap.textContent = "";
       catWrap.appendChild(view);
+      // Fade this category in (image + cards). rAF so the transition runs.
+      requestAnimationFrame(() => requestAnimationFrame(() => view.classList.add("is-shown")));
 
       // Per-category placement. cover → full-frame (handled by class, no pinning).
       // Else frame coords pin the product into the room — width span (x0/x1/baseY)
