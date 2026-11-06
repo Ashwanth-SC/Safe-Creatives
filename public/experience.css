@@ -122,9 +122,33 @@ body.exp-body {
 .tour-feats-card { right: 28px; width: min(300px, 82vw); padding: 18px 20px; }
 .tour-feats-card .eyebrow { margin-bottom: 12px; }
 .tour-feats { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
-.tour-feats li { display: flex; gap: 9px; font-size: 13.5px; line-height: 1.45; color: var(--exp-ink); }
-.tour-feats li::before { content: ""; flex: none; margin-top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--exp-teal); }
+.tour-feats li { display: flex; gap: 9px; font-size: 13.5px; line-height: 1.45; color: var(--exp-ink); cursor: default; transition: color .2s ease; }
+.tour-feats li::before { content: ""; flex: none; margin-top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--exp-teal); transition: transform .2s ease, background .2s ease; }
+.tour-feats li.is-active { color: var(--exp-cream); }
+.tour-feats li.is-active::before { background: var(--exp-cream); transform: scale(1.5); }
 .feats-empty { margin: 0; color: var(--exp-muted); font-size: 13px; }
+
+/* feature hotspots — hover circles pinned onto the product image */
+.tour-hotspots { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
+.tour-spot { position: absolute; transform: translate(-50%, -50%); padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto; }
+.spot-dot { display: block; width: 16px; height: 16px; border-radius: 50%; background: rgba(255,250,241,.95); box-shadow: 0 0 0 2px rgba(20,16,12,.5), 0 2px 6px rgba(0,0,0,.4); position: relative; transition: transform .2s ease, background .2s ease; }
+.spot-dot::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(255,250,241,.8); animation: spot-pulse 2.2s ease-out infinite; }
+@keyframes spot-pulse { 0% { transform: scale(.65); opacity: .85; } 100% { transform: scale(1.7); opacity: 0; } }
+.tour-spot:hover .spot-dot, .tour-spot:focus-visible .spot-dot, .tour-spot.is-active .spot-dot { background: var(--exp-teal); transform: scale(1.25); }
+/* callout: above the dot by default, below when .below */
+.spot-card {
+  position: absolute; left: 50%; bottom: calc(100% + 14px); transform: translateX(-50%) translateY(6px);
+  width: max-content; max-width: 230px; text-align: left; padding: 11px 13px; border-radius: 11px;
+  background: rgba(16,13,10,.92); backdrop-filter: blur(8px); border: 1px solid var(--exp-line);
+  box-shadow: 0 14px 34px rgba(0,0,0,.4); opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease; z-index: 1;
+}
+.tour-spot.below .spot-card { bottom: auto; top: calc(100% + 14px); }
+.spot-card::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: rgba(16,13,10,.92); }
+.tour-spot.below .spot-card::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: rgba(16,13,10,.92); }
+.tour-spot:hover .spot-card, .tour-spot:focus-visible .spot-card, .tour-spot.is-active .spot-card { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+.spot-card b { display: block; font: 600 13px "DM Sans", sans-serif; color: var(--exp-cream); margin-bottom: 3px; }
+.spot-card span { display: block; font-size: 12px; line-height: 1.45; color: var(--exp-muted); }
 
 /* size + colour chooser (now inside the left card) */
 .choose-wrap {

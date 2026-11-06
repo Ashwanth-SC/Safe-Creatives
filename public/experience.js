@@ -107,6 +107,21 @@
     window.addEventListener("resize", placeHero);
     video.addEventListener("loadedmetadata", placeHero);
 
+    // Feature hotspots sit on the full-frame image (16:9, object-fit:cover), so
+    // they map through the same cover transform and track the image on resize.
+    let curSpots = []; // [{ el, x, y }] for the current stop
+    function placeHotspots() {
+      if (!curSpots.length) return;
+      const vw = window.innerWidth, vh = window.innerHeight, a = 16 / 9;
+      const dw = Math.max(vw, vh * a), dh = dw / a, offX = (vw - dw) / 2, offY = (vh - dh) / 2;
+      for (const s of curSpots) {
+        if (!s.el.isConnected) continue;
+        s.el.style.left = (offX + s.x * dw) + "px";
+        s.el.style.top = (offY + s.y * dh) + "px";
+      }
+    }
+    window.addEventListener("resize", placeHotspots);
+
     const scrim = el("div", "tour-scrim");
     const catWrap = el("div");
 
@@ -245,13 +260,16 @@
           }
           try { v.playbackRate = playSpeed; } catch (e) { /* ignore */ }
           let raf;
+          const startedAt = (typeof performance !== "undefined" ? performance.now() : Date.now());
           const tick = () => {
-            if (v.currentTime >= t - 0.05) {
-              try { v.pause(); v.playbackRate = 1; } catch (e) { /* ignore */ }
+            const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+            if (v.currentTime >= t - 0.05 || elapsed > 12000) {
+              try { v.pause(); v.playbackRate = 1; if (Math.abs(v.currentTime - t) > 0.15) v.currentTime = t; } catch (e) { /* ignore */ }
               cancelAnimationFrame(raf);
               resolve();
               return;
             }
+            if (v.paused) { try { v.play(); } catch (e) { /* ignore */ } } // resume if backgrounding paused us
             raf = requestAnimationFrame(tick);
           };
           const pr = v.play();
@@ -276,9 +294,13 @@
       // "cover": the product image is a full-frame render matching the video
       // frame; overlay it edge-to-edge (object-fit:cover) and fade it in.
       const coverMode = hero.cover === true;
+      const feats = cat.features || [];
+      const fName = (f) => (typeof f === "string" ? f : (f && f.name) || "");
+      const fDesc = (f) => (typeof f === "string" ? "" : (f && f.desc) || "");
       const view = el("div", "tour-cat is-on");
       view.innerHTML =
         `<div class="tour-hero${coverMode ? " is-cover" : ""}"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure></div>` +
+        `<div class="tour-hotspots"></div>` +
         // LEFT card: unit name + size / colour selectors
         `<div class="tour-info">` +
           `<p class="eyebrow">YOUR CHOICE</p>` +
@@ -293,8 +315,8 @@
         // RIGHT card: features
         `<div class="tour-feats-card">` +
           `<p class="eyebrow">FEATURES</p>` +
-          ((cat.features && cat.features.length)
-            ? `<ul class="tour-feats">${cat.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>`
+          (feats.length
+            ? `<ul class="tour-feats">${feats.map((f, fi) => `<li data-feat="${fi}">${esc(fName(f))}</li>`).join("")}</ul>`
             : `<p class="feats-empty">Details coming soon.</p>`) +
         `</div>`;
 
@@ -302,6 +324,27 @@
       catWrap.appendChild(view);
       // Fade this category in (image + cards). rAF so the transition runs.
       requestAnimationFrame(() => requestAnimationFrame(() => view.classList.add("is-shown")));
+
+      // Feature hotspots: a hover circle for each feature that has x,y, pinned
+      // onto the image; hovering it (or its list item) reveals the feature.
+      const spotLayer = view.querySelector(".tour-hotspots");
+      curSpots = [];
+      feats.forEach((f, fi) => {
+        if (!f || typeof f !== "object" || f.x == null || f.y == null) return;
+        const b = el("button", "tour-spot" + (f.below ? " below" : ""));
+        b.type = "button"; b.dataset.feat = fi;
+        b.setAttribute("aria-label", fName(f));
+        b.innerHTML = `<span class="spot-dot"></span><span class="spot-card"><b>${esc(fName(f))}</b>${fDesc(f) ? `<span>${esc(fDesc(f))}</span>` : ""}</span>`;
+        spotLayer.appendChild(b);
+        curSpots.push({ el: b, x: f.x, y: f.y });
+        const li = view.querySelector(`.tour-feats li[data-feat="${fi}"]`);
+        const on = () => { b.classList.add("is-active"); if (li) li.classList.add("is-active"); };
+        const off = () => { b.classList.remove("is-active"); if (li) li.classList.remove("is-active"); };
+        b.addEventListener("mouseenter", on); b.addEventListener("mouseleave", off);
+        b.addEventListener("focus", on); b.addEventListener("blur", off);
+        if (li) { li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off); }
+      });
+      placeHotspots();
 
       // Per-category placement. cover → full-frame (handled by class, no pinning).
       // Else frame coords pin the product into the room — width span (x0/x1/baseY)
