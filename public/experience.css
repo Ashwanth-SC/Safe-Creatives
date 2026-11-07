@@ -189,19 +189,63 @@ body.exp-body {
 .tour-sum .t span { font: 600 8px "DM Mono", monospace; color: var(--exp-muted); text-align: center; padding: 2px; }
 .tour-sum small { display: block; font: 600 9px "DM Mono", monospace; letter-spacing: .1em; color: var(--exp-muted); text-transform: uppercase; }
 .tour-sum b { font: 600 14px "DM Sans", sans-serif; }
+.tour-sum em { display: block; font-style: normal; font-size: 12px; color: var(--exp-muted); margin-top: 1px; }
+.tour-cart-empty { max-width: 420px; margin: 0 auto 24px; color: var(--exp-muted); font-size: 14px; line-height: 1.5; }
+.tour-outro-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.tour-restart-link { display: block; margin: 16px auto 0; background: none; border: 0; cursor: pointer; color: var(--exp-muted); font: 500 12px "DM Mono", monospace; letter-spacing: .1em; }
+.tour-restart-link:hover { color: var(--exp-cream); }
+
+/* add-to-cart button (in the left card) */
+.tour-add {
+  margin-top: 4px; width: 100%; cursor: pointer; padding: 11px 14px; border-radius: 10px;
+  border: 1.5px solid var(--exp-cream); background: var(--exp-cream); color: #171717;
+  font: 600 13px "DM Sans", sans-serif; letter-spacing: .01em; transition: background .2s ease, color .2s ease, border-color .2s ease;
+}
+.tour-add:hover { background: #fff; }
+.tour-add.is-in { background: transparent; color: var(--exp-cream); border-color: var(--exp-line); }
+
+/* top-right cart widget */
+.exp-cart {
+  position: fixed; top: 54px; right: 16px; z-index: 30; width: 232px;
+  background: rgba(16,13,10,.72); backdrop-filter: blur(8px); border: 1px solid var(--exp-line);
+  border-radius: 12px; padding: 10px 12px; opacity: 0; transform: translateY(-6px); pointer-events: none;
+  transition: opacity .25s ease, transform .25s ease;
+}
+.exp-cart.has-items { opacity: 1; transform: none; pointer-events: auto; }
+.exp-cart-head { display: flex; align-items: center; justify-content: space-between; font: 600 10px "DM Mono", monospace; letter-spacing: .16em; text-transform: uppercase; color: var(--exp-muted); margin-bottom: 8px; }
+.exp-cart-head b { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--exp-teal); color: #fff; font: 600 11px "DM Sans", sans-serif; }
+.exp-cart ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.exp-cart li { display: flex; align-items: center; gap: 8px; }
+.exp-cart .ec-line { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.exp-cart .ec-name { font: 600 12.5px "DM Sans", sans-serif; color: var(--exp-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exp-cart .ec-var { font: 500 11px "DM Mono", monospace; color: var(--exp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exp-cart .ec-rm { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 0; background: rgba(255,255,255,.07); color: var(--exp-muted); cursor: pointer; font-size: 15px; line-height: 1; transition: background .15s ease, color .15s ease; }
+.exp-cart .ec-rm:hover { background: rgba(227,73,72,.9); color: #fff; }
+
+/* confirm / warning dialog */
+.exp-modal { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 20px; background: rgba(8,6,4,.55); opacity: 0; transition: opacity .2s ease; }
+.exp-modal.is-on { opacity: 1; }
+.exp-modal-card { width: min(380px, 92vw); background: var(--exp-bg); border: 1px solid var(--exp-line); border-radius: 16px; padding: 24px; text-align: center; box-shadow: 0 30px 70px rgba(0,0,0,.5); }
+.exp-modal-card p { margin: 0 0 18px; color: var(--exp-ink); font-size: 15px; line-height: 1.55; }
+.exp-modal-card b { color: var(--exp-cream); }
+.exp-modal-actions { display: flex; gap: 10px; justify-content: center; }
 
 /* loading */
 .exp-loading { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; background: var(--exp-bg); color: var(--exp-muted); font: 500 13px "DM Mono", monospace; letter-spacing: .14em; transition: opacity .4s ease; }
 .exp-loading.is-hidden { opacity: 0; pointer-events: none; }
+.exp-load-inner { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.exp-load-inner p { margin: 0; }
+.exp-load-bar { width: 220px; max-width: 60vw; height: 3px; border-radius: 3px; background: rgba(255,250,241,.14); overflow: hidden; }
+.exp-load-bar > i { display: block; height: 100%; width: 0%; background: var(--exp-cream); border-radius: 3px; transition: width .25s ease; }
 
 @keyframes cat-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes hero-in { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
 
 @media (max-width: 820px) {
   .tour-hero { --hero-h: min(42vh, 72vw); }
-  .tour-choose { left: 14px; right: 14px; bottom: 86px; width: auto; }
-  .tour-info { left: 14px; right: 14px; bottom: 300px; width: auto; }
-  .tour-cat-head { top: 60px; }
-  .tour-feats { display: none; }
+  .tour-info { left: 14px; right: 14px; bottom: 96px; width: auto; }
+  .tour-feats-card { display: none; }
+  .exp-cart { top: 46px; right: 10px; width: 46vw; max-width: 200px; }
+  .spot-card { max-width: 180px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }

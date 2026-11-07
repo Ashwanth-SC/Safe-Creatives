@@ -152,27 +152,43 @@
     backBtn.addEventListener("click", () => { if (step <= 0) goIntro(); else goCategory(step - 1); });
 
     introP.classList.add("is-on");
-    // Hold the loader until the video + the first composite of every stop are
-    // decoded, so the first fade-in never shows a half-loaded image.
+    // Strong preloader: hold the loader until the video AND every variant image
+    // (all size x colour combos) are decoded, so nothing ever buffers — walking
+    // and switching options/colours is seamless. Shows progress.
     preloadAssets().then(() => { if (loading) loading.classList.add("is-hidden"); });
 
     // -------- helpers --------
-    // Warm the browser cache for the video's first frame and each category's
-    // first-option image, with a timeout so we never hang on a missing asset.
+    function allImageUrls() {
+      const urls = new Set();
+      cats.forEach((c) => {
+        const sizes = (c.sizes && c.sizes.length) ? c.sizes : [null];
+        const colors = (c.colors && c.colors.length) ? c.colors : [null];
+        sizes.forEach((_, si) => colors.forEach((__, ci) => {
+          const u = productPng(c, { size: si, color: ci });
+          if (u) urls.add(u);
+        }));
+      });
+      return [...urls];
+    }
     function preloadAssets() {
-      const imgs = cats
-        .map((c) => productPng(c, { size: 0, color: 0 }))
-        .filter(Boolean)
-        .map((u) => new Promise((res) => { const im = new Image(); im.onload = im.onerror = () => res(); im.src = u; }));
+      if (loading) loading.innerHTML =
+        `<div class="exp-load-inner"><p>PREPARING YOUR ROOM</p><div class="exp-load-bar"><i></i></div></div>`;
+      const bar = loading && loading.querySelector(".exp-load-bar > i");
+      const urls = allImageUrls();
+      const total = urls.length + 1; // + the video
+      let done = 0;
+      const bump = () => { done++; if (bar) bar.style.width = Math.round((done / total) * 100) + "%"; };
+      const imgs = urls.map((u) => new Promise((res) => { const im = new Image(); im.onload = im.onerror = () => { bump(); res(); }; im.src = u; }));
       const vid = new Promise((res) => {
-        if (!videoOk || video.readyState >= 2) { res(); return; }
-        const done = () => { video.removeEventListener("loadeddata", done); video.removeEventListener("canplay", done); res(); };
-        video.addEventListener("loadeddata", done);
-        video.addEventListener("canplay", done);
+        const fin = () => { bump(); res(); };
+        if (!videoOk || video.readyState >= 2) { fin(); return; }
+        const d = () => { video.removeEventListener("loadeddata", d); video.removeEventListener("canplay", d); fin(); };
+        video.addEventListener("loadeddata", d);
+        video.addEventListener("canplay", d);
       });
       return Promise.race([
         Promise.all([...imgs, vid]),
-        new Promise((res) => setTimeout(res, 8000)),
+        new Promise((res) => setTimeout(res, 15000)),
       ]);
     }
 
@@ -186,6 +202,65 @@
       const size = (cat.sizes[s.size] || {}).name || "";
       const color = (cat.colors[s.color] || {}).name || "";
       return [size, color].filter(Boolean).join(" · ");
+    }
+
+    // -------- cart (localStorage, shared across packages) --------
+    const CART_KEY = "aurem.cart.v1";
+    const pkgKey = new URLSearchParams(location.search).get("pkg") || (data.name || "package");
+    const pkgName = data.name || data.room || "Package";
+    let cart = (function () { try { return JSON.parse(localStorage.getItem(CART_KEY)) || []; } catch (e) { return []; } })();
+    const cartSave = () => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (e) { /* private mode */ } };
+    const keyCat = (it) => it.pkg + "|" + it.catId;
+    const keyExact = (it) => keyCat(it) + "|" + it.sizeId + "|" + it.colorId;
+    const cartIndexExact = (it) => cart.findIndex((x) => keyExact(x) === keyExact(it));
+    const cartHasCatOther = (it) => cart.some((x) => keyCat(x) === keyCat(it) && keyExact(x) !== keyExact(it));
+    function itemFor(cat, s) {
+      const sz = cat.sizes[s.size] || {}, co = cat.colors[s.color] || {};
+      return {
+        pkg: pkgKey, pkgName, catId: cat.id, catName: cat.name || "",
+        sizeId: sz.id || "", sizeName: (cat.sizes.length > 1 ? (sz.name || "") : ""),
+        colorId: co.id || "", colorName: co.name || "", img: productPng(cat, s),
+      };
+    }
+
+    // top-right cart widget
+    document.querySelectorAll(".exp-cart").forEach((n) => n.remove());
+    const cartWidget = el("div", "exp-cart");
+    document.body.appendChild(cartWidget);
+    let refreshAddBtn = () => {};
+    function renderCart() {
+      if (!cart.length) { cartWidget.classList.remove("has-items"); cartWidget.innerHTML = ""; return; }
+      cartWidget.classList.add("has-items");
+      cartWidget.innerHTML =
+        `<div class="exp-cart-head"><span>Your cart</span><b>${cart.length}</b></div>` +
+        `<ul>` + cart.map((it, i) =>
+          `<li><span class="ec-line"><span class="ec-name">${esc(it.catName)}</span>` +
+          `<span class="ec-var">${esc([it.sizeName, it.colorName].filter(Boolean).join(" · "))}</span></span>` +
+          `<button type="button" class="ec-rm" data-i="${i}" aria-label="Remove">&times;</button></li>`
+        ).join("") + `</ul>`;
+      cartWidget.querySelectorAll(".ec-rm").forEach((b) =>
+        b.addEventListener("click", () => { cart.splice(Number(b.dataset.i), 1); cartSave(); renderCart(); refreshAddBtn(); }));
+    }
+    renderCart();
+
+    // duplicate-category confirm dialog -> resolves true/false
+    function confirmDup(catName) {
+      return new Promise((resolve) => {
+        const ov = el("div", "exp-modal");
+        ov.innerHTML =
+          `<div class="exp-modal-card" role="dialog" aria-modal="true">` +
+            `<p>Are you sure? You already have another product from the <b>${esc(catName)}</b> category.</p>` +
+            `<div class="exp-modal-actions"><button type="button" class="btn btn-ghost" data-no>Cancel</button>` +
+            `<button type="button" class="btn btn-primary" data-yes>Add anyway</button></div>` +
+          `</div>`;
+        document.body.appendChild(ov);
+        const close = (v) => { ov.remove(); resolve(v); };
+        ov.querySelector("[data-no]").addEventListener("click", () => close(false));
+        ov.querySelector("[data-yes]").addEventListener("click", () => close(true));
+        ov.addEventListener("click", (e) => { if (e.target === ov) close(false); });
+        requestAnimationFrame(() => ov.classList.add("is-on"));
+        ov.querySelector("[data-yes]").focus();
+      });
     }
 
     // -------- state --------
@@ -313,6 +388,7 @@
           `<div class="choose-group"><span class="choose-label">Colour — <em id="color-name">${esc((cat.colors[s.color] || {}).name || "")}</em></span><div class="choose-swatches">` +
             cat.colors.map((c, ci) => `<button type="button" class="choose-swatch${ci === s.color ? " is-on" : ""}" data-color="${ci}" title="${esc(c.name)}" style="--sw:${esc(c.swatch || "#999")}"><span></span></button>`).join("") +
           `</div></div>` +
+          `<button type="button" class="tour-add">Add to cart</button>` +
         `</div>` +
         // RIGHT card: features
         `<div class="tour-feats-card">` +
@@ -382,7 +458,29 @@
         if (im) { im.onerror = () => { im.outerHTML = heroPh(cat.name); }; if (placed) im.addEventListener("load", placeHero); }
         if (placed) placeHero();
         const cn = view.querySelector("#color-name"); if (cn) cn.textContent = (cat.colors[s.color] || {}).name || "";
+        syncAddBtn();
       };
+
+      // Add-to-cart for the current variant (toggles; warns on same-category dup).
+      const addBtn = view.querySelector(".tour-add");
+      function syncAddBtn() {
+        if (!addBtn) return;
+        const inCart = cartIndexExact(itemFor(cat, s)) >= 0;
+        addBtn.classList.toggle("is-in", inCart);
+        addBtn.textContent = inCart ? "✓ Added to cart" : "Add to cart";
+      }
+      refreshAddBtn = syncAddBtn;
+      if (addBtn) addBtn.addEventListener("click", () => {
+        const it = itemFor(cat, s);
+        const idx = cartIndexExact(it);
+        if (idx >= 0) { cart.splice(idx, 1); cartSave(); renderCart(); syncAddBtn(); return; } // undo
+        if (cartHasCatOther(it)) {
+          confirmDup(it.catName).then((ok) => { if (ok) { cart.push(it); cartSave(); renderCart(); syncAddBtn(); } });
+          return;
+        }
+        cart.push(it); cartSave(); renderCart(); syncAddBtn();
+      });
+      syncAddBtn();
 
       view.querySelectorAll(".choose-pill").forEach((b) => b.addEventListener("click", () => {
         const si = Number(b.dataset.size);
@@ -402,20 +500,24 @@
 
     function outroHtml() {
       const o = data.outro || {};
-      const sum = cats.map((c, i) => {
-        const png = productPng(c, sel[i]);
-        return `<div class="tour-sum"><span class="t">${png ? `<img src="${esc(png)}" alt="">` : `<span>PNG</span>`}</span><div><small>${esc(c.name)}</small><b>${esc(variantLabel(c, sel[i]))}</b></div></div>`;
-      }).join("");
+      const has = cart.length > 0;
+      const items = has
+        ? cart.map((it) =>
+            `<div class="tour-sum"><span class="t">${it.img ? `<img src="${esc(it.img)}" alt="">` : `<span>—</span>`}</span>` +
+            `<div><small>${esc(it.pkgName)}</small><b>${esc(it.catName)}</b>` +
+            `<em>${esc([it.sizeName, it.colorName].filter(Boolean).join(" · ")) || "&nbsp;"}</em></div></div>`
+          ).join("")
+        : `<p class="tour-cart-empty">Your cart is empty — add the pieces you like as you walk through, then come back here to review.</p>`;
       return (
         `<div class="tour-panel-inner">` +
-          `<p class="eyebrow">${esc(o.eyebrow || "YOUR ROOM")}</p>` +
-          `<h1>${esc(o.title || "Here's your room.")}</h1>` +
-          `<div class="tour-summary">${sum}</div>` +
-          (o.text ? `<p>${esc(o.text)}</p>` : "") +
-          `<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">` +
-            `<button type="button" class="btn btn-ghost" id="tour-restart">↺ Start over</button>` +
-            (o.href ? `<a class="btn btn-primary" href="${esc(o.href)}">${esc(o.button || "Continue")}</a>` : "") +
+          `<p class="eyebrow">${esc(has ? "YOUR SELECTION" : (o.eyebrow || "YOUR ROOM"))}</p>` +
+          `<h1>${esc(has ? "Review your selection." : (o.title || "Here's your room."))}</h1>` +
+          `<div class="tour-summary">${items}</div>` +
+          `<div class="tour-outro-actions">` +
+            `<a class="btn btn-ghost" href="sensory-rooms.html">+ Add from another package</a>` +
+            (has ? `<a class="btn btn-primary" href="checkout.html">Review &amp; place order &rarr;</a>` : "") +
           `</div>` +
+          `<button type="button" class="tour-restart-link" id="tour-restart">&#8635; Start the walk over</button>` +
         `</div>`
       );
     }
