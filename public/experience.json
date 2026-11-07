@@ -53,21 +53,17 @@
           "blurb": "A compact floating study with soft task lighting.",
           "_featureHelp": "Each feature: { name, desc, x, y } — x,y are 0..1 positions on the 1920x1080 frame for the hover circle. Add \"below\": true to drop the callout under the dot (for dots near the top).",
           "features": [],
-          "sizes": [ { "id": "standard", "name": "Standard" }, { "id": "wide", "name": "Wide" }, { "id": "compact", "name": "Compact" } ],
-          "colors": [ { "id": "beige", "name": "Beige", "swatch": "#cdb79b" }, { "id": "oak", "name": "Oak", "swatch": "#b5894e" }, { "id": "grey", "name": "Grey", "swatch": "#9a9a9a" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" } ]
+          "sizes": [ { "id": "standard", "name": "Standard" } ],
+          "colors": [ { "id": "sand", "name": "Sand", "swatch": "#c0a079" }, { "id": "white", "name": "White", "swatch": "#e6e3dd" }, { "id": "graphite", "name": "Graphite", "swatch": "#343230" } ]
         },
         {
           "id": "wardrobe", "name": "Wardrobe & Storage", "note": "A place for everything.", "pauseAt": 7,
           "hero": { "cover": true },
           "pngPattern": "ASSET/experience/products/revive/wardrobe/{size}-{color}.webp",
           "blurb": "Soft-close wardrobe with a clean, handle-free front.",
-          "features": [
-            { "name": "Soft-close hinges", "desc": "Doors that pull themselves shut, silently.", "x": 0.40, "y": 0.56 },
-            { "name": "Fluted texture band", "desc": "A tactile reeded strip across the fronts.", "x": 0.55, "y": 0.67 },
-            { "name": "Full-height storage", "desc": "Floor-to-ceiling hanging and shelving.", "x": 0.62, "y": 0.20, "below": true }
-          ],
-          "sizes": [ { "id": "four", "name": "4-door" }, { "id": "three", "name": "3-door" }, { "id": "two", "name": "2-door" } ],
-          "colors": [ { "id": "beige", "name": "Beige", "swatch": "#cdb79b" }, { "id": "oak", "name": "Oak", "swatch": "#b5894e" }, { "id": "grey", "name": "Grey", "swatch": "#9a9a9a" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" } ]
+          "features": [],
+          "sizes": [ { "id": "4ft", "name": "4 ft" }, { "id": "6ft", "name": "6 ft" }, { "id": "8ft", "name": "8 ft" } ],
+          "colors": [ { "id": "beige", "name": "Beige", "swatch": "#cdbfae" }, { "id": "white", "name": "White", "swatch": "#e8e7e6" }, { "id": "navy", "name": "Navy", "swatch": "#3b4a63" }, { "id": "graphite", "name": "Graphite", "swatch": "#6a696b" } ]
         },
         {
           "id": "pelmet", "name": "Pelmet", "note": "Finishing overhead.", "pauseAt": 11,
@@ -75,8 +71,8 @@
           "pngPattern": "ASSET/experience/products/revive/pelmet/{size}-{color}.webp",
           "blurb": "A warm ceiling detail that frames the room.",
           "features": [],
-          "sizes": [ { "id": "standard", "name": "Standard" }, { "id": "wide", "name": "Wide" }, { "id": "slim", "name": "Slim" } ],
-          "colors": [ { "id": "warm", "name": "Warm Oak", "swatch": "#b89b78" }, { "id": "natural", "name": "Natural", "swatch": "#cdb79b" }, { "id": "grey", "name": "Grey", "swatch": "#9a9a9a" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" } ]
+          "sizes": [ { "id": "standard", "name": "Standard" } ],
+          "colors": [ { "id": "taupe", "name": "Taupe", "swatch": "#9c8673" }, { "id": "cream", "name": "Cream", "swatch": "#d6c9b6" }, { "id": "espresso", "name": "Espresso", "swatch": "#241d18" } ]
         }
       ],
       "outro": { "eyebrow": "YOUR BEDROOM", "title": "Here's your Aurem Revive.", "text": "Pricing and reserve are coming next — for now, your choices are saved below.", "button": "Explore the package", "href": "bedroom-package.html" }

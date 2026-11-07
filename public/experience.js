@@ -305,9 +305,11 @@
         `<div class="tour-info">` +
           `<p class="eyebrow">YOUR CHOICE</p>` +
           `<h3>${esc(cat.name || "")}</h3>` +
-          `<div class="choose-group"><span class="choose-label">Size</span><div class="choose-pills">` +
-            cat.sizes.map((sz, si) => `<button type="button" class="choose-pill${si === s.size ? " is-on" : ""}" data-size="${si}">${esc(sz.name)}</button>`).join("") +
-          `</div></div>` +
+          (cat.sizes.length > 1
+            ? `<div class="choose-group"><span class="choose-label">Size</span><div class="choose-pills">` +
+                cat.sizes.map((sz, si) => `<button type="button" class="choose-pill${si === s.size ? " is-on" : ""}" data-size="${si}">${esc(sz.name)}</button>`).join("") +
+              `</div></div>`
+            : "") +
           `<div class="choose-group"><span class="choose-label">Colour — <em id="color-name">${esc((cat.colors[s.color] || {}).name || "")}</em></span><div class="choose-swatches">` +
             cat.colors.map((c, ci) => `<button type="button" class="choose-swatch${ci === s.color ? " is-on" : ""}" data-color="${ci}" title="${esc(c.name)}" style="--sw:${esc(c.swatch || "#999")}"><span></span></button>`).join("") +
           `</div></div>` +

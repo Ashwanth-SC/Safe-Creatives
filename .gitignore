@@ -17,3 +17,4 @@ desktop.ini
 # Supabase CLI local state (config.toml IS tracked)
 supabase/.temp/
 supabase/.branches/
+_incoming/
