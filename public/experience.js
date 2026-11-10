@@ -109,15 +109,23 @@
 
     // Feature hotspots sit on the full-frame image (16:9, object-fit:cover), so
     // they map through the same cover transform and track the image on resize.
-    let curSpots = []; // [{ el, x, y }] for the current stop
+    let curSpots = []; // [{ el, x, y }] hover circles for the current stop
+    let curGlows = []; // [{ el, x, y, w, h }] light-glow overlays for the current stop
     function placeHotspots() {
-      if (!curSpots.length) return;
+      if (!curSpots.length && !curGlows.length) return;
       const vw = window.innerWidth, vh = window.innerHeight, a = 16 / 9;
       const dw = Math.max(vw, vh * a), dh = dw / a, offX = (vw - dw) / 2, offY = (vh - dh) / 2;
       for (const s of curSpots) {
         if (!s.el.isConnected) continue;
         s.el.style.left = (offX + s.x * dw) + "px";
         s.el.style.top = (offY + s.y * dh) + "px";
+      }
+      for (const g of curGlows) {
+        if (!g.el.isConnected) continue;
+        g.el.style.left = (offX + g.x * dw) + "px";
+        g.el.style.top = (offY + g.y * dh) + "px";
+        g.el.style.width = (g.w * dw) + "px";
+        g.el.style.height = (g.h * dh) + "px";
       }
     }
     window.addEventListener("resize", placeHotspots);
@@ -375,6 +383,7 @@
       const view = el("div", "tour-cat is-on");
       view.innerHTML =
         `<div class="tour-hero${coverMode ? " is-cover" : ""}"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure></div>` +
+        `<div class="tour-glows"></div>` +
         `<div class="tour-hotspots"></div>` +
         // LEFT card: unit name + size / colour selectors
         `<div class="tour-info">` +
@@ -406,9 +415,18 @@
       // Feature hotspots: a hover circle for each feature that has x,y, pinned
       // onto the image; hovering it (or its list item) reveals the feature.
       const spotLayer = view.querySelector(".tour-hotspots");
-      curSpots = [];
+      const glowLayer = view.querySelector(".tour-glows");
+      curSpots = []; curGlows = [];
       feats.forEach((f, fi) => {
-        if (!f || typeof f !== "object" || f.x == null || f.y == null) return;
+        if (!f || typeof f !== "object") return;
+        // Optional light-glow that blooms when the feature is hovered.
+        let glowEl = null;
+        if (f.glow && f.glow.x != null && f.glow.y != null) {
+          glowEl = el("div", "tour-glow");
+          glowLayer.appendChild(glowEl);
+          curGlows.push({ el: glowEl, x: f.glow.x, y: f.glow.y, w: f.glow.w || 0.05, h: f.glow.h || 0.05 });
+        }
+        if (f.x == null || f.y == null) return;
         const b = el("button", "tour-spot" + (f.below ? " below" : ""));
         b.type = "button"; b.dataset.feat = fi;
         b.setAttribute("aria-label", fName(f));
@@ -416,8 +434,8 @@
         spotLayer.appendChild(b);
         curSpots.push({ el: b, x: f.x, y: f.y });
         const li = view.querySelector(`.tour-feats li[data-feat="${fi}"]`);
-        const on = () => { b.classList.add("is-active"); if (li) li.classList.add("is-active"); };
-        const off = () => { b.classList.remove("is-active"); if (li) li.classList.remove("is-active"); };
+        const on = () => { b.classList.add("is-active"); if (li) li.classList.add("is-active"); if (glowEl) glowEl.classList.add("is-active"); };
+        const off = () => { b.classList.remove("is-active"); if (li) li.classList.remove("is-active"); if (glowEl) glowEl.classList.remove("is-active"); };
         b.addEventListener("mouseenter", on); b.addEventListener("mouseleave", off);
         b.addEventListener("focus", on); b.addEventListener("blur", off);
         if (li) { li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off); }

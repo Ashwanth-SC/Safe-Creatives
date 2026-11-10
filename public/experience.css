@@ -128,6 +128,17 @@ body.exp-body {
 .tour-feats li.is-active::before { background: var(--exp-cream); transform: scale(1.5); }
 .feats-empty { margin: 0; color: var(--exp-muted); font-size: 13px; }
 
+/* light-glow overlays: a warm bloom pinned over a lit element (e.g. an LED
+   strip) that swells when its feature is hovered — "the light responds". */
+.tour-glows { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.tour-glow {
+  position: absolute; transform: translate(-50%, -50%) scale(.9); border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255,216,150,.95), rgba(255,206,140,.4) 44%, rgba(255,200,130,0) 72%);
+  opacity: 0; filter: blur(7px); mix-blend-mode: screen;
+  transition: opacity .4s ease, transform .4s ease;
+}
+.tour-glow.is-active { opacity: 1; transform: translate(-50%, -50%) scale(1.04); }
+
 /* feature hotspots — hover circles pinned onto the product image */
 .tour-hotspots { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
 .tour-spot { position: absolute; transform: translate(-50%, -50%); padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto; }

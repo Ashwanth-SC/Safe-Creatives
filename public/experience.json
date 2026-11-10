@@ -15,7 +15,10 @@
           "hero": { "cover": true },
           "pngPattern": "ASSET/experience/products/radiance/foyer/{size}-{color}.webp",
           "blurb": "An entryway console with seat, mirror and storage.",
-          "features": [],
+          "features": [
+            { "name": "Mirror LED strip", "desc": "Motion-sensor light that comes on as you step up to the unit.", "x": 0.685, "y": 0.25, "glow": { "x": 0.682, "y": 0.41, "w": 0.045, "h": 0.52 } },
+            { "name": "Under-unit LED", "desc": "Motion-sensor glow beneath the bench, lighting your way in.", "x": 0.63, "y": 0.885, "glow": { "x": 0.655, "y": 0.945, "w": 0.21, "h": 0.055 } }
+          ],
           "sizes": [ { "id": "standard", "name": "Standard" } ],
           "colors": [ { "id": "cream", "name": "Cream", "swatch": "#d6cbb8" }, { "id": "charcoal", "name": "Charcoal", "swatch": "#3a332d" } ]
         },
