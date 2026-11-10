@@ -11,28 +11,31 @@
       "intro": { "eyebrow": "AUREM · LIVING ROOM", "title": "Aurem Radiance", "text": "Walk through your living room. At each stop, choose a size and a finish — your room comes together as you go.", "button": "Begin the walk" },
       "categories": [
         {
-          "id": "seating", "name": "Seating", "note": "Where everyone lands.", "pauseAt": 5,
-          "pngPattern": "ASSET/experience/products/radiance/seating/{size}-{color}.png",
-          "blurb": "Deep, modular seating built around comfort and calm.",
-          "features": ["Modular, reconfigurable", "Stain-resistant weave", "Memory-foam seats"],
-          "sizes": [ { "id": "two", "name": "2-seater" }, { "id": "three", "name": "3-seater" }, { "id": "corner", "name": "Corner" } ],
-          "colors": [ { "id": "oat", "name": "Oat", "swatch": "#d8cdb8" }, { "id": "clay", "name": "Clay", "swatch": "#b08968" }, { "id": "moss", "name": "Moss", "swatch": "#6b705c" }, { "id": "graphite", "name": "Graphite", "swatch": "#3a3a3a" } ]
+          "id": "foyer", "name": "Foyer Unit", "note": "A warm welcome.", "pauseAt": 3,
+          "hero": { "cover": true },
+          "pngPattern": "ASSET/experience/products/radiance/foyer/{size}-{color}.webp",
+          "blurb": "An entryway console with seat, mirror and storage.",
+          "features": [],
+          "sizes": [ { "id": "standard", "name": "Standard" } ],
+          "colors": [ { "id": "cream", "name": "Cream", "swatch": "#d6cbb8" }, { "id": "charcoal", "name": "Charcoal", "swatch": "#3a332d" } ]
         },
         {
-          "id": "media", "name": "Media & Storage", "note": "The heart of the wall.", "pauseAt": 11,
-          "pngPattern": "ASSET/experience/products/radiance/media/{size}-{color}.png",
-          "blurb": "A wall-hung console with soft-close, cable-free drawers.",
-          "features": ["Soft-close drawers", "Hidden cable routing", "Reconfigurable modules"],
-          "sizes": [ { "id": "compact", "name": "Compact" }, { "id": "standard", "name": "Standard" }, { "id": "wide", "name": "Wide" } ],
-          "colors": [ { "id": "oak", "name": "Oak", "swatch": "#b5894e" }, { "id": "walnut", "name": "Walnut", "swatch": "#5c3a21" }, { "id": "graphite", "name": "Graphite", "swatch": "#3a3a3a" }, { "id": "linen", "name": "Linen", "swatch": "#e7ded0" } ]
+          "id": "tv", "name": "TV Unit", "note": "The heart of the wall.", "pauseAt": 7,
+          "hero": { "cover": true },
+          "pngPattern": "ASSET/experience/products/radiance/tv/{size}-{color}.webp",
+          "blurb": "A wall-hung media console with a backlit panel.",
+          "features": [],
+          "sizes": [ { "id": "5ft", "name": "5 ft" }, { "id": "7ft", "name": "7 ft" } ],
+          "colors": [ { "id": "white", "name": "White", "swatch": "#e8e6e2" }, { "id": "red", "name": "Red", "swatch": "#9c3b34" }, { "id": "blue", "name": "Blue", "swatch": "#4f7585" }, { "id": "charcoal", "name": "Charcoal", "swatch": "#33302d" } ]
         },
         {
-          "id": "accent", "name": "Lighting & Accent", "note": "Set the mood.", "pauseAt": 16.5,
-          "pngPattern": "ASSET/experience/products/radiance/accent/{size}-{color}.png",
-          "blurb": "Warm, dimmable light with a grounding accent piece.",
-          "features": ["2200–3000K warm dimming", "Touch control", "Tip-over safe base"],
-          "sizes": [ { "id": "floor", "name": "Floor" }, { "id": "table", "name": "Table" }, { "id": "set", "name": "Set" } ],
-          "colors": [ { "id": "brass", "name": "Brass", "swatch": "#b08d57" }, { "id": "black", "name": "Black", "swatch": "#2b2b2b" }, { "id": "white", "name": "White", "swatch": "#efe9df" }, { "id": "wood", "name": "Wood", "swatch": "#9c6b43" } ]
+          "id": "pelmet", "name": "Pelmet", "note": "Finishing overhead.", "pauseAt": 11,
+          "hero": { "cover": true },
+          "pngPattern": "ASSET/experience/products/radiance/pelmet/{size}-{color}.webp",
+          "blurb": "A clean ceiling detail that frames the windows.",
+          "features": [],
+          "sizes": [ { "id": "standard", "name": "Standard" } ],
+          "colors": [ { "id": "cream", "name": "Cream", "swatch": "#d9cebb" }, { "id": "espresso", "name": "Espresso", "swatch": "#2a231e" } ]
         }
       ],
       "outro": { "eyebrow": "YOUR LIVING ROOM", "title": "Here's your Aurem Radiance.", "text": "Pricing and reserve are coming next — for now, your choices are saved below.", "button": "Explore the package", "href": "living-room-package.html" }
