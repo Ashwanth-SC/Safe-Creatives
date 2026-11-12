@@ -1996,22 +1996,37 @@
         o.value = p.id;
         crSel.appendChild(o);
       });
+    // Base the figures on the entered budget, or on the actual quotation.
+    const crBasis = document.createElement("select");
+    crBasis.className = "mkt-select tk-custreport-sel";
+    [["budget", "Base on: Entered budget"], ["quotation", "Base on: Actual quotation"]].forEach(([v, l]) => {
+      const o = el("option", null, l); o.value = v; crBasis.appendChild(o);
+    });
     const crBtn = el("button", "admin-primary", "Download report");
     crBtn.type = "button";
     const crMsg = el("p", "admin-hint", "");
-    crRow.append(crSel, crBtn);
+    crRow.append(crSel, crBasis, crBtn);
     reportCard.append(crRow, crMsg);
     grid.appendChild(reportCard);
 
     crBtn.addEventListener("click", async () => {
       const project = projects.find((p) => p.id === crSel.value);
       if (!project) { crMsg.textContent = "Pick a project first."; return; }
+      const basis = crBasis.value === "quotation" ? "quotation" : "budget";
       crBtn.disabled = true;
       const label = crBtn.textContent;
       crBtn.textContent = "Preparing…";
       crMsg.textContent = "";
       try {
-        openCustomerReport(await getSeller(), project);
+        let quote = { discPaise: 0, gstPaise: 0 };
+        if (basis === "quotation") {
+          quote = await loadQuotationTotals(project.id);
+          if (!quote.discPaise && !quote.gstPaise) {
+            crMsg.textContent = "This project has no quotation yet — set it up in the Quotations tab, or base the report on the budget.";
+            return;
+          }
+        }
+        openCustomerReport(await getSeller(), project, { basis, quoteDiscPaise: quote.discPaise, quoteGstPaise: quote.gstPaise });
         crMsg.textContent = "Opened in a new tab — review it, then use “Print / Save as PDF”.";
       } catch (e) {
         console.error("Customer report failed:", e);
@@ -2031,6 +2046,49 @@
         .maybeSingle();
       sellerCache = data || {};
       return sellerCache;
+    }
+
+    // Live quotation grand total for a project (excl. GST = discounted price,
+    // incl. GST = with-GST price), computed the SAME way as the Quotation
+    // export: each line's base total_price × the project's margin / discount /
+    // GST (accessories keep their own per-line margin). Returned in paise.
+    const QUOTE_SEGMENTS = [
+      { table: "turnkey_quote_box_units" },
+      { table: "turnkey_quote_wall_panels" },
+      { table: "turnkey_quote_furniture" },
+      { table: "turnkey_quote_accessories", marginKey: "margin_percent" },
+      { table: "turnkey_quote_paint" },
+      { table: "turnkey_quote_civil" },
+      { table: "turnkey_quote_electrical" },
+    ];
+    async function loadQuotationTotals(projectId) {
+      const { data: proj, error: pErr } = await sb
+        .from("turnkey_projects")
+        .select("margin_percent, gst_percent, discount_percent")
+        .eq("id", projectId).single();
+      if (pErr) throw pErr;
+      const mPct = Number(proj.margin_percent) || 0;
+      const dPct = Number(proj.discount_percent) || 0;
+      const gPct = Number(proj.gst_percent) || 0;
+      const round2 = (n) => Math.round(n * 100) / 100;
+      const segs = await Promise.all(QUOTE_SEGMENTS.map((s) =>
+        sb.from(s.table).select(s.marginKey ? `total_price, ${s.marginKey}` : "total_price").eq("project_id", projectId)
+      ));
+      let disc = 0, gst = 0;
+      segs.forEach((res, i) => {
+        if (res.error) return; // a missing/empty segment just contributes nothing
+        const s = QUOTE_SEGMENTS[i];
+        (res.data || []).forEach((r) => {
+          const base = Number(r.total_price) || 0;
+          const rowMargin = (s.marginKey && r[s.marginKey] != null && r[s.marginKey] !== "")
+            ? (Number(r[s.marginKey]) || 0) : mPct;
+          const price = round2(base * (1 + rowMargin / 100));
+          const d = round2(price * (1 - dPct / 100));
+          disc += d;
+          gst += round2(d * (1 + gPct / 100));
+        });
+      });
+      return { discPaise: Math.round(disc * 100), gstPaise: Math.round(gst * 100) };
     }
 
     // Render a Chart.js config to a PNG data URL, off-screen and without
@@ -2054,7 +2112,11 @@
       return url;
     }
 
-    function openCustomerReport(seller, project) {
+    function openCustomerReport(seller, project, opts) {
+      opts = opts || {};
+      const basis = opts.basis === "quotation" ? "quotation" : "budget";
+      const quoteDisc = Number(opts.quoteDiscPaise) || 0; // quotation excl. GST (paise)
+      const quoteGst = Number(opts.quoteGstPaise) || 0;   // quotation incl. GST (paise)
       const cats = RECEIPT_TYPES;
       const rs = receipts
         .filter((r) => r.project_id === project.id)
@@ -2063,8 +2125,11 @@
 
       const budget = Number(project.budget_paise || 0);
       const paid = rs.reduce((s, r) => s + Number(r.amount_paise || 0), 0);
-      const balance = budget > 0 ? Math.max(budget - paid, 0) : null;
-      const pct = budget > 0 ? Math.round((paid / budget) * 100) : null;
+      // The headline figure every %/progress is measured against: the entered
+      // budget, or (on the quotation basis) the quotation EXCLUDING GST.
+      const total = basis === "quotation" ? quoteDisc : budget;
+      const balance = total > 0 ? Math.max(total - paid, 0) : null;
+      const pct = total > 0 ? Math.round((paid / total) * 100) : null;
 
       const catTotals = Object.fromEntries(cats.map((c) => [c, 0]));
       let otherTotal = 0;
@@ -2091,7 +2156,7 @@
       const rupeeTick = (v) => "₹" + Math.round(v).toLocaleString("en-IN");
 
       const images = {};
-      if (budget > 0) {
+      if (total > 0) {
         images.progress = chartImg({
           type: "doughnut",
           data: { labels: ["Paid", "Balance"], datasets: [{ data: [paid / 100, (balance || 0) / 100], backgroundColor: [TEAL, "#e2e0d8"], borderColor: "#fff", borderWidth: 2 }] },
@@ -2129,12 +2194,23 @@
       const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
       const title = (`Payment summary #${project.project_number}` + (project.client_name ? ` - ${project.client_name}` : "")).replace(/[\\/:*?"<>|]+/g, "-");
 
-      const summaryCards = [
-        ["Project budget", budget > 0 ? money(budget) : "—"],
-        ["Total received", money(paid)],
-        ["Balance due", balance == null ? "—" : balance <= 0 ? "Fully paid" : money(balance)],
-        ...(pct != null ? [["Paid", pct + "%"]] : []),
-      ].map(([l, v]) => `<div class="sum"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join("");
+      const summaryCards = (basis === "quotation"
+        ? [
+            ["Entered budget", budget > 0 ? money(budget) : "—"],
+            ["Quotation (excl. GST)", money(quoteDisc)],
+            ["Quotation (incl. GST)", money(quoteGst)],
+            ["Total received", money(paid)],
+            ["Balance to pay (excl. GST)", quoteDisc - paid <= 0 ? "Fully paid" : money(quoteDisc - paid)],
+            ["Balance to pay (incl. GST)", quoteGst - paid <= 0 ? "Fully paid" : money(quoteGst - paid)],
+            ...(pct != null ? [["Paid (excl. GST)", pct + "%"]] : []),
+          ]
+        : [
+            ["Project budget", budget > 0 ? money(budget) : "—"],
+            ["Total received", money(paid)],
+            ["Balance due", balance == null ? "—" : balance <= 0 ? "Fully paid" : money(balance)],
+            ...(pct != null ? [["Paid", pct + "%"]] : []),
+          ]
+      ).map(([l, v]) => `<div class="sum"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join("");
 
       const recRows = rs.length
         ? rs.map((r) => `<tr><td>${esc(fmtDate(r.receipt_date))}</td><td>${esc(r.receipt_name || "—")}</td><td>${esc(r.payment_mode || "—")}</td><td>${esc(r.receipt_number || "")}</td><td class="num">${esc(money(r.amount_paise))}</td></tr>`).join("")
@@ -2144,13 +2220,15 @@
       // listed ("—" where nothing has been paid yet), then the total.
       const stageRows = cats.map((c) => ({ name: c, amt: catTotals[c] }));
       if (otherTotal > 0) stageRows.push({ name: "Other", amt: otherTotal });
-      // "% of budget" = this stage's paid amount as a share of the total budget.
-      const pctOfBudget = (amt) => (budget > 0 && amt > 0 ? Math.round((amt / budget) * 100) + "%" : "—");
+      // "% of total" = this stage's paid amount as a share of the headline total
+      // (the budget, or the quotation excl. GST when based on the quotation).
+      const pctOfTotal = (amt) => (total > 0 && amt > 0 ? Math.round((amt / total) * 100) + "%" : "—");
+      const pctCol = basis === "quotation" ? "% of quotation" : "% of budget";
       const stageTable =
         `<div class="sec-h">PAID TOWARDS EACH STAGE</div>` +
-        `<table class="stage-table"><thead><tr><th>Stage</th><th class="num">Amount paid</th><th class="num">% of budget</th></tr></thead><tbody>` +
-        stageRows.map((s) => `<tr><td>${esc(s.name)}</td><td class="num">${s.amt > 0 ? esc(money(s.amt)) : "—"}</td><td class="num">${pctOfBudget(s.amt)}</td></tr>`).join("") +
-        `</tbody><tfoot><tr><td>Total received</td><td class="num">${esc(money(paid))}</td><td class="num">${budget > 0 ? Math.round((paid / budget) * 100) + "%" : "—"}</td></tr></tfoot></table>`;
+        `<table class="stage-table"><thead><tr><th>Stage</th><th class="num">Amount paid</th><th class="num">${esc(pctCol)}</th></tr></thead><tbody>` +
+        stageRows.map((s) => `<tr><td>${esc(s.name)}</td><td class="num">${s.amt > 0 ? esc(money(s.amt)) : "—"}</td><td class="num">${pctOfTotal(s.amt)}</td></tr>`).join("") +
+        `</tbody><tfoot><tr><td>Total received</td><td class="num">${esc(money(paid))}</td><td class="num">${total > 0 ? Math.round((paid / total) * 100) + "%" : "—"}</td></tr></tfoot></table>`;
 
       const chartsHtml =
         `<div class="charts">` +
@@ -2217,8 +2295,10 @@
       ${project.project_name ? `<div><span>Project</span>${esc(project.project_name)}</div>` : ""}
       ${project.site_address ? `<div><span>Site</span>${esc(project.site_address)}</div>` : ""}
       <div><span>Status</span>${esc(project.status || "—")}</div>
+      <div><span>Based on</span>${esc(basis === "quotation" ? "Agreed quotation" : "Entered budget")}</div>
     </div>
     <div class="sums">${summaryCards}</div>
+    ${basis === "quotation" ? `<p style="font-size:11px;color:#888;margin:-8px 0 4px">Progress and stage percentages are measured against the quotation <strong>excluding GST</strong>. Balance to pay is shown both excluding and including GST.</p>` : ""}
     ${chartsHtml}
     ${stageTable}
     <div class="sec-h">PAYMENTS RECEIVED</div>
