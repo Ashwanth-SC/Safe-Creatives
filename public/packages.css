@@ -170,3 +170,14 @@
 }
 .cart-confirm-card { border-radius:18px; }
 .save-message { border-radius:14px; }
+
+/* smart modes section (shared SCSmart Ambient/Focus toggle) */
+.smart-section { padding:72px 7vw; background:#f2f4f1; text-align:center; }
+.smart-inner { max-width:640px; margin:0 auto; }
+.smart-section .eyebrow { color:#6f222a; }
+.smart-title { margin:10px 0 14px; font-size:clamp(34px,4.5vw,58px); letter-spacing:-.05em; line-height:.95; }
+.smart-lede { max-width:480px; margin:0 auto 30px; color:#59635d; line-height:1.65; font-size:15px; }
+.smart-section #lr-modes-body { max-width:470px; margin:0 auto; }
+.smart-section .scm-panel { text-align:left; max-width:420px; margin:22px auto 0; }
+.smart-section .scm-voice { justify-content:center; }
+@media (max-width:720px){ .smart-section { padding:56px 24px; } }

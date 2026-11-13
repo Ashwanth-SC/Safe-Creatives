@@ -73,3 +73,8 @@ a.reserve-button { box-sizing:border-box; display:flex; align-items:center; just
 .cart-confirm-card { border-radius:18px; }
 .reserve-button, .cart-confirm-actions button, .address-editor button { border-radius:999px; }
 .address-editor textarea, .address-part input, .address-part select, .terms-body { border-radius:12px; }
+
+/* smart-features recap band */
+.checkout-smart { max-width:1120px; margin:0 auto; padding:0 7vw 80px; }
+.checkout-smart .scm-recap { background:#fff; border:1px solid rgba(23,23,23,.12); border-radius:14px; padding:24px 26px; }
+@media (max-width:720px){ .checkout-smart { padding:0 24px 56px; } }
