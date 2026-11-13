@@ -31,6 +31,9 @@
     } else {
       reveals.forEach((el) => el.classList.add("is-in"));
     }
+
+    // The shared Ambient/Focus modes toggle (the "common features" story).
+    if (window.SCSmart) SCSmart.renderModes(document.getElementById("sr-modes-body"));
   }
 
   // Admin gate (preview): sensory rooms is admin-only for now; everyone else

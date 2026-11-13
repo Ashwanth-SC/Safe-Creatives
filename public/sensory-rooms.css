@@ -112,6 +112,11 @@ a { color: inherit; }
 .sr-footer { background: var(--sr-dark); color: rgba(255,250,241,.6); text-align: center; padding: 40px 24px; font-size: 13px; }
 .sr-footer a { color: rgba(255,250,241,.85); text-decoration: none; }
 
+/* smart / modes section — hosts the shared Ambient/Focus toggle */
+.sr-modes { max-width: 560px; margin: 34px auto 0; }
+.sr-smart .scm-panel { max-width: 440px; margin: 22px auto 0; text-align: left; }
+.sr-smart .scm-voice { justify-content: center; }
+
 /* reveal on scroll */
 .reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s ease; }
 .reveal.is-in { opacity: 1; transform: none; }
