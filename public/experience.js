@@ -111,15 +111,14 @@
     // they map through the same cover transform and track the image on resize.
     let curSpots = []; // [{ el, x, y }] hover circles for the current stop
     let curGlows = []; // [{ el, x, y, w, h }] light-glow overlays for the current stop
+    let curSprays = []; // [{ el, x, y }] fragrance-spray points for the current stop
     function placeHotspots() {
-      if (!curSpots.length && !curGlows.length) return;
+      if (!curSpots.length && !curGlows.length && !curSprays.length) return;
       const vw = window.innerWidth, vh = window.innerHeight, a = 16 / 9;
       const dw = Math.max(vw, vh * a), dh = dw / a, offX = (vw - dw) / 2, offY = (vh - dh) / 2;
-      for (const s of curSpots) {
-        if (!s.el.isConnected) continue;
-        s.el.style.left = (offX + s.x * dw) + "px";
-        s.el.style.top = (offY + s.y * dh) + "px";
-      }
+      const atPoint = (p) => { if (!p.el.isConnected) return; p.el.style.left = (offX + p.x * dw) + "px"; p.el.style.top = (offY + p.y * dh) + "px"; };
+      curSpots.forEach(atPoint);
+      curSprays.forEach(atPoint);
       for (const g of curGlows) {
         if (!g.el.isConnected) continue;
         g.el.style.left = (offX + g.x * dw) + "px";
@@ -395,6 +394,7 @@
       view.innerHTML =
         `<div class="tour-hero${coverMode ? " is-cover" : ""}"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure>${coverMode ? `<img class="tour-reveal" alt="">` : ""}</div>` +
         `<div class="tour-glows"></div>` +
+        `<div class="tour-sprays"></div>` +
         `<div class="tour-hotspots"></div>` +
         // LEFT card: unit name + size / colour selectors
         `<div class="tour-info">` +
@@ -427,6 +427,7 @@
       // (e.g. shutters opening, pelmet fascia lifting to show the mechanism).
       const spotLayer = view.querySelector(".tour-hotspots");
       const glowLayer = view.querySelector(".tour-glows");
+      const sprayLayer = view.querySelector(".tour-sprays");
       const featsBody = view.querySelector(".tour-feats-body");
       const revealImg = view.querySelector(".tour-reveal");
       function buildFeatures() {
@@ -434,8 +435,8 @@
         featsBody.innerHTML = feats.length
           ? `<ul class="tour-feats">${feats.map((f, fi) => `<li data-feat="${fi}">${esc(fName(f))}</li>`).join("")}</ul>`
           : `<p class="feats-empty">Details coming soon.</p>`;
-        spotLayer.textContent = ""; glowLayer.textContent = "";
-        curSpots = []; curGlows = [];
+        spotLayer.textContent = ""; glowLayer.textContent = ""; if (sprayLayer) sprayLayer.textContent = "";
+        curSpots = []; curGlows = []; curSprays = [];
         if (revealImg) { revealImg.classList.remove("is-on"); revealImg.removeAttribute("src"); }
         feats.forEach((f, fi) => {
           if (!f || typeof f !== "object") return;
@@ -448,6 +449,18 @@
               myGlows.push(ge);
             }
           });
+          // optional fragrance-mist "spray" that puffs while this feature is hovered
+          let sprayEl = null;
+          if (f.spray && sprayLayer) {
+            const sp = (typeof f.spray === "object") ? f.spray : {};
+            const sxp = sp.x != null ? sp.x : f.x, syp = sp.y != null ? sp.y : f.y;
+            if (sxp != null && syp != null) {
+              sprayEl = el("div", "tour-spray");
+              sprayEl.innerHTML = "<i></i><i></i><i></i><i></i><i></i><i></i>";
+              sprayLayer.appendChild(sprayEl);
+              curSprays.push({ el: sprayEl, x: sxp, y: syp });
+            }
+          }
           if (f.x == null || f.y == null) return;
           const b = el("button", "tour-spot" + (f.below ? " below" : "") + (f.render ? " is-reveal" : ""));
           b.type = "button"; b.dataset.feat = fi;
@@ -459,11 +472,13 @@
           const on = () => {
             b.classList.add("is-active"); if (li) li.classList.add("is-active");
             myGlows.forEach((g) => g.classList.add("is-active"));
+            if (sprayEl) sprayEl.classList.add("is-active");
             if (f.render && revealImg) { if (revealImg.getAttribute("src") !== f.render) revealImg.setAttribute("src", f.render); revealImg.classList.add("is-on"); }
           };
           const off = () => {
             b.classList.remove("is-active"); if (li) li.classList.remove("is-active");
             myGlows.forEach((g) => g.classList.remove("is-active"));
+            if (sprayEl) sprayEl.classList.remove("is-active");
             if (f.render && revealImg) revealImg.classList.remove("is-on");
           };
           b.addEventListener("mouseenter", on); b.addEventListener("mouseleave", off);

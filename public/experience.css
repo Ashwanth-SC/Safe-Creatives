@@ -143,6 +143,28 @@ body.exp-body {
 }
 .tour-glow.is-active { opacity: 1; transform: translate(-50%, -50%) scale(1.04); }
 
+/* fragrance "spray": a fine mist of particles that puffs up from a dispenser
+   while its feature is hovered. Positioned at the nozzle point (like a hotspot). */
+.tour-sprays { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
+.tour-spray { position: absolute; width: 0; height: 0; opacity: 0; transition: opacity .25s ease; }
+.tour-spray.is-active { opacity: 1; }
+.tour-spray i {
+  position: absolute; left: 0; top: 0; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(214,228,222,.8), rgba(214,228,222,0) 68%); opacity: 0;
+}
+.tour-spray.is-active i { animation: spray-puff 1.7s ease-out infinite; }
+.tour-spray i:nth-child(1) { --sx: -30px; --sy: -56px; animation-delay: 0s; }
+.tour-spray i:nth-child(2) { --sx: -8px;  --sy: -70px; animation-delay: .3s; }
+.tour-spray i:nth-child(3) { --sx: 16px;  --sy: -64px; animation-delay: .12s; }
+.tour-spray i:nth-child(4) { --sx: 36px;  --sy: -46px; animation-delay: .46s; }
+.tour-spray i:nth-child(5) { --sx: -42px; --sy: -30px; animation-delay: .62s; }
+.tour-spray i:nth-child(6) { --sx: 42px;  --sy: -26px; animation-delay: .54s; }
+@keyframes spray-puff {
+  0%   { opacity: 0; transform: translate(0, 0) scale(.3); }
+  18%  { opacity: .75; }
+  100% { opacity: 0; transform: translate(var(--sx, -20px), var(--sy, -52px)) scale(2.1); }
+}
+
 /* feature hotspots — hover circles pinned onto the product image */
 .tour-hotspots { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
 .tour-spot { position: absolute; transform: translate(-50%, -50%); padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto; }
