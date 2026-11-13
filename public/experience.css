@@ -98,7 +98,11 @@ body.exp-body {
    frame exactly; overlays the video edge-to-edge (same object-fit) and fades in */
 .tour-hero.is-cover figure { position: absolute; inset: 0; left: 0; top: 0; transform: none; margin: 0; width: 100%; height: 100%; display: block; }
 /* no per-image animation: the whole .tour-cat fades in/out (see above) */
-.tour-hero.is-cover img { display: block; width: 100%; height: 100%; max-width: none; object-fit: cover; filter: none; animation: none; }
+.tour-hero.is-cover figure img { display: block; width: 100%; height: 100%; max-width: none; object-fit: cover; filter: none; animation: none; }
+/* reveal layer: a second full-frame render (e.g. shutters open, pelmet inner)
+   that cross-fades in while a "reveal" feature is hovered, then fades back. */
+.tour-hero.is-cover .tour-reveal { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; opacity: 0; z-index: 1; pointer-events: none; filter: none; animation: none; transition: opacity .5s ease; }
+.tour-hero.is-cover .tour-reveal.is-on { opacity: 1; }
 .tour-hero-ph {
   width: min(46vw, 520px); height: min(34vh, 360px); border: 2px dashed rgba(255,250,241,.55); border-radius: 12px;
   background: rgba(47,125,116,.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 10px;

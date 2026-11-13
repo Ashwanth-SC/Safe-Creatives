@@ -168,6 +168,7 @@
     // -------- helpers --------
     function allImageUrls() {
       const urls = new Set();
+      const addRenders = (arr) => (arr || []).forEach((f) => { if (f && f.render) urls.add(f.render); });
       cats.forEach((c) => {
         const sizes = (c.sizes && c.sizes.length) ? c.sizes : [null];
         const colors = (c.colors && c.colors.length) ? c.colors : [null];
@@ -175,6 +176,9 @@
           const u = productPng(c, { size: si, color: ci });
           if (u) urls.add(u);
         }));
+        // feature "reveal" renders (flat array, or per-size map)
+        if (Array.isArray(c.features)) addRenders(c.features);
+        else if (c.features && typeof c.features === "object") Object.values(c.features).forEach(addRenders);
       });
       return [...urls];
     }
@@ -377,12 +381,19 @@
       // "cover": the product image is a full-frame render matching the video
       // frame; overlay it edge-to-edge (object-fit:cover) and fade it in.
       const coverMode = hero.cover === true;
-      const feats = cat.features || [];
       const fName = (f) => (typeof f === "string" ? f : (f && f.name) || "");
       const fDesc = (f) => (typeof f === "string" ? "" : (f && f.desc) || "");
+      // Features can be a flat array (all sizes) or an object keyed by size id
+      // (per-size — e.g. the TV, whose 5 ft / 7 ft differ). Read for the current size.
+      const catFeats = () => {
+        const f = cat.features;
+        if (Array.isArray(f)) return f;
+        if (f && typeof f === "object") return f[(cat.sizes[s.size] || {}).id] || [];
+        return [];
+      };
       const view = el("div", "tour-cat is-on");
       view.innerHTML =
-        `<div class="tour-hero${coverMode ? " is-cover" : ""}"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure></div>` +
+        `<div class="tour-hero${coverMode ? " is-cover" : ""}"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure>${coverMode ? `<img class="tour-reveal" alt="">` : ""}</div>` +
         `<div class="tour-glows"></div>` +
         `<div class="tour-hotspots"></div>` +
         // LEFT card: unit name + size / colour selectors
@@ -399,12 +410,10 @@
           `</div></div>` +
           `<button type="button" class="tour-add">Add to cart</button>` +
         `</div>` +
-        // RIGHT card: features
+        // RIGHT card: features (filled by buildFeatures for the current size)
         `<div class="tour-feats-card">` +
           `<p class="eyebrow">FEATURES</p>` +
-          (feats.length
-            ? `<ul class="tour-feats">${feats.map((f, fi) => `<li data-feat="${fi}">${esc(fName(f))}</li>`).join("")}</ul>`
-            : `<p class="feats-empty">Details coming soon.</p>`) +
+          `<div class="tour-feats-body"></div>` +
         `</div>`;
 
       catWrap.textContent = "";
@@ -412,35 +421,58 @@
       // Fade this category in (image + cards). rAF so the transition runs.
       requestAnimationFrame(() => requestAnimationFrame(() => view.classList.add("is-shown")));
 
-      // Feature hotspots: a hover circle for each feature that has x,y, pinned
-      // onto the image; hovering it (or its list item) reveals the feature.
+      // Build the FEATURES list + hotspots/glows/reveal for the CURRENT size.
+      // A feature hover (or its list item) highlights the circle and, optionally,
+      // blooms a light glow and/or cross-fades the frame to a "reveal" render
+      // (e.g. shutters opening, pelmet fascia lifting to show the mechanism).
       const spotLayer = view.querySelector(".tour-hotspots");
       const glowLayer = view.querySelector(".tour-glows");
-      curSpots = []; curGlows = [];
-      feats.forEach((f, fi) => {
-        if (!f || typeof f !== "object") return;
-        // Optional light-glow that blooms when the feature is hovered.
-        let glowEl = null;
-        if (f.glow && f.glow.x != null && f.glow.y != null) {
-          glowEl = el("div", "tour-glow");
-          glowLayer.appendChild(glowEl);
-          curGlows.push({ el: glowEl, x: f.glow.x, y: f.glow.y, w: f.glow.w || 0.05, h: f.glow.h || 0.05 });
-        }
-        if (f.x == null || f.y == null) return;
-        const b = el("button", "tour-spot" + (f.below ? " below" : ""));
-        b.type = "button"; b.dataset.feat = fi;
-        b.setAttribute("aria-label", fName(f));
-        b.innerHTML = `<span class="spot-dot"></span><span class="spot-card"><b>${esc(fName(f))}</b>${fDesc(f) ? `<span>${esc(fDesc(f))}</span>` : ""}</span>`;
-        spotLayer.appendChild(b);
-        curSpots.push({ el: b, x: f.x, y: f.y });
-        const li = view.querySelector(`.tour-feats li[data-feat="${fi}"]`);
-        const on = () => { b.classList.add("is-active"); if (li) li.classList.add("is-active"); if (glowEl) glowEl.classList.add("is-active"); };
-        const off = () => { b.classList.remove("is-active"); if (li) li.classList.remove("is-active"); if (glowEl) glowEl.classList.remove("is-active"); };
-        b.addEventListener("mouseenter", on); b.addEventListener("mouseleave", off);
-        b.addEventListener("focus", on); b.addEventListener("blur", off);
-        if (li) { li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off); }
-      });
-      placeHotspots();
+      const featsBody = view.querySelector(".tour-feats-body");
+      const revealImg = view.querySelector(".tour-reveal");
+      function buildFeatures() {
+        const feats = catFeats();
+        featsBody.innerHTML = feats.length
+          ? `<ul class="tour-feats">${feats.map((f, fi) => `<li data-feat="${fi}">${esc(fName(f))}</li>`).join("")}</ul>`
+          : `<p class="feats-empty">Details coming soon.</p>`;
+        spotLayer.textContent = ""; glowLayer.textContent = "";
+        curSpots = []; curGlows = [];
+        if (revealImg) { revealImg.classList.remove("is-on"); revealImg.removeAttribute("src"); }
+        feats.forEach((f, fi) => {
+          if (!f || typeof f !== "object") return;
+          const glowDefs = Array.isArray(f.glows) ? f.glows : (f.glow ? [f.glow] : []);
+          const myGlows = [];
+          glowDefs.forEach((g) => {
+            if (g && g.x != null && g.y != null) {
+              const ge = el("div", "tour-glow"); glowLayer.appendChild(ge);
+              curGlows.push({ el: ge, x: g.x, y: g.y, w: g.w || 0.05, h: g.h || 0.05 });
+              myGlows.push(ge);
+            }
+          });
+          if (f.x == null || f.y == null) return;
+          const b = el("button", "tour-spot" + (f.below ? " below" : "") + (f.render ? " is-reveal" : ""));
+          b.type = "button"; b.dataset.feat = fi;
+          b.setAttribute("aria-label", fName(f));
+          b.innerHTML = `<span class="spot-dot"></span><span class="spot-card"><b>${esc(fName(f))}</b>${fDesc(f) ? `<span>${esc(fDesc(f))}</span>` : ""}</span>`;
+          spotLayer.appendChild(b);
+          curSpots.push({ el: b, x: f.x, y: f.y });
+          const li = featsBody.querySelector(`li[data-feat="${fi}"]`);
+          const on = () => {
+            b.classList.add("is-active"); if (li) li.classList.add("is-active");
+            myGlows.forEach((g) => g.classList.add("is-active"));
+            if (f.render && revealImg) { if (revealImg.getAttribute("src") !== f.render) revealImg.setAttribute("src", f.render); revealImg.classList.add("is-on"); }
+          };
+          const off = () => {
+            b.classList.remove("is-active"); if (li) li.classList.remove("is-active");
+            myGlows.forEach((g) => g.classList.remove("is-active"));
+            if (f.render && revealImg) revealImg.classList.remove("is-on");
+          };
+          b.addEventListener("mouseenter", on); b.addEventListener("mouseleave", off);
+          b.addEventListener("focus", on); b.addEventListener("blur", off);
+          if (li) { li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off); }
+        });
+        placeHotspots();
+      }
+      buildFeatures();
 
       // Per-category placement. cover → full-frame (handled by class, no pinning).
       // Else frame coords pin the product into the room — width span (x0/x1/baseY)
@@ -506,6 +538,7 @@
         s.size = si;
         view.querySelectorAll(".choose-pill").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.size) === si));
         refresh();
+        buildFeatures(); // features can differ per size (e.g. the TV)
       }));
       view.querySelectorAll(".choose-swatch").forEach((b) => b.addEventListener("click", () => {
         const ci = Number(b.dataset.color);
