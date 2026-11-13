@@ -58,6 +58,12 @@ body.exp-body {
 }
 .tour-panel.is-on { opacity: 1; visibility: visible; }
 .tour-panel-inner { max-width: 620px; }
+/* the compact "two modes" block on the Begin-walk intro */
+.tour-intro-modes { margin: 18px auto 26px; max-width: 460px; }
+.tour-intro-modes > .eyebrow { color: var(--exp-burgundy); margin: 0 0 12px; }
+.tour-intro-modes-body { text-align: center; }
+.tour-intro-modes-body .scm-panel { text-align: left; }
+.tour-intro-modes-body .scm-voice { justify-content: center; }
 .tour-panel h1 { margin: 12px 0 14px; font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: clamp(30px, 5.2vw, 56px); line-height: 1.04; letter-spacing: -.02em; }
 .tour-panel p { margin: 0 auto 26px; max-width: 520px; color: var(--exp-muted); font-size: clamp(14px, 1.7vw, 17px); line-height: 1.6; }
 

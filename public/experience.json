@@ -5,6 +5,7 @@
     "radiance": {
       "name": "Aurem Radiance",
       "room": "Living Room",
+      "smart": true,
       "video": "ASSET/experience/radiance.mp4",
       "poster": "ASSET/experience/room-shell.svg",
       "playSpeed": 2,

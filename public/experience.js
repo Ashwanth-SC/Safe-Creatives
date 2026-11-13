@@ -138,8 +138,12 @@
         `<p class="eyebrow">${esc((data.intro || {}).eyebrow || data.name || "SENSORY ROOMS")}</p>` +
         `<h1>${esc((data.intro || {}).title || data.name || "Step inside")}</h1>` +
         `<p>${esc((data.intro || {}).text || "")}</p>` +
+        (data.smart ? `<div class="tour-intro-modes"><p class="eyebrow">TWO MODES, ONE VOICE</p><div class="tour-intro-modes-body"></div></div>` : "") +
         `<button type="button" class="btn btn-primary" id="tour-start">${esc((data.intro || {}).button || "Start")}</button>` +
       `</div>`;
+    if (data.smart && window.SCSmart) {
+      SCSmart.renderModes(introP.querySelector(".tour-intro-modes-body"), { compact: true });
+    }
 
     const outroP = el("div", "tour-panel");
 
