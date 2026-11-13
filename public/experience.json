@@ -33,7 +33,28 @@
           "hero": { "cover": true },
           "pngPattern": "ASSET/experience/products/radiance/tv/{size}-{color}.webp",
           "blurb": "A wall-hung media console with a backlit panel.",
-          "features": [],
+          "_featureNote": "Features are per-size (the 5 ft and 7 ft differ — 7 ft adds open storage).",
+          "features": {
+            "5ft": [
+              { "name": "Aesthetic wall panel", "desc": "A statement wall panel with heavy-duty TV wall-mount capacity.", "x": 0.55, "y": 0.44 },
+              { "name": "Recessed TV wiring", "desc": "A recessed wiring path that runs the TV cables into a hidden socket.", "x": 0.60, "y": 0.47 },
+              { "name": "Voice-control switches", "desc": "Voice-control switches for smart control of your appliances.", "x": 0.565, "y": 0.62 },
+              { "name": "Wire-organizer path", "desc": "A wire-organizer path for counter-top appliances into a hidden socket.", "x": 0.615, "y": 0.655 },
+              { "name": "RGB LED strip light", "desc": "An RGB LED strip light that sets the ambiance around your TV display.", "x": 0.735, "y": 0.44, "glows": [ { "x": 0.735, "y": 0.46, "w": 0.028, "h": 0.34, "rgb": true }, { "x": 0.555, "y": 0.30, "w": 0.37, "h": 0.03, "rgb": true } ] },
+              { "name": "Smart storage", "desc": "Smart storage with a finger-groove handle for the shutters.", "x": 0.535, "y": 0.76 },
+              { "name": "3 hidden sockets", "desc": "Three hidden sockets for all your appliances.", "x": 0.62, "y": 0.70 }
+            ],
+            "7ft": [
+              { "name": "Aesthetic wall panel", "desc": "A statement wall panel with heavy-duty TV wall-mount capacity.", "x": 0.55, "y": 0.27 },
+              { "name": "Recessed TV wiring", "desc": "A recessed wiring path that runs the TV cables into a hidden socket.", "x": 0.60, "y": 0.46 },
+              { "name": "Voice-control switches", "desc": "Voice-control switches for smart control of your appliances.", "x": 0.545, "y": 0.62 },
+              { "name": "Wire-organizer path", "desc": "A wire-organizer path for counter-top appliances into a hidden socket.", "x": 0.605, "y": 0.655 },
+              { "name": "Smart storage", "desc": "Smart storage with a finger-groove handle for the shutters.", "x": 0.55, "y": 0.77 },
+              { "name": "RGB LED strip light", "desc": "An RGB LED strip light that sets the ambiance around your TV display.", "x": 0.745, "y": 0.30, "glows": [ { "x": 0.745, "y": 0.33, "w": 0.028, "h": 0.52, "rgb": true }, { "x": 0.53, "y": 0.08, "w": 0.42, "h": 0.03, "rgb": true } ] },
+              { "name": "Ample open storage", "desc": "Ample open shelving for display pieces.", "x": 0.27, "y": 0.45 },
+              { "name": "3 hidden sockets", "desc": "Three hidden sockets for all your appliances.", "x": 0.62, "y": 0.69 }
+            ]
+          },
           "sizes": [ { "id": "5ft", "name": "5 ft" }, { "id": "7ft", "name": "7 ft" } ],
           "colors": [ { "id": "white", "name": "White", "swatch": "#e8e6e2" }, { "id": "red", "name": "Red", "swatch": "#9c3b34" }, { "id": "blue", "name": "Blue", "swatch": "#4f7585" }, { "id": "charcoal", "name": "Charcoal", "swatch": "#33302d" } ]
         },
@@ -42,7 +63,12 @@
           "hero": { "cover": true },
           "pngPattern": "ASSET/experience/products/radiance/pelmet/{size}-{color}.webp",
           "blurb": "A clean ceiling detail that frames the windows.",
-          "features": [],
+          "features": [
+            { "name": "Automatic curtain opener", "desc": "A smart, voice-controlled automatic curtain opener.", "x": 0.35, "y": 0.22, "render": "ASSET/experience/products/radiance/pelmet/reveal-inner.webp" },
+            { "name": "Voice-control AC switch", "desc": "A heavy-duty voice-control switch for the AC.", "x": 0.52, "y": 0.22, "render": "ASSET/experience/products/radiance/pelmet/reveal-inner.webp" },
+            { "name": "Automatic fragrance dispenser", "desc": "An automatic fragrance dispenser with built-in cooling and relaxing technology.", "x": 0.28, "y": 0.24, "spray": { "x": 0.28, "y": 0.27 } },
+            { "name": "Heavy-duty pelmet", "desc": "A heavy-duty pelmet built to take an AC mount.", "x": 0.66, "y": 0.22 }
+          ],
           "sizes": [ { "id": "standard", "name": "Standard" } ],
           "colors": [ { "id": "cream", "name": "Cream", "swatch": "#d9cebb" }, { "id": "espresso", "name": "Espresso", "swatch": "#2a231e" } ]
         }

@@ -142,6 +142,10 @@ body.exp-body {
   transition: opacity .4s ease, transform .4s ease;
 }
 .tour-glow.is-active { opacity: 1; transform: translate(-50%, -50%) scale(1.04); }
+/* RGB backlight: a saturated glow that cycles through the spectrum while hovered */
+.tour-glow.is-rgb { background: radial-gradient(ellipse at center, rgba(90,150,255,.95), rgba(90,150,255,.4) 44%, rgba(90,150,255,0) 72%); }
+.tour-glow.is-rgb.is-active { animation: glow-hue 6s linear infinite; }
+@keyframes glow-hue { from { filter: blur(7px) hue-rotate(0deg); } to { filter: blur(7px) hue-rotate(360deg); } }
 
 /* fragrance "spray": a fine mist of particles that puffs up from a dispenser
    while its feature is hovered. Positioned at the nozzle point (like a hotspot). */

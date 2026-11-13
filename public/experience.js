@@ -444,7 +444,7 @@
           const myGlows = [];
           glowDefs.forEach((g) => {
             if (g && g.x != null && g.y != null) {
-              const ge = el("div", "tour-glow"); glowLayer.appendChild(ge);
+              const ge = el("div", "tour-glow" + (g.rgb ? " is-rgb" : "")); glowLayer.appendChild(ge);
               curGlows.push({ el: ge, x: g.x, y: g.y, w: g.w || 0.05, h: g.h || 0.05 });
               myGlows.push(ge);
             }
