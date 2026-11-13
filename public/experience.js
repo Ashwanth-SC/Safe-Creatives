@@ -142,7 +142,7 @@
         `<button type="button" class="btn btn-primary" id="tour-start">${esc((data.intro || {}).button || "Start")}</button>` +
       `</div>`;
     if (data.smart && window.SCSmart) {
-      SCSmart.renderModes(introP.querySelector(".tour-intro-modes-body"), { compact: true });
+      SCSmart.renderModes(introP.querySelector(".tour-intro-modes-body"), { compact: true, set: data.smartSet });
     }
 
     const outroP = el("div", "tour-panel");
@@ -171,7 +171,6 @@
     // -------- helpers --------
     function allImageUrls() {
       const urls = new Set();
-      const addRenders = (arr) => (arr || []).forEach((f) => { if (f && f.render) urls.add(f.render); });
       cats.forEach((c) => {
         const sizes = (c.sizes && c.sizes.length) ? c.sizes : [null];
         const colors = (c.colors && c.colors.length) ? c.colors : [null];
@@ -179,7 +178,14 @@
           const u = productPng(c, { size: si, color: ci });
           if (u) urls.add(u);
         }));
-        // feature "reveal" renders (flat array, or per-size map)
+        // feature "reveal" renders: a fixed `render`, or a `renderPattern` with
+        // {size}/{color} resolved at hover — preload every combo so it never buffers.
+        const addRenders = (arr) => (arr || []).forEach((f) => {
+          if (!f) return;
+          if (f.render) urls.add(f.render);
+          if (f.renderPattern) sizes.forEach((sz) => colors.forEach((co) =>
+            urls.add(f.renderPattern.replace(/\{size\}/g, (sz || {}).id || "").replace(/\{color\}/g, (co || {}).id || ""))));
+        });
         if (Array.isArray(c.features)) addRenders(c.features);
         else if (c.features && typeof c.features === "object") Object.values(c.features).forEach(addRenders);
       });
@@ -394,6 +400,18 @@
         if (f && typeof f === "object") return f[(cat.sizes[s.size] || {}).id] || [];
         return [];
       };
+      // A feature's reveal image: a fixed `render`, or a `renderPattern` whose
+      // {size}/{color} resolve against the CURRENT selection at hover time (so a
+      // per-colour reveal — e.g. the study — follows the chosen finish live).
+      const resolveRender = (f) => {
+        if (!f) return "";
+        if (f.render) return f.render;
+        if (f.renderPattern) {
+          const size = (cat.sizes[s.size] || {}).id || "", color = (cat.colors[s.color] || {}).id || "";
+          return f.renderPattern.replace(/\{size\}/g, size).replace(/\{color\}/g, color);
+        }
+        return "";
+      };
       const view = el("div", "tour-cat is-on");
       view.innerHTML =
         `<div class="tour-hero${coverMode ? " is-cover" : ""}"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure>${coverMode ? `<img class="tour-reveal" alt="">` : ""}</div>` +
@@ -466,24 +484,25 @@
             }
           }
           if (f.x == null || f.y == null) return;
-          const b = el("button", "tour-spot" + (f.below ? " below" : "") + (f.render ? " is-reveal" : ""));
+          const b = el("button", "tour-spot" + (f.below ? " below" : "") + ((f.render || f.renderPattern) ? " is-reveal" : ""));
           b.type = "button"; b.dataset.feat = fi;
           b.setAttribute("aria-label", fName(f));
           b.innerHTML = `<span class="spot-dot"></span><span class="spot-card"><b>${esc(fName(f))}</b>${fDesc(f) ? `<span>${esc(fDesc(f))}</span>` : ""}</span>`;
           spotLayer.appendChild(b);
           curSpots.push({ el: b, x: f.x, y: f.y });
           const li = featsBody.querySelector(`li[data-feat="${fi}"]`);
+          const hasReveal = !!(f.render || f.renderPattern);
           const on = () => {
             b.classList.add("is-active"); if (li) li.classList.add("is-active");
             myGlows.forEach((g) => g.classList.add("is-active"));
             if (sprayEl) sprayEl.classList.add("is-active");
-            if (f.render && revealImg) { if (revealImg.getAttribute("src") !== f.render) revealImg.setAttribute("src", f.render); revealImg.classList.add("is-on"); }
+            if (hasReveal && revealImg) { const r = resolveRender(f); if (r) { if (revealImg.getAttribute("src") !== r) revealImg.setAttribute("src", r); revealImg.classList.add("is-on"); } }
           };
           const off = () => {
             b.classList.remove("is-active"); if (li) li.classList.remove("is-active");
             myGlows.forEach((g) => g.classList.remove("is-active"));
             if (sprayEl) sprayEl.classList.remove("is-active");
-            if (f.render && revealImg) revealImg.classList.remove("is-on");
+            if (hasReveal && revealImg) revealImg.classList.remove("is-on");
           };
           b.addEventListener("mouseenter", on); b.addEventListener("mouseleave", off);
           b.addEventListener("focus", on); b.addEventListener("blur", off);

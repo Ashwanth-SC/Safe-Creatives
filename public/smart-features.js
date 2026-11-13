@@ -22,46 +22,77 @@
     curtain: S('<path d="M3 3h18M4 3v16M20 3v16M4 19c3-1 3-13 3-16M20 19c-3-1-3-13-3-16M12 3v16"/>'),
     ac: S('<rect x="3" y="5" width="18" height="7" rx="2"/><path d="M6 9h8"/><path d="M7 15c0 1.5 1 2 1 3.5M12 15c0 1.5 1 2 1 3.5M17 15c0 1.5 1 2 1 3.5"/>'),
     voice: S('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6"/>'),
+    system: S('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
   };
 
-  const MODES = [
-    {
-      id: "ambient", name: "Ambient", eyebrow: "SIT BACK",
-      tagline: "Sink in, watch, and unwind.",
-      bullets: [
-        { icon: "fragrance", text: "Fragrance shifts to relaxing scent tones" },
-        { icon: "sound", text: "TV and surround sound switch on" },
-        { icon: "light", text: "RGB strip light waves with the screen" },
-        { icon: "curtain", text: "Curtains draw closed to 80%" },
-        { icon: "ac", text: "AC switches on and cools the room" },
-      ],
-    },
-    {
-      id: "focus", name: "Focus", eyebrow: "HOST & TALK",
-      tagline: "Open up, host, and converse.",
-      bullets: [
-        { icon: "light", text: "Every light lifts to warm white" },
-        { icon: "sound", text: "TV volume eases down" },
-        { icon: "curtain", text: "Curtains open to 20% for daylight" },
-        { icon: "fragrance", text: "Fragrance shifts to alert, focus tones" },
-      ],
-    },
-  ];
-
-  const byId = (id) => MODES.find((m) => m.id === id) || MODES[0];
+  // Mode sets per room. "living" (Aurem Radiance) has RGB + sound/volume;
+  // "bedroom" (Aurem Revive) is calmer — no RGB, no volume — and swaps the
+  // TV/surround story for study light, systems/laptops and sleep-temp cooling.
+  const MODE_SETS = {
+    living: [
+      {
+        id: "ambient", name: "Ambient", eyebrow: "SIT BACK",
+        tagline: "Sink in, watch, and unwind.",
+        bullets: [
+          { icon: "fragrance", text: "Fragrance shifts to relaxing scent tones" },
+          { icon: "sound", text: "TV and surround sound switch on" },
+          { icon: "light", text: "RGB strip light waves with the screen" },
+          { icon: "curtain", text: "Curtains draw closed to 80%" },
+          { icon: "ac", text: "AC switches on and cools the room" },
+        ],
+      },
+      {
+        id: "focus", name: "Focus", eyebrow: "HOST & TALK",
+        tagline: "Open up, host, and converse.",
+        bullets: [
+          { icon: "light", text: "Every light lifts to warm white" },
+          { icon: "sound", text: "TV volume eases down" },
+          { icon: "curtain", text: "Curtains open to 20% for daylight" },
+          { icon: "fragrance", text: "Fragrance shifts to alert, focus tones" },
+        ],
+      },
+    ],
+    bedroom: [
+      {
+        id: "ambient", name: "Ambient", eyebrow: "WIND DOWN",
+        tagline: "Dim down, breathe, and rest.",
+        bullets: [
+          { icon: "fragrance", text: "Fragrance drifts to calm, relaxing scent" },
+          { icon: "light", text: "Every light settles to warm white" },
+          { icon: "system", text: "Systems and laptops power down" },
+          { icon: "curtain", text: "Curtains draw closed to 80%" },
+          { icon: "ac", text: "AC switches on and cools to sleep temperature" },
+        ],
+      },
+      {
+        id: "focus", name: "Focus", eyebrow: "WORK & STUDY",
+        tagline: "Brighten up, sharpen, and focus.",
+        bullets: [
+          { icon: "light", text: "Study light lifts to crisp white" },
+          { icon: "curtain", text: "Curtains open to 20% for daylight" },
+          { icon: "fragrance", text: "Fragrance shifts to alert, focus tones" },
+          { icon: "system", text: "Systems power on, ready to work" },
+        ],
+      },
+    ],
+  };
+  const MODES = MODE_SETS.living; // back-compat default (generic / umbrella)
+  const setFor = (key) => MODE_SETS[key] || MODE_SETS.living;
   const bulletList = (m) => `<ul class="scm-bullets">${m.bullets.map((b) => `<li><span class="scm-ic">${ICON[b.icon] || ""}</span>${esc(b.text)}</li>`).join("")}</ul>`;
 
   function renderModes(host, opts) {
     if (!host) return;
     opts = opts || {};
     const compact = !!opts.compact;
-    const start = opts.mode || "ambient";
+    const modes = setFor(opts.set);
+    const byId = (id) => modes.find((m) => m.id === id) || modes[0];
+    const start = opts.mode || modes[0].id;
     host.classList.add("scm");
     if (compact) host.classList.add("is-compact");
     host.setAttribute("data-mode", start);
     host.innerHTML =
       `<div class="scm-toggle" role="tablist">` +
-        MODES.map((m) => `<button type="button" role="tab" data-mode="${m.id}" class="${m.id === start ? "is-on" : ""}">${esc(m.name)}</button>`).join("") +
+        modes.map((m) => `<button type="button" role="tab" data-mode="${m.id}" class="${m.id === start ? "is-on" : ""}">${esc(m.name)}</button>`).join("") +
         `<span class="scm-thumb"></span>` +
       `</div>` +
       `<div class="scm-panel"></div>` +
@@ -74,7 +105,7 @@
       const m = byId(id);
       host.setAttribute("data-mode", id);
       btns.forEach((b) => b.classList.toggle("is-on", b.dataset.mode === id));
-      const idx = MODES.findIndex((x) => x.id === id);
+      const idx = modes.findIndex((x) => x.id === id);
       if (thumb) thumb.style.transform = `translateX(${idx * 100}%)`;
       panel.innerHTML =
         `<p class="scm-eyebrow">${esc(m.eyebrow)}</p>` +
@@ -87,8 +118,9 @@
     return { set: (id) => paint(id, true) };
   }
 
-  function renderRecap(host) {
+  function renderRecap(host, opts) {
     if (!host) return;
+    const modes = setFor((opts || {}).set);
     host.classList.add("scm-recap");
     host.innerHTML =
       `<div class="scm-recap-head"><span class="scm-ic">${ICON.voice}</span><div>` +
@@ -97,9 +129,9 @@
       `</div></div>` +
       `<p class="scm-recap-sub">Your sockets, lights, curtains, AC, sound and fragrance all run from one voice device on your table — switch the whole room between <b>Ambient</b> and <b>Focus</b> with a word.</p>` +
       `<div class="scm-recap-modes">` +
-        MODES.map((m) => `<div class="scm-recap-mode"><b>${esc(m.name)}</b><span>${esc(m.tagline)}</span></div>`).join("") +
+        modes.map((m) => `<div class="scm-recap-mode"><b>${esc(m.name)}</b><span>${esc(m.tagline)}</span></div>`).join("") +
       `</div>`;
   }
 
-  window.SCSmart = { MODES, ICON, renderModes, renderRecap };
+  window.SCSmart = { MODE_SETS, MODES, ICON, renderModes, renderRecap };
 })();
