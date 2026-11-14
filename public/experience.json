@@ -117,7 +117,7 @@
               { "name": "Fold-out ironing table", "desc": "A fold-out ironing surface that tucks away when you're done.", "x": 0.587, "y": 0.592, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
               { "name": "Voice-control switch & socket", "desc": "A smart switch and socket inside, controlled by voice.", "x": 0.563, "y": 0.535, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
               { "name": "Ample, smart storage", "desc": "Open shelves and smart storage, sized for everything.", "x": 0.659, "y": 0.537, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
-              { "name": "Door-sensored lighting", "desc": "LED strips that light the interior the moment a door opens.", "x": 0.706, "y": 0.162, "below": true, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp", "glow": { "x": 0.706, "y": 0.32, "w": 0.05, "h": 0.46 } }
+              { "name": "Door-sensored lighting", "desc": "LED strips that light the interior the moment a door opens.", "x": 0.712, "y": 0.162, "below": true, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp", "glow": { "x": 0.712, "y": 0.32, "w": 0.05, "h": 0.46 } }
             ],
             "6ft": [
               { "name": "Pull-out dressing basket", "desc": "A pull-out basket drawer for folded knits and delicates.", "x": 0.443, "y": 0.771, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
