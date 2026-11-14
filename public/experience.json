@@ -21,9 +21,9 @@
           "_featureNote": "Hover-point x,y from FEATURES EXPLANATION/Foyer outer+inner features.png. Feature 5 (storage) is inner — it cross-fades to the open-cabinet reveal; the rest are outer.",
           "features": [
             { "name": "Ventilated shutter", "desc": "Perforated shutter fronts for better air circulation.", "x": 0.496, "y": 0.250 },
-            { "name": "5 smart key holders", "desc": "Five magnetic key holders set into the niche.", "x": 0.448, "y": 0.450 },
+            { "name": "5 smart key holders", "desc": "Five magnetic key holders set into the niche.", "x": 0.457, "y": 0.453 },
             { "name": "Accessory switch & socket", "desc": "A 5-amp switch and socket point in the niche.", "x": 0.458, "y": 0.497 },
-            { "name": "Motion-sensor fragrance", "desc": "A motion-sensor fragrance dispenser with a relaxing scent.", "x": 0.517, "y": 0.455, "spray": { "x": 0.517, "y": 0.475 } },
+            { "name": "Motion-sensor fragrance", "desc": "A motion-sensor fragrance dispenser with a relaxing scent.", "x": 0.522, "y": 0.470, "spray": { "x": 0.522, "y": 0.490 } },
             { "name": "Smart, ample storage", "desc": "Generous storage behind the shutters, with a finger-groove handle.", "x": 0.486, "y": 0.327, "render": "ASSET/experience/products/radiance/foyer/reveal-open.webp" },
             { "name": "3 coat & hat hooks", "desc": "Three hooks for coats and hats.", "x": 0.548, "y": 0.342 },
             { "name": "Motion-sensor strip lights", "desc": "Strip lighting that comes on as you step up to the unit.", "x": 0.618, "y": 0.342, "glows": [ { "x": 0.618, "y": 0.44, "w": 0.028, "h": 0.36 }, { "x": 0.575, "y": 0.905, "w": 0.16, "h": 0.05 } ] },
