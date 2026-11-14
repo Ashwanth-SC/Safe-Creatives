@@ -465,7 +465,7 @@
       function buildFeatures() {
         const feats = catFeats();
         featsBody.innerHTML = feats.length
-          ? `<ul class="tour-feats">${feats.map((f, fi) => `<li data-feat="${fi}">${esc(fName(f))}</li>`).join("")}</ul>`
+          ? `<ul class="tour-feats">${feats.map((f, fi) => `<li data-feat="${fi}"><span class="tf-name">${esc(fName(f))}</span>${fDesc(f) ? `<span class="tf-desc">${esc(fDesc(f))}</span>` : ""}</li>`).join("")}</ul>`
           : `<p class="feats-empty">Details coming soon.</p>`;
         spotLayer.textContent = ""; glowLayer.textContent = ""; if (sprayLayer) sprayLayer.textContent = "";
         curSpots = []; curGlows = []; curSprays = [];

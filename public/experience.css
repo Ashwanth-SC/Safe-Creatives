@@ -144,10 +144,16 @@ body.exp-body {
 .feats-toggle:hover { color: var(--exp-ink); border-color: rgba(255,250,241,.4); }
 .feats-toggle.is-on { color: #171717; background: var(--exp-cream); border-color: var(--exp-cream); }
 .tour-feats { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
-.tour-feats li { display: flex; gap: 9px; font-size: 13.5px; line-height: 1.45; color: var(--exp-ink); cursor: default; transition: color .2s ease; }
-.tour-feats li::before { content: ""; flex: none; margin-top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--exp-teal); transition: transform .2s ease, background .2s ease; }
+/* each row: bullet + name, with the description tucked under it and revealed on
+   hover (accordion) — so the explanation shows HERE, never over the product */
+.tour-feats li { display: grid; grid-template-columns: 6px 1fr; column-gap: 9px; row-gap: 3px; align-items: start; font-size: 13.5px; line-height: 1.45; color: var(--exp-ink); cursor: pointer; transition: color .2s ease; }
+.tour-feats li::before { content: ""; margin-top: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--exp-teal); transition: transform .2s ease, background .2s ease; }
+.tour-feats .tf-name { grid-column: 2; }
+.tour-feats .tf-desc { grid-column: 2; display: none; font-size: 12px; line-height: 1.4; color: var(--exp-muted); }
 .tour-feats li.is-active { color: var(--exp-cream); }
 .tour-feats li.is-active::before { background: var(--exp-cream); transform: scale(1.5); }
+.tour-feats li.is-active .tf-desc { display: block; animation: tf-desc-in .2s ease; }
+@keyframes tf-desc-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 .feats-empty { margin: 0; color: var(--exp-muted); font-size: 13px; }
 
 /* light-glow overlays: a warm bloom pinned over a lit element (e.g. an LED
@@ -213,6 +219,9 @@ body.exp-body {
 .tour-spot:hover .spot-card, .tour-spot:focus-visible .spot-card, .tour-spot.is-active .spot-card { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
 .spot-card b { display: block; font: 600 13px "DM Sans", sans-serif; color: var(--exp-cream); margin-bottom: 3px; }
 .spot-card span { display: block; font-size: 12px; line-height: 1.45; color: var(--exp-muted); }
+/* desktop: the floating callout is replaced by the Features-panel accordion so
+   it never covers the product; it returns on small screens (no panel there) */
+.spot-card { display: none; }
 
 /* size + colour chooser (now inside the left card) */
 .choose-wrap {
@@ -310,8 +319,10 @@ body.exp-body {
   .tour-info { left: 14px; right: 14px; bottom: 96px; width: auto; }
   .tour-feats-card { display: none; }
   /* no features list / toggle on small screens — show the points so the
-     callouts remain reachable by tap */
+     callouts remain reachable by tap, and bring the floating card back since
+     there's no Features panel to hold the description here */
   .tour-cat .tour-spot { opacity: 1; visibility: visible; pointer-events: auto; }
+  .spot-card { display: block; }
   .exp-cart { top: 46px; right: 10px; width: 46vw; max-width: 200px; }
   .spot-card { max-width: 180px; }
 }
