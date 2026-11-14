@@ -94,11 +94,11 @@
           "blurb": "A compact floating study with soft task lighting.",
           "_featureHelp": "Hover-point x,y and outer/inner come from FEATURES EXPLANATION/*.png (1920x1080 frame). Outer features (1-3) just mark the product; inner features (4-5) cross-fade to the open-desk reveal (renderPattern, {color} live). Add \"below\": true to drop the callout under the dot.",
           "features": [
-            { "name": "Voice-control switch & socket", "desc": "Two smart switches and a socket on the desk, controlled by voice.", "x": 0.462, "y": 0.423 },
-            { "name": "Motion-sensor task light", "desc": "A movable globe lamp that wakes as you sit down.", "x": 0.580, "y": 0.352, "glow": { "x": 0.580, "y": 0.352, "w": 0.13, "h": 0.18 } },
-            { "name": "Wireless phone charger", "desc": "A charging pad set into the desktop — just set your phone down.", "x": 0.628, "y": 0.423 },
-            { "name": "Open top — hidden wiring & organisation", "desc": "The desktop lifts to reveal a felt-lined bay for wiring and organisation.", "x": 0.534, "y": 0.443, "renderPattern": "ASSET/experience/products/revive/study/reveal-{color}.webp" },
-            { "name": "Smart, ample storage", "desc": "A soft-close drawer with smart, generous storage.", "x": 0.518, "y": 0.719, "renderPattern": "ASSET/experience/products/revive/study/reveal-{color}.webp" }
+            { "name": "Open door — hidden wiring & organisation", "desc": "The desktop top lifts away for hidden wiring and tidy organisation.", "x": 0.462, "y": 0.421 },
+            { "name": "Motion-sensor movable light", "desc": "A movable globe lamp that wakes as you sit down.", "x": 0.567, "y": 0.325, "glow": { "x": 0.567, "y": 0.325, "w": 0.13, "h": 0.18 } },
+            { "name": "Wireless phone charger", "desc": "A charging pad set into the desktop — just set your phone down.", "x": 0.628, "y": 0.418 },
+            { "name": "2 voice-control switches & socket", "desc": "Two smart switches and a socket inside, controlled by voice.", "x": 0.534, "y": 0.442, "renderPattern": "ASSET/experience/products/revive/study/reveal-{color}.webp" },
+            { "name": "Smart, ample storage", "desc": "A soft-close drawer with smart, generous storage.", "x": 0.518, "y": 0.715, "renderPattern": "ASSET/experience/products/revive/study/reveal-{color}.webp" }
           ],
           "sizes": [ { "id": "standard", "name": "Standard" } ],
           "colors": [ { "id": "sand", "name": "Sand", "swatch": "#c0a079" }, { "id": "white", "name": "White", "swatch": "#e6e3dd" }, { "id": "graphite", "name": "Graphite", "swatch": "#343230" } ]
@@ -148,7 +148,7 @@
           "blurb": "A warm ceiling detail that frames the room.",
           "_featureNote": "Hover-point x,y from FEATURES EXPLANATION/Pelmet outer+inner features.png. Outer (1-2): fragrance dispenser, pelmet. Inner (3-4): curtain opener + AC switch cross-fade to the hidden mechanism.",
           "features": [
-            { "name": "Automatic fragrance dispenser", "desc": "An automatic fragrance dispenser with built-in cooling and relaxing technology.", "x": 0.227, "y": 0.276, "spray": { "x": 0.23, "y": 0.47 } },
+            { "name": "Automatic fragrance dispenser", "desc": "An automatic fragrance dispenser with built-in cooling and relaxing technology.", "x": 0.227, "y": 0.276, "spray": { "x": 0.227, "y": 0.30 } },
             { "name": "Heavy-duty pelmet", "desc": "A heavy-duty pelmet built to take an AC mount.", "x": 0.799, "y": 0.367 },
             { "name": "Automatic curtain opener", "desc": "A smart, voice-controlled automatic curtain opener hidden in the pelmet.", "x": 0.394, "y": 0.261, "render": "ASSET/experience/products/revive/pelmet/reveal-inner.webp" },
             { "name": "Voice-control AC switch", "desc": "A heavy-duty voice-control switch for the AC.", "x": 0.693, "y": 0.404, "render": "ASSET/experience/products/revive/pelmet/reveal-inner.webp" }
