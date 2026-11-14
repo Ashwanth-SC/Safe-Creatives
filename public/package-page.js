@@ -18,9 +18,9 @@
 (async function () {
   await SC.ready;
 
-  // Admin gate (preview): the sensory-rooms flow is admin-only for now; a
-  // non-admin keeps the "coming soon" overlay instead of the configurator.
-  if (!SC.isAdmin) return;
+  // Registered-user gate: the page is guarded (data-requires-auth), so auth.js
+  // sends signed-out visitors to login and unregistered ones to register, and
+  // only reaches here for a registered user — then we drop the overlay.
   const gateEl = document.getElementById("sc-gate");
   if (gateEl) gateEl.remove();
 

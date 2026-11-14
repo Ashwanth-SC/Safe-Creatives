@@ -36,11 +36,11 @@
     if (window.SCSmart) SCSmart.renderModes(document.getElementById("sr-modes-body"));
   }
 
-  // Admin gate (preview): sensory rooms is admin-only for now; everyone else
-  // keeps the "coming soon" overlay. Fail closed if auth isn't available.
+  // Registered-user gate: the page is guarded (data-requires-auth), so auth.js
+  // sends signed-out visitors to login and unregistered ones to register, and
+  // only resolves here for a registered user — then we drop the overlay and run.
   if (window.SC && SC.ready) {
     SC.ready.then(function () {
-      if (!SC.isAdmin) return;
       const gate = document.getElementById("sc-gate");
       if (gate) gate.remove();
       run();
