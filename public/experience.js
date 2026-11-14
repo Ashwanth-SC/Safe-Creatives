@@ -474,7 +474,7 @@
         `</div>` +
         // RIGHT card: features (filled by buildFeatures for the current size)
         `<div class="tour-feats-card">` +
-          `<div class="tour-feats-head"><p class="eyebrow">FEATURES</p><button type="button" class="feats-toggle" aria-pressed="false">Show points</button></div>` +
+          `<p class="eyebrow">FEATURES</p>` +
           `<div class="tour-feats-body"></div>` +
         `</div>`;
 
@@ -660,22 +660,6 @@
         view.querySelectorAll(".choose-swatch").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.color) === ci));
         refresh();
       }));
-
-      // Hotspot visibility toggle. Points are hidden until "Show points"; either
-      // way, hovering a feature in the list reveals just THAT point (+ its card,
-      // + its inner image if it's an inner feature). The list is always shown.
-      const featsToggle = view.querySelector(".feats-toggle");
-      let spotsShown = false;
-      function syncSpots() {
-        view.classList.toggle("spots-shown", spotsShown);
-        if (featsToggle) {
-          featsToggle.textContent = spotsShown ? "Hide points" : "Show points";
-          featsToggle.setAttribute("aria-pressed", String(spotsShown));
-          featsToggle.classList.toggle("is-on", spotsShown);
-        }
-      }
-      if (featsToggle) featsToggle.addEventListener("click", () => { spotsShown = !spotsShown; syncSpots(); });
-      syncSpots();
     }
 
     function outroHtml() {
