@@ -169,6 +169,10 @@
     preloadAssets().then(() => { if (loading) loading.classList.add("is-hidden"); });
 
     // -------- helpers --------
+    // Decoded-image cache: every product variant + reveal is preloaded AND
+    // decoded, and the Image objects are kept here so switching size/colour is
+    // instant (no re-fetch, no decode stall) — the hero then cross-fades.
+    const imgCache = new Map();
     function allImageUrls() {
       const urls = new Set();
       cats.forEach((c) => {
@@ -199,7 +203,13 @@
       const total = urls.length + 1; // + the video
       let done = 0;
       const bump = () => { done++; if (bar) bar.style.width = Math.round((done / total) * 100) + "%"; };
-      const imgs = urls.map((u) => new Promise((res) => { const im = new Image(); im.onload = im.onerror = () => { bump(); res(); }; im.src = u; }));
+      const imgs = urls.map((u) => new Promise((res) => {
+        const im = new Image(); im.decoding = "async";
+        const done2 = () => { imgCache.set(u, im); bump(); res(); };
+        im.onload = () => { if (im.decode) im.decode().then(done2).catch(done2); else done2(); };
+        im.onerror = done2;
+        im.src = u;
+      }));
       const vid = new Promise((res) => {
         const fin = () => { bump(); res(); };
         if (!videoOk || video.readyState >= 2) { fin(); return; }
@@ -434,7 +444,7 @@
         `</div>` +
         // RIGHT card: features (filled by buildFeatures for the current size)
         `<div class="tour-feats-card">` +
-          `<p class="eyebrow">FEATURES</p>` +
+          `<div class="tour-feats-head"><p class="eyebrow">FEATURES</p><button type="button" class="feats-toggle" aria-pressed="false">Show points</button></div>` +
           `<div class="tour-feats-body"></div>` +
         `</div>`;
 
@@ -538,13 +548,48 @@
       const heroImg = view.querySelector(".tour-hero img");
       if (heroImg) heroImg.onerror = () => { heroImg.outerHTML = heroPh(cat.name); };
 
+      // Seamless swap for full-frame (cover) renders: decode the next image
+      // (already preloaded) first, cross-fade it in over the current one, then
+      // drop the old — so changing size or colour never flashes or buffers.
+      function swapHero(url) {
+        if (!heroFig) return;
+        if (!url) { heroFig.innerHTML = heroPh(cat.name); return; }
+        const cur = heroFig.querySelector("img:not(.tour-hero-next)");
+        if (cur && cur.getAttribute("src") === url && cur.complete) return;
+        heroFig.querySelectorAll("img.tour-hero-next").forEach((n) => n.remove());
+        const cached = imgCache.get(url);
+        const next = document.createElement("img");
+        next.className = "tour-hero-next"; next.alt = cat.name || ""; next.decoding = "async";
+        const show = () => {
+          if (!heroFig.isConnected) return;
+          heroFig.appendChild(next);
+          requestAnimationFrame(() => requestAnimationFrame(() => next.classList.add("is-in")));
+          const fin = () => {
+            next.removeEventListener("transitionend", fin);
+            heroFig.querySelectorAll("img").forEach((im) => { if (im !== next) im.remove(); });
+            next.classList.remove("tour-hero-next", "is-in");
+          };
+          next.addEventListener("transitionend", fin);
+          setTimeout(fin, 560);
+        };
+        next.onerror = () => { if (cur) cur.setAttribute("src", url); else heroFig.innerHTML = heroPh(cat.name); };
+        next.src = url;
+        if (next.decode) next.decode().then(show).catch(show);
+        else if (next.complete || (cached && cached.complete)) show();
+        else next.addEventListener("load", show, { once: true });
+      }
+
       // Update the hero + labels in place when size/colour changes.
       const refresh = () => {
         const url = productPng(cat, s);
-        heroFig.innerHTML = url ? `<img src="${esc(url)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name);
-        const im = heroFig.querySelector("img");
-        if (im) { im.onerror = () => { im.outerHTML = heroPh(cat.name); }; if (placed) im.addEventListener("load", placeHero); }
-        if (placed) placeHero();
+        if (coverMode) {
+          swapHero(url);
+        } else {
+          heroFig.innerHTML = url ? `<img src="${esc(url)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name);
+          const im = heroFig.querySelector("img");
+          if (im) { im.onerror = () => { im.outerHTML = heroPh(cat.name); }; if (placed) im.addEventListener("load", placeHero); }
+          if (placed) placeHero();
+        }
         const cn = view.querySelector("#color-name"); if (cn) cn.textContent = (cat.colors[s.color] || {}).name || "";
         syncAddBtn();
       };
@@ -585,6 +630,22 @@
         view.querySelectorAll(".choose-swatch").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.color) === ci));
         refresh();
       }));
+
+      // Hotspot visibility toggle. Points are hidden until "Show points"; either
+      // way, hovering a feature in the list reveals just THAT point (+ its card,
+      // + its inner image if it's an inner feature). The list is always shown.
+      const featsToggle = view.querySelector(".feats-toggle");
+      let spotsShown = false;
+      function syncSpots() {
+        view.classList.toggle("spots-shown", spotsShown);
+        if (featsToggle) {
+          featsToggle.textContent = spotsShown ? "Hide points" : "Show points";
+          featsToggle.setAttribute("aria-pressed", String(spotsShown));
+          featsToggle.classList.toggle("is-on", spotsShown);
+        }
+      }
+      if (featsToggle) featsToggle.addEventListener("click", () => { spotsShown = !spotsShown; syncSpots(); });
+      syncSpots();
     }
 
     function outroHtml() {

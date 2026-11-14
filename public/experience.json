@@ -92,13 +92,13 @@
           "hero": { "cover": true },
           "pngPattern": "ASSET/experience/products/revive/study/{size}-{color}.webp",
           "blurb": "A compact floating study with soft task lighting.",
-          "_featureHelp": "Each feature: { name, desc, x, y } — x,y are 0..1 positions on the 1920x1080 frame for the hover circle. Add \"below\": true to drop the callout under the dot (for dots near the top). \"renderPattern\" cross-fades to a reveal image, {color} resolved live.",
+          "_featureHelp": "Hover-point x,y and outer/inner come from FEATURES EXPLANATION/*.png (1920x1080 frame). Outer features (1-3) just mark the product; inner features (4-5) cross-fade to the open-desk reveal (renderPattern, {color} live). Add \"below\": true to drop the callout under the dot.",
           "features": [
-            { "name": "Lift-up top — hidden wiring", "desc": "The desktop lifts to reveal a felt-lined bay for wiring and organisation.", "x": 0.47, "y": 0.50, "renderPattern": "ASSET/experience/products/revive/study/reveal-{color}.webp" },
-            { "name": "Motion-sensor task light", "desc": "A movable globe lamp that wakes as you sit down.", "x": 0.575, "y": 0.33, "glow": { "x": 0.575, "y": 0.33, "w": 0.13, "h": 0.18 } },
-            { "name": "Wireless phone charger", "desc": "A charging pad set into the desktop — just set your phone down.", "x": 0.625, "y": 0.405 },
-            { "name": "2 voice-control switches & socket", "desc": "Two smart switches and a socket on the desk, controlled by voice.", "x": 0.515, "y": 0.44 },
-            { "name": "Smart, ample storage", "desc": "A soft-close drawer with smart, generous storage.", "x": 0.675, "y": 0.625 }
+            { "name": "Voice-control switch & socket", "desc": "Two smart switches and a socket on the desk, controlled by voice.", "x": 0.462, "y": 0.423 },
+            { "name": "Motion-sensor task light", "desc": "A movable globe lamp that wakes as you sit down.", "x": 0.580, "y": 0.352, "glow": { "x": 0.580, "y": 0.352, "w": 0.13, "h": 0.18 } },
+            { "name": "Wireless phone charger", "desc": "A charging pad set into the desktop — just set your phone down.", "x": 0.628, "y": 0.423 },
+            { "name": "Open top — hidden wiring & organisation", "desc": "The desktop lifts to reveal a felt-lined bay for wiring and organisation.", "x": 0.534, "y": 0.443, "renderPattern": "ASSET/experience/products/revive/study/reveal-{color}.webp" },
+            { "name": "Smart, ample storage", "desc": "A soft-close drawer with smart, generous storage.", "x": 0.518, "y": 0.719, "renderPattern": "ASSET/experience/products/revive/study/reveal-{color}.webp" }
           ],
           "sizes": [ { "id": "standard", "name": "Standard" } ],
           "colors": [ { "id": "sand", "name": "Sand", "swatch": "#c0a079" }, { "id": "white", "name": "White", "swatch": "#e6e3dd" }, { "id": "graphite", "name": "Graphite", "swatch": "#343230" } ]
@@ -108,31 +108,34 @@
           "hero": { "cover": true },
           "pngPattern": "ASSET/experience/products/revive/wardrobe/{size}-{color}.webp",
           "blurb": "Soft-close wardrobe with a clean, handle-free front.",
-          "_featureNote": "Per-size — the 4 ft has a fixed hanger bar; the 6 ft / 8 ft have a pull-out hanger. Every feature cross-fades to that size's open-wardrobe reveal.",
+          "_featureNote": "Per-size map; hover-point x,y from FEATURES EXPLANATION/*Ft Wardrobe inner features.png. All 7 are inner — each cross-fades to that size's open-wardrobe reveal. 4 ft uses a fixed hanger bar; 6/8 ft a pull-out hanger. 6 ft and 8 ft share the same point positions (same central module).",
           "features": {
             "4ft": [
-              { "name": "Pull-out dressing basket", "desc": "A pull-out basket drawer for folded knits and delicates.", "x": 0.559, "y": 0.70, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
-              { "name": "Pull-out accessory drawer", "desc": "A pull-out drawer with dividers for watches, belts and accessories.", "x": 0.559, "y": 0.52, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
-              { "name": "Hanger bar", "desc": "A fixed, full-width hanger bar for everyday hanging.", "x": 0.651, "y": 0.30, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
-              { "name": "Fold-out ironing table", "desc": "A fold-out ironing surface that tucks away when you're done.", "x": 0.617, "y": 0.62, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
-              { "name": "Ample, smart storage", "desc": "Open shelves and smart storage, sized for everything.", "x": 0.686, "y": 0.45, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
-              { "name": "Door-sensored lighting", "desc": "LED strips that light the interior the moment a door opens.", "x": 0.605, "y": 0.14, "below": true, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp", "glow": { "x": 0.605, "y": 0.15, "w": 0.20, "h": 0.05 } }
+              { "name": "Pull-out dressing basket", "desc": "A pull-out basket drawer for folded knits and delicates.", "x": 0.552, "y": 0.768, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
+              { "name": "Pull-out accessory drawer", "desc": "A pull-out drawer with dividers for watches, belts and accessories.", "x": 0.552, "y": 0.643, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
+              { "name": "Hanger bar", "desc": "A fixed, full-width hanger bar for everyday hanging.", "x": 0.552, "y": 0.251, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
+              { "name": "Fold-out ironing table", "desc": "A fold-out ironing surface that tucks away when you're done.", "x": 0.587, "y": 0.592, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
+              { "name": "Voice-control switch & socket", "desc": "A smart switch and socket inside, controlled by voice.", "x": 0.552, "y": 0.537, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
+              { "name": "Ample, smart storage", "desc": "Open shelves and smart storage, sized for everything.", "x": 0.659, "y": 0.537, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp" },
+              { "name": "Door-sensored lighting", "desc": "LED strips that light the interior the moment a door opens.", "x": 0.718, "y": 0.160, "below": true, "render": "ASSET/experience/products/revive/wardrobe/4ft-inner.webp", "glow": { "x": 0.718, "y": 0.32, "w": 0.05, "h": 0.46 } }
             ],
             "6ft": [
-              { "name": "Pull-out dressing basket", "desc": "A pull-out basket drawer for folded knits and delicates.", "x": 0.482, "y": 0.70, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
-              { "name": "Pull-out accessory drawer", "desc": "A pull-out drawer with dividers for watches, belts and accessories.", "x": 0.482, "y": 0.52, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
-              { "name": "Pull-out hanger", "desc": "A pull-out hanger rail that brings your wardrobe out to you.", "x": 0.618, "y": 0.30, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
-              { "name": "Fold-out ironing table", "desc": "A fold-out ironing surface that tucks away when you're done.", "x": 0.567, "y": 0.62, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
-              { "name": "Ample, smart storage", "desc": "Open shelves and smart storage, sized for everything.", "x": 0.669, "y": 0.45, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
-              { "name": "Door-sensored lighting", "desc": "LED strips that light the interior the moment a door opens.", "x": 0.550, "y": 0.14, "below": true, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp", "glow": { "x": 0.550, "y": 0.15, "w": 0.30, "h": 0.05 } }
+              { "name": "Pull-out dressing basket", "desc": "A pull-out basket drawer for folded knits and delicates.", "x": 0.443, "y": 0.771, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
+              { "name": "Pull-out accessory drawer", "desc": "A pull-out drawer with dividers for watches, belts and accessories.", "x": 0.443, "y": 0.647, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
+              { "name": "Pull-out hanger", "desc": "A pull-out hanger rail that brings your wardrobe out to you.", "x": 0.462, "y": 0.288, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
+              { "name": "Fold-out ironing table", "desc": "A fold-out ironing surface that tucks away when you're done.", "x": 0.477, "y": 0.595, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
+              { "name": "Voice-control switch & socket", "desc": "A smart switch and socket inside, controlled by voice.", "x": 0.462, "y": 0.541, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
+              { "name": "Ample, smart storage", "desc": "Open shelves and smart storage, sized for everything.", "x": 0.657, "y": 0.540, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp" },
+              { "name": "Door-sensored lighting", "desc": "LED strips that light the interior the moment a door opens.", "x": 0.718, "y": 0.160, "below": true, "render": "ASSET/experience/products/revive/wardrobe/6ft-inner.webp", "glow": { "x": 0.718, "y": 0.32, "w": 0.05, "h": 0.46 } }
             ],
             "8ft": [
-              { "name": "Pull-out dressing basket", "desc": "A pull-out basket drawer for folded knits and delicates.", "x": 0.405, "y": 0.70, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
-              { "name": "Pull-out accessory drawer", "desc": "A pull-out drawer with dividers for watches, belts and accessories.", "x": 0.405, "y": 0.52, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
-              { "name": "Pull-out hanger", "desc": "A pull-out hanger rail that brings your wardrobe out to you.", "x": 0.585, "y": 0.30, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
-              { "name": "Fold-out ironing table", "desc": "A fold-out ironing surface that tucks away when you're done.", "x": 0.518, "y": 0.62, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
-              { "name": "Ample, smart storage", "desc": "Open shelves and smart storage, sized for everything.", "x": 0.653, "y": 0.45, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
-              { "name": "Door-sensored lighting", "desc": "LED strips that light the interior the moment a door opens.", "x": 0.495, "y": 0.14, "below": true, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp", "glow": { "x": 0.495, "y": 0.15, "w": 0.42, "h": 0.05 } }
+              { "name": "Pull-out dressing basket", "desc": "A pull-out basket drawer for folded knits and delicates.", "x": 0.443, "y": 0.771, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
+              { "name": "Pull-out accessory drawer", "desc": "A pull-out drawer with dividers for watches, belts and accessories.", "x": 0.443, "y": 0.647, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
+              { "name": "Pull-out hanger", "desc": "A pull-out hanger rail that brings your wardrobe out to you.", "x": 0.462, "y": 0.288, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
+              { "name": "Fold-out ironing table", "desc": "A fold-out ironing surface that tucks away when you're done.", "x": 0.477, "y": 0.595, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
+              { "name": "Voice-control switch & socket", "desc": "A smart switch and socket inside, controlled by voice.", "x": 0.462, "y": 0.541, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
+              { "name": "Ample, smart storage", "desc": "Open shelves and smart storage, sized for everything.", "x": 0.657, "y": 0.540, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp" },
+              { "name": "Door-sensored lighting", "desc": "LED strips that light the interior the moment a door opens.", "x": 0.718, "y": 0.160, "below": true, "render": "ASSET/experience/products/revive/wardrobe/8ft-inner.webp", "glow": { "x": 0.718, "y": 0.32, "w": 0.05, "h": 0.46 } }
             ]
           },
           "sizes": [ { "id": "4ft", "name": "4 ft" }, { "id": "6ft", "name": "6 ft" }, { "id": "8ft", "name": "8 ft" } ],
@@ -143,11 +146,12 @@
           "hero": { "cover": true },
           "pngPattern": "ASSET/experience/products/revive/pelmet/{size}-{color}.webp",
           "blurb": "A warm ceiling detail that frames the room.",
+          "_featureNote": "Hover-point x,y from FEATURES EXPLANATION/Pelmet outer+inner features.png. Outer (1-2): fragrance dispenser, pelmet. Inner (3-4): curtain opener + AC switch cross-fade to the hidden mechanism.",
           "features": [
-            { "name": "Automatic curtain opener", "desc": "A smart, voice-controlled automatic curtain opener hidden in the pelmet.", "x": 0.40, "y": 0.22, "render": "ASSET/experience/products/revive/pelmet/reveal-inner.webp" },
-            { "name": "Voice-control AC switch", "desc": "A heavy-duty voice-control switch for the AC.", "x": 0.57, "y": 0.22, "render": "ASSET/experience/products/revive/pelmet/reveal-inner.webp" },
-            { "name": "Automatic fragrance dispenser", "desc": "An automatic fragrance dispenser with built-in cooling and relaxing technology.", "x": 0.225, "y": 0.34, "spray": { "x": 0.225, "y": 0.50 } },
-            { "name": "Heavy-duty pelmet", "desc": "A heavy-duty pelmet built to take an AC mount.", "x": 0.70, "y": 0.21 }
+            { "name": "Automatic fragrance dispenser", "desc": "An automatic fragrance dispenser with built-in cooling and relaxing technology.", "x": 0.227, "y": 0.276, "spray": { "x": 0.23, "y": 0.47 } },
+            { "name": "Heavy-duty pelmet", "desc": "A heavy-duty pelmet built to take an AC mount.", "x": 0.799, "y": 0.367 },
+            { "name": "Automatic curtain opener", "desc": "A smart, voice-controlled automatic curtain opener hidden in the pelmet.", "x": 0.394, "y": 0.261, "render": "ASSET/experience/products/revive/pelmet/reveal-inner.webp" },
+            { "name": "Voice-control AC switch", "desc": "A heavy-duty voice-control switch for the AC.", "x": 0.693, "y": 0.404, "render": "ASSET/experience/products/revive/pelmet/reveal-inner.webp" }
           ],
           "sizes": [ { "id": "standard", "name": "Standard" } ],
           "colors": [ { "id": "taupe", "name": "Taupe", "swatch": "#9c8673" }, { "id": "cream", "name": "Cream", "swatch": "#d6c9b6" }, { "id": "espresso", "name": "Espresso", "swatch": "#241d18" } ]
