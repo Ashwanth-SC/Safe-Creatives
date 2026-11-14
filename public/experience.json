@@ -11,6 +11,7 @@
       "poster": "ASSET/experience/room-shell.svg",
       "playSpeed": 2,
       "intro": { "eyebrow": "AUREM · LIVING ROOM", "title": "Aurem Radiance", "text": "Walk through your living room. At each stop, choose a size and a finish — your room comes together as you go.", "button": "Begin the walk" },
+      "curtain": { "eyebrow": "YOUR LIVING ROOM", "text": "Warm light, shared calm, and everything within easy reach. Let's walk it together." },
       "categories": [
         {
           "id": "foyer", "name": "Foyer Unit", "note": "A warm welcome.", "pauseAt": 3,
@@ -88,6 +89,7 @@
       "poster": "ASSET/experience/room-shell.svg",
       "playSpeed": 2,
       "intro": { "eyebrow": "AUREM · BEDROOM", "title": "Aurem Revive", "text": "Walk through your bedroom. At each stop, choose a size and a finish — your room comes together as you go.", "button": "Begin the walk" },
+      "curtain": { "eyebrow": "YOUR BEDROOM", "text": "Soft light, quiet comfort, and deep, easy rest. Let's walk it together." },
       "categories": [
         {
           "id": "study", "name": "Study Unit", "note": "A focused corner.", "pauseAt": 3,

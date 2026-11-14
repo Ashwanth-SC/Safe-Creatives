@@ -150,6 +150,17 @@
 
     const outroP = el("div", "tour-panel");
 
+    // Curtain: a title card (package name + a warm line) that fades in over the
+    // video's first frame when the walk begins, then lifts as the camera moves.
+    const curtainP = el("div", "tour-curtain");
+    const cur = data.curtain || {};
+    curtainP.innerHTML =
+      `<div class="tour-curtain-inner">` +
+        (cur.eyebrow ? `<p class="eyebrow">${esc(cur.eyebrow)}</p>` : "") +
+        `<h1>${esc((data.intro || {}).title || data.name || "")}</h1>` +
+        (cur.text ? `<p>${esc(cur.text)}</p>` : "") +
+      `</div>`;
+
     const nav = el("div", "tour-nav");
     nav.style.display = "none";
     const backBtn = el("button", "btn btn-ghost"); backBtn.type = "button"; backBtn.textContent = "← Back";
@@ -158,10 +169,25 @@
     const nextBtn = el("button", "btn btn-primary"); nextBtn.type = "button"; nextBtn.textContent = "Next →";
     nav.append(backBtn, dots, nextBtn);
 
-    tour.append(poster, video, scrim, catWrap, nav, introP, outroP);
+    tour.append(poster, video, scrim, catWrap, nav, introP, outroP, curtainP);
     root.appendChild(tour);
 
-    introP.querySelector("#tour-start").addEventListener("click", () => goCategory(0));
+    // Begin the walk: fade the cover intro out, settle on the video's first
+    // frame, fade in the name + warm line, then start the camera toward the
+    // first product as the title lifts away.
+    function beginWalk() {
+      if (busy) return;
+      introP.classList.remove("is-on");
+      try { video.pause(); if (videoOk) video.currentTime = 0; } catch (e) { /* not ready */ }
+      setTimeout(() => {
+        curtainP.classList.add("is-on");
+        setTimeout(() => {
+          curtainP.classList.remove("is-on");
+          goCategory(0);
+        }, 2800);
+      }, 540);
+    }
+    introP.querySelector("#tour-start").addEventListener("click", beginWalk);
     nextBtn.addEventListener("click", () => { if (step < cats.length - 1) goCategory(step + 1); else goOutro(); });
     backBtn.addEventListener("click", () => { if (step <= 0) goIntro(); else goCategory(step - 1); });
 
