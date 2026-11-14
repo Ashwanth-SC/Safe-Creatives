@@ -225,10 +225,9 @@ body.exp-body {
 /* feature hotspots — hover circles pinned onto the product image */
 .tour-hotspots { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
 .tour-spot { position: absolute; transform: translate(-50%, -50%); padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto; }
-/* points stay hidden; the one feature being hovered in the list shows its
-   point (via .is-active), its description (in the panel) and its reveal image */
-.tour-spot { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .25s ease, visibility .25s ease; }
-.tour-spot.is-active { opacity: 1; visibility: visible; pointer-events: auto; }
+/* hover points are always visible; hovering one (or its list row) shows its
+   description in the Features panel and, for an inner feature, its reveal image */
+.tour-spot { opacity: 1; visibility: visible; pointer-events: auto; }
 .spot-dot { display: block; width: 16px; height: 16px; border-radius: 50%; background: rgba(255,250,241,.95); box-shadow: 0 0 0 2px rgba(20,16,12,.5), 0 2px 6px rgba(0,0,0,.4); position: relative; transition: transform .2s ease, background .2s ease; }
 .spot-dot::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(255,250,241,.8); animation: spot-pulse 2.2s ease-out infinite; }
 @keyframes spot-pulse { 0% { transform: scale(.65); opacity: .85; } 100% { transform: scale(1.7); opacity: 0; } }
