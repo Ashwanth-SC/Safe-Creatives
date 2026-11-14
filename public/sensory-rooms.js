@@ -34,6 +34,14 @@
 
     // The shared Ambient/Focus modes toggle (the "common features" story).
     if (window.SCSmart) SCSmart.renderModes(document.getElementById("sr-modes-body"));
+
+    // Package cards show their cover render; the walkthrough clip plays on hover.
+    document.querySelectorAll(".sr-pack").forEach((card) => {
+      const v = card.querySelector("video");
+      if (!v) return;
+      card.addEventListener("mouseenter", () => { try { const p = v.play(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ } });
+      card.addEventListener("mouseleave", () => { try { v.pause(); } catch (e) { /* ignore */ } });
+    });
   }
 
   // Admin gate (preview): sensory rooms is admin-only for now; everyone else

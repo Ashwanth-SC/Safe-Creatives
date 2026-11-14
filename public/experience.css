@@ -66,6 +66,14 @@ body.exp-body {
 .tour-intro-modes-body .scm-voice { justify-content: center; }
 .tour-panel h1 { margin: 12px 0 14px; font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: clamp(30px, 5.2vw, 56px); line-height: 1.04; letter-spacing: -.02em; }
 .tour-panel p { margin: 0 auto 26px; max-width: 520px; color: var(--exp-muted); font-size: clamp(14px, 1.7vw, 17px); line-height: 1.6; }
+/* Begin-the-walk cover backdrop: the package render behind a soft scrim, with
+   the intro text on a frosted card so it reads clearly over a bright image. */
+.tour-panel.has-cover { background: linear-gradient(rgba(8,6,4,.32), rgba(8,6,4,.62)), var(--cover) center / cover no-repeat; }
+.tour-panel.has-cover .tour-panel-inner {
+  background: rgba(12,9,6,.64); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,250,241,.14); border-radius: 22px;
+  padding: 32px clamp(22px, 3.5vw, 44px); box-shadow: 0 30px 80px rgba(0,0,0,.42);
+}
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px; cursor: pointer;

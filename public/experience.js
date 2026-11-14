@@ -144,6 +144,9 @@
     if (data.smart && window.SCSmart) {
       SCSmart.renderModes(introP.querySelector(".tour-intro-modes-body"), { compact: true, set: data.smartSet });
     }
+    // Begin-the-walk backdrop: the package's cover render, behind a dark scrim,
+    // with the intro text on a frosted card so it stays readable over a bright image.
+    if (data.cover) { introP.classList.add("has-cover"); introP.style.setProperty("--cover", `url("${data.cover}")`); }
 
     const outroP = el("div", "tour-panel");
 
@@ -175,6 +178,7 @@
     const imgCache = new Map();
     function allImageUrls() {
       const urls = new Set();
+      if (data.cover) urls.add(data.cover);
       cats.forEach((c) => {
         const sizes = (c.sizes && c.sizes.length) ? c.sizes : [null];
         const colors = (c.colors && c.colors.length) ? c.colors : [null];
