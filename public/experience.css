@@ -362,7 +362,9 @@ body.exp-body {
   .tour-scrim { display: none; }
   .tour-stage { position: relative; inset: auto; z-index: auto; min-width: 0; min-height: 0; background: #000; }
   .tour-screen { width: min(100cqw, calc(100cqh * 16 / 9)); }   /* contain — full frame, never cut */
-  .tour-catvis, .tour-stage-cat { z-index: auto; }
+  /* NB: .tour-stage-cat must keep z-index:3 so the product composite paints
+     above the <video> (which sits on its own compositing layer at z-index:1);
+     resetting it to auto here hid every product behind the clip. */
   /* cards flow into their regions instead of floating over the video */
   .tour-info, .tour-feats-card {
     position: static; inset: auto; bottom: auto; left: auto; right: auto;
@@ -392,12 +394,15 @@ body.exp-body {
   .tour-add { font-size: 12px; padding: 9px 14px; }
 }
 
-/* portrait: cart (top) / video (middle) / features + nav (bottom) */
+/* portrait: cart (top) / video (middle) / features (bottom) / nav.
+   Rows are 1fr · auto · 1fr · auto so the video keeps an EXACT, FIXED place
+   in the centre — the top and bottom regions hold the leftover space and the
+   video never shifts when the colour panel shows or hides between products. */
 @media (max-width: 820px) and (orientation: portrait) {
-  .tour { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
-  .tour-info-slot { grid-row: 1; min-width: 0; }
+  .tour { display: grid; grid-template-rows: 1fr auto 1fr auto; }
+  .tour-info-slot { grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow-y: auto; }
   .tour-stage { grid-row: 2; width: 100%; aspect-ratio: 16 / 9; }
-  .tour-feats-slot { grid-row: 3; min-height: 0; display: flex; }
+  .tour-feats-slot { grid-row: 3; min-height: 0; display: flex; align-items: stretch; }
   .tour-feats-card { flex: 1; overflow-y: auto; }
   .tour-nav { grid-row: 4; }
   /* compact horizontal cart bar */

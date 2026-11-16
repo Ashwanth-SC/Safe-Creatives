@@ -10,6 +10,18 @@
   "use strict";
 
   function run() {
+    // The page is auth-guarded, so auth.js keeps the body hidden while the
+    // session resolves — and browsers defer a hidden <video>'s autoplay, so
+    // once we're revealed the hero clip can be sitting paused with a play
+    // button over it. Kick it off ourselves; a muted play needs no gesture.
+    const hero = document.querySelector(".sr-hero-video");
+    if (hero) {
+      hero.muted = true;
+      const kick = () => { const p = hero.play(); if (p && p.catch) p.catch(function () {}); };
+      kick();
+      requestAnimationFrame(kick);
+    }
+
     const head = document.getElementById("sr-head");
     if (head) {
       const onScroll = () => head.classList.toggle("is-solid", window.scrollY > window.innerHeight * 0.66);
