@@ -2611,6 +2611,524 @@
   }
 
   // ------------------------------------------------------------------
+  // Attendance log + Vendor payments  (migration 055)
+  // ------------------------------------------------------------------
+
+  // Browser-side "extract": build a CSV from rows of values and save it. The
+  // BOM keeps ₹ and non-ASCII names correct when opened in Excel.
+  function downloadCSV(filename, rows) {
+    const cell = (v) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = rows.map((r) => r.map(cell).join(",")).join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function projectOptionLabel(p) {
+    return `#${p.project_number} — ${p.client_name}` + (p.project_name ? ` — ${p.project_name}` : "");
+  }
+  // A project <select>. `all:true` adds an "All projects" option (value ""),
+  // otherwise a "Select a project…" placeholder.
+  function projectPicker(projects, opts) {
+    opts = opts || {};
+    const s = document.createElement("select");
+    const first = el(
+      "option",
+      null,
+      opts.all ? opts.allLabel || "All projects" : projects.length ? "Select a project…" : "No projects yet — add one first"
+    );
+    first.value = "";
+    s.appendChild(first);
+    projects.forEach((p) => {
+      const o = el("option", null, projectOptionLabel(p));
+      o.value = p.id;
+      s.appendChild(o);
+    });
+    return s;
+  }
+  // Short "#12 — Client" label from a joined turnkey_projects row (falls back to
+  // the snapshot if the join is missing).
+  function projLabelOf(row) {
+    const tp = row.turnkey_projects;
+    const num = tp?.project_number;
+    const name = tp?.client_name || row.client_name || "—";
+    return (num != null ? `#${num} — ` : "") + name + (tp?.project_name ? ` — ${tp.project_name}` : "");
+  }
+
+  function kpiRow(pairs) {
+    const row = el("div", "stat-row");
+    pairs.forEach(([label, value]) => {
+      const c = el("div", "stat-card");
+      c.append(el("span", "stat-value", value), el("span", "stat-label", label));
+      row.appendChild(c);
+    });
+    return row;
+  }
+  // Build a .dash-table inside a scroll wrapper. `rowsData` is an array of cell
+  // arrays (a cell may be a Node or a string); `footer` is an optional cell row.
+  function dataTable(headers, rowsData, footer) {
+    const scroll = el("div", "table-scroll");
+    const t = el("table", "dash-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    headers.forEach((h) => hr.appendChild(el("th", null, h)));
+    thead.appendChild(hr);
+    const tbody = el("tbody");
+    if (!rowsData.length) {
+      const tr = el("tr");
+      const td = el("td", "dash-empty", "No data yet.");
+      td.colSpan = headers.length;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+    rowsData.forEach((cells) => {
+      const tr = el("tr");
+      cells.forEach((cell) => {
+        const td = el("td");
+        if (cell instanceof Node) td.appendChild(cell);
+        else td.textContent = cell == null || cell === "" ? "—" : cell;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    t.append(thead, tbody);
+    if (footer) {
+      const tfoot = el("tfoot");
+      const tr = el("tr");
+      footer.forEach((cell) => {
+        const td = el("td");
+        if (cell instanceof Node) td.appendChild(cell);
+        else td.textContent = cell == null ? "" : cell;
+        tr.appendChild(td);
+      });
+      tfoot.appendChild(tr);
+      t.appendChild(tfoot);
+    }
+    scroll.appendChild(t);
+    return scroll;
+  }
+
+  async function loadSuppliers() {
+    const { data, error } = await sb
+      .from("turnkey_suppliers")
+      .select("id, supplier_company_name, spoc")
+      .order("supplier_company_name", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  function supplierLabel(v) {
+    return v.supplier_company_name || v.spoc || "Unnamed vendor";
+  }
+
+  async function loadAttendance() {
+    const { data, error } = await sb
+      .from("turnkey_attendance")
+      .select(
+        `id, project_id, work_date, person_name, amount_paise, note, created_at,
+         turnkey_projects ( project_number, client_name, project_name )`
+      )
+      .order("work_date", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function loadVendorPayments() {
+    const { data, error } = await sb
+      .from("turnkey_vendor_payments")
+      .select(
+        `id, supplier_id, supplier_name, project_id, amount_paise, pay_date, note, created_at,
+         turnkey_projects ( project_number, client_name, project_name )`
+      )
+      .order("pay_date", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  const amountOf = (r) => (r.amount_paise != null && r.amount_paise !== "" ? Number(r.amount_paise) : 0);
+
+  // ---- Attendance panel ----
+  async function attendancePanel() {
+    const [projects, rows] = await Promise.all([loadProjects(), loadAttendance()]);
+    const projectsById = new Map(projects.map((p) => [p.id, p]));
+    const frag = document.createDocumentFragment();
+
+    // ---- Log a day's attendance ----
+    const block = el("details", "admin-package tk-add");
+    block.open = true;
+    block.appendChild(el("summary", null, "Log attendance for a day"));
+
+    const dateI = input("date", todayISO());
+    const projectS = projectPicker(projects);
+    const head = el("div", "admin-inline");
+    head.append(field("Date", dateI), field("Project", projectS));
+
+    const peopleWrap = el("div", "tk-att-people");
+    function personRow() {
+      const r = el("div", "admin-inline tk-att-row");
+      const nameI = input("text");
+      nameI.placeholder = "Name of who came";
+      const amtI = input("number");
+      amtI.min = "0";
+      amtI.step = "1";
+      amtI.placeholder = "0";
+      const rm = el("button", "tk-delete-link tk-att-remove", "Remove");
+      rm.type = "button";
+      rm.addEventListener("click", () => {
+        r.remove();
+        if (!peopleWrap.querySelector(".tk-att-row")) addPerson();
+      });
+      r.append(field("Person", nameI), field("Amount paid (₹)", amtI), rm);
+      r._read = () => ({ person_name: nameI.value.trim(), amount_paise: rupeesToPaise(amtI.value) });
+      return r;
+    }
+    function addPerson() {
+      peopleWrap.appendChild(personRow());
+    }
+    addPerson();
+    addPerson();
+    addPerson();
+
+    const addBtn = el("button", "admin-primary-small", "+ Add another person");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", addPerson);
+
+    const msg = el("p", "admin-hint", "");
+    const saveBtn = el("button", "admin-primary", "Save attendance");
+    saveBtn.type = "button";
+    saveBtn.addEventListener("click", async () => {
+      const project = projectsById.get(projectS.value);
+      if (!project) return void (msg.textContent = "Choose a project.");
+      if (!dateI.value) return void (msg.textContent = "Pick a date.");
+      const entries = [...peopleWrap.querySelectorAll(".tk-att-row")]
+        .map((r) => r._read())
+        .filter((e) => e.person_name);
+      if (!entries.length) return void (msg.textContent = "Add at least one person's name.");
+
+      const payload = entries.map((e) => ({
+        project_id: project.id,
+        work_date: dateI.value,
+        person_name: e.person_name,
+        amount_paise: e.amount_paise,
+      }));
+      saveBtn.disabled = true;
+      const { error } = await sb.from("turnkey_attendance").insert(payload);
+      saveBtn.disabled = false;
+      if (error) return void (msg.textContent = `Could not save: ${error.message}`);
+      message(
+        `Logged ${payload.length} ${payload.length === 1 ? "person" : "people"} for #${project.project_number} on ${fmtDate(dateI.value)}.`
+      );
+      show("attendance");
+    });
+
+    const actions = el("div", "admin-row-actions");
+    actions.append(addBtn, saveBtn);
+    block.append(head, el("span", "admin-field-label", "Who came & what we paid"), peopleWrap, actions, msg);
+    frag.appendChild(block);
+
+    // ---- Report & export ----
+    const report = el("div", "tk-ledger-report");
+    const filterS = projectPicker(projects, { all: true, allLabel: "All projects (whole history)" });
+    const csvBtn = el("button", "admin-primary-small", "Download CSV");
+    csvBtn.type = "button";
+    const body = el("div");
+
+    const repActions = el("div", "admin-row-actions");
+    repActions.appendChild(csvBtn);
+    report.append(
+      el("p", "eyebrow", "ATTENDANCE REPORT"),
+      el(
+        "p",
+        "dash-note",
+        "Pick a project to see just its labour, or “All projects” for the whole history. Download CSV to extract the data into a spreadsheet."
+      ),
+      field("Show", filterS),
+      repActions,
+      body
+    );
+    frag.appendChild(report);
+
+    const scope = () => {
+      const pid = filterS.value;
+      return { pid, data: pid ? rows.filter((r) => r.project_id === pid) : rows };
+    };
+
+    function renderBody() {
+      const { pid, data } = scope();
+      body.textContent = "";
+
+      const totalPaise = data.reduce((s, r) => s + amountOf(r), 0);
+      const people = new Set(data.map((r) => r.person_name.trim().toLowerCase())).size;
+      const days = new Set(data.map((r) => r.work_date)).size;
+      body.appendChild(
+        kpiRow([
+          ["Attendances", String(data.length)],
+          ["Total paid", SC.money(totalPaise)],
+          ["Distinct people", String(people)],
+          ["Days", String(days)],
+        ])
+      );
+
+      // Per-project breakdown (only meaningful across all projects)
+      if (!pid) {
+        const byProj = new Map();
+        data.forEach((r) => {
+          const cur = byProj.get(r.project_id) || { label: projLabelOf(r), count: 0, paise: 0 };
+          cur.count += 1;
+          cur.paise += amountOf(r);
+          byProj.set(r.project_id, cur);
+        });
+        const brk = [...byProj.values()].sort((a, b) => b.paise - a.paise);
+        if (brk.length) {
+          body.appendChild(el("p", "admin-field-label", "By project"));
+          body.appendChild(
+            dataTable(
+              ["Project", "Attendances", "Total paid"],
+              brk.map((b) => [b.label, String(b.count), SC.money(b.paise)]),
+              [el("strong", null, "All projects"), el("strong", null, String(data.length)), el("strong", null, SC.money(totalPaise))]
+            )
+          );
+        }
+      }
+
+      // Detail — every attendance row in scope
+      body.appendChild(el("p", "admin-field-label", "Detail"));
+      const detail = data.map((r) => {
+        const del = el("button", "tk-delete-link", "Delete");
+        del.type = "button";
+        del.addEventListener("click", async () => {
+          if (!window.confirm(`Remove ${r.person_name} on ${fmtDate(r.work_date)}? This cannot be undone.`)) return;
+          del.disabled = true;
+          const { error } = await sb.from("turnkey_attendance").delete().eq("id", r.id);
+          if (error) {
+            del.disabled = false;
+            return void message(`Could not delete: ${error.message}`, true);
+          }
+          message("Attendance entry removed.");
+          show("attendance");
+        });
+        return [fmtDate(r.work_date), projLabelOf(r), r.person_name, r.amount_paise != null ? money(r.amount_paise) : "—", del];
+      });
+      body.appendChild(dataTable(["Date", "Project", "Person", "Amount paid", ""], detail));
+    }
+
+    csvBtn.addEventListener("click", () => {
+      const { pid, data } = scope();
+      const header = ["Date", "Project #", "Client", "Project name", "Person", "Amount paid (INR)"];
+      const out = data.map((r) => [
+        r.work_date,
+        r.turnkey_projects?.project_number ?? "",
+        r.turnkey_projects?.client_name ?? r.client_name ?? "",
+        r.turnkey_projects?.project_name ?? "",
+        r.person_name,
+        r.amount_paise != null ? Number(r.amount_paise) / 100 : "",
+      ]);
+      const proj = pid ? projectsById.get(pid) : null;
+      const name = proj ? `attendance-project-${proj.project_number}.csv` : "attendance-all.csv";
+      downloadCSV(name, [header, ...out]);
+    });
+
+    filterS.addEventListener("change", renderBody);
+    renderBody();
+    return frag;
+  }
+
+  // ---- Vendor payments panel ----
+  async function vendorPaymentsPanel() {
+    const [projects, suppliers, rows] = await Promise.all([loadProjects(), loadSuppliers(), loadVendorPayments()]);
+    const projectsById = new Map(projects.map((p) => [p.id, p]));
+    const frag = document.createDocumentFragment();
+
+    // ---- Record a payment ----
+    const block = el("details", "admin-package tk-add");
+    block.open = true;
+    block.appendChild(el("summary", null, "Record a vendor payment"));
+
+    const vendorS = document.createElement("select");
+    const vFirst = el("option", null, suppliers.length ? "Select a vendor…" : "No vendors yet — add one in the Database");
+    vFirst.value = "";
+    vendorS.appendChild(vFirst);
+    suppliers.forEach((v) => {
+      const o = el("option", null, supplierLabel(v));
+      o.value = v.id;
+      vendorS.appendChild(o);
+    });
+
+    const projectS = projectPicker(projects);
+    const amountI = input("number");
+    amountI.min = "0";
+    amountI.step = "1";
+    const dateI = input("date", todayISO());
+    const noteI = textarea("");
+    noteI.placeholder = "What the payment was for (optional)";
+
+    const grid = el("div", "admin-inline");
+    grid.append(field("Vendor", vendorS), field("Project", projectS), field("Amount (₹)", amountI), field("Date", dateI));
+    const wide = el("div");
+    wide.append(field("Note", noteI));
+
+    const msg = el("p", "admin-hint", "");
+    const saveBtn = el("button", "admin-primary", "Save payment");
+    saveBtn.type = "button";
+    saveBtn.addEventListener("click", async () => {
+      const supplier = suppliers.find((v) => v.id === vendorS.value);
+      const project = projectsById.get(projectS.value);
+      const amount = rupeesToPaise(amountI.value);
+      if (!supplier) return void (msg.textContent = "Choose a vendor.");
+      if (!project) return void (msg.textContent = "Choose a project.");
+      if (!amount) return void (msg.textContent = "Enter a valid amount.");
+      if (!dateI.value) return void (msg.textContent = "Pick a date.");
+
+      const payload = {
+        supplier_id: supplier.id,
+        supplier_name: supplierLabel(supplier),
+        project_id: project.id,
+        amount_paise: amount,
+        pay_date: dateI.value,
+        note: noteI.value.trim() || null,
+      };
+      saveBtn.disabled = true;
+      const { error } = await sb.from("turnkey_vendor_payments").insert(payload);
+      saveBtn.disabled = false;
+      if (error) return void (msg.textContent = `Could not save: ${error.message}`);
+      message(`Recorded ${SC.money(amount)} to ${payload.supplier_name} for #${project.project_number}.`);
+      show("vendor");
+    });
+
+    const actions = el("div", "admin-row-actions");
+    actions.appendChild(saveBtn);
+    block.append(grid, wide, actions, msg);
+    frag.appendChild(block);
+
+    // ---- Report & export ----
+    const report = el("div", "tk-ledger-report");
+    const projFilter = projectPicker(projects, { all: true, allLabel: "All projects" });
+    const vendorFilter = document.createElement("select");
+    const vfAll = el("option", null, "All vendors");
+    vfAll.value = "";
+    vendorFilter.appendChild(vfAll);
+    suppliers.forEach((v) => {
+      const o = el("option", null, supplierLabel(v));
+      o.value = v.id;
+      vendorFilter.appendChild(o);
+    });
+    const csvBtn = el("button", "admin-primary-small", "Download CSV");
+    csvBtn.type = "button";
+    const body = el("div");
+
+    const controls = el("div", "admin-inline");
+    controls.append(field("Project", projFilter), field("Vendor", vendorFilter));
+    const repActions = el("div", "admin-row-actions");
+    repActions.appendChild(csvBtn);
+    report.append(
+      el("p", "eyebrow", "VENDOR PAYMENTS REPORT"),
+      el(
+        "p",
+        "dash-note",
+        "Filter by project and/or vendor. Download CSV to extract the data into a spreadsheet."
+      ),
+      controls,
+      repActions,
+      body
+    );
+    frag.appendChild(report);
+
+    const scope = () => {
+      const pid = projFilter.value;
+      const vid = vendorFilter.value;
+      let data = rows;
+      if (pid) data = data.filter((r) => r.project_id === pid);
+      if (vid) data = data.filter((r) => r.supplier_id === vid);
+      return { pid, vid, data };
+    };
+
+    function renderBody() {
+      const { pid, vid, data } = scope();
+      body.textContent = "";
+      const totalPaise = data.reduce((s, r) => s + amountOf(r), 0);
+      body.appendChild(
+        kpiRow([
+          ["Payments", String(data.length)],
+          ["Total paid", SC.money(totalPaise)],
+          ["Vendors", String(new Set(data.map((r) => r.supplier_id || r.supplier_name)).size)],
+          ["Projects", String(new Set(data.map((r) => r.project_id)).size)],
+        ])
+      );
+
+      // By vendor breakdown
+      const byVendor = new Map();
+      data.forEach((r) => {
+        const key = r.supplier_id || r.supplier_name || "—";
+        const cur = byVendor.get(key) || { label: r.supplier_name || "—", count: 0, paise: 0 };
+        cur.count += 1;
+        cur.paise += amountOf(r);
+        byVendor.set(key, cur);
+      });
+      const vbrk = [...byVendor.values()].sort((a, b) => b.paise - a.paise);
+      if (vbrk.length) {
+        body.appendChild(el("p", "admin-field-label", "By vendor"));
+        body.appendChild(
+          dataTable(
+            ["Vendor", "Payments", "Total paid"],
+            vbrk.map((b) => [b.label, String(b.count), SC.money(b.paise)]),
+            [el("strong", null, "All vendors"), el("strong", null, String(data.length)), el("strong", null, SC.money(totalPaise))]
+          )
+        );
+      }
+
+      // Detail
+      body.appendChild(el("p", "admin-field-label", "Detail"));
+      const detail = data.map((r) => {
+        const del = el("button", "tk-delete-link", "Delete");
+        del.type = "button";
+        del.addEventListener("click", async () => {
+          if (!window.confirm(`Delete the ${money(r.amount_paise)} payment to ${r.supplier_name || "this vendor"}? This cannot be undone.`)) return;
+          del.disabled = true;
+          const { error } = await sb.from("turnkey_vendor_payments").delete().eq("id", r.id);
+          if (error) {
+            del.disabled = false;
+            return void message(`Could not delete: ${error.message}`, true);
+          }
+          message("Vendor payment removed.");
+          show("vendor");
+        });
+        return [fmtDate(r.pay_date), r.supplier_name || "—", projLabelOf(r), money(r.amount_paise), r.note || "—", del];
+      });
+      body.appendChild(dataTable(["Date", "Vendor", "Project", "Amount", "Note", ""], detail));
+    }
+
+    csvBtn.addEventListener("click", () => {
+      const { data } = scope();
+      const header = ["Date", "Vendor", "Project #", "Client", "Project name", "Amount paid (INR)", "Note"];
+      const out = data.map((r) => [
+        r.pay_date,
+        r.supplier_name || "",
+        r.turnkey_projects?.project_number ?? "",
+        r.turnkey_projects?.client_name ?? "",
+        r.turnkey_projects?.project_name ?? "",
+        Number(amountOf(r)) / 100,
+        r.note || "",
+      ]);
+      downloadCSV("vendor-payments.csv", [header, ...out]);
+    });
+
+    projFilter.addEventListener("change", renderBody);
+    vendorFilter.addEventListener("change", renderBody);
+    renderBody();
+    return frag;
+  }
+
+  // ------------------------------------------------------------------
   // Tabs
   // ------------------------------------------------------------------
 
@@ -2620,6 +3138,8 @@
     documents: documentsPanel,
     quotations: quotationsPanel,
     consultation: consultationPanel,
+    attendance: attendancePanel,
+    vendor: vendorPaymentsPanel,
     reports: reportsPanel,
   };
 
