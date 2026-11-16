@@ -33,8 +33,17 @@ body.exp-body {
 .exp-back { font: 500 13px "DM Sans", sans-serif; color: var(--exp-muted); }
 .exp-back:hover { color: var(--exp-ink); }
 
-/* --- the stage: video fills the viewport --- */
+/* --- the stage: a fixed 16:9 "screen" holds the video + composite so the whole
+   frame always shows. Desktop: the screen is sized to COVER the viewport (the
+   immersive full-bleed look). Phones: the stage becomes a region and the screen
+   is CONTAINED in it, so nothing is ever cut; hotspots map onto the screen by
+   percentage, so they track it at any size with no JS re-layout. --- */
 .tour { position: fixed; inset: 0; overflow: hidden; }
+.tour-stage { position: absolute; inset: 0; overflow: hidden; container-type: size; z-index: 1; }
+.tour-screen {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  aspect-ratio: 16 / 9; width: max(100cqw, calc(100cqh * 16 / 9));  /* cover */
+}
 .tour-video, .tour-poster {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: var(--exp-bg);
 }
@@ -45,6 +54,10 @@ body.exp-body {
   background:
     linear-gradient(180deg, rgba(10,8,6,.45) 0%, transparent 22%, transparent 55%, rgba(10,8,6,.72) 100%);
 }
+/* per-category composite + hotspots overlay the video inside the screen */
+.tour-stage-cat { position: absolute; inset: 0; z-index: 3; }
+.tour-catvis { position: absolute; inset: 0; opacity: 0; transition: opacity .42s ease; }
+.tour-catvis.is-shown { opacity: 1; }
 
 /* --- generic overlay panels --- */
 .tour-layer { position: absolute; inset: 0; z-index: 3; }
@@ -115,16 +128,8 @@ body.exp-body {
 .btn-ghost:hover { border-color: var(--exp-ink); }
 .btn:disabled { opacity: .4; cursor: default; }
 
-/* --- a category stop --- */
-/* The whole stop (full-frame image + cards) fades in on arrival and out on
-   leave, via .is-shown toggled by the tour script — works both directions. */
-.tour-cat { position: absolute; inset: 0; z-index: 5; display: none; opacity: 0; transition: opacity .42s ease; }
-.tour-cat.is-on { display: block; }
-.tour-cat.is-shown { opacity: 1; }
-.tour-cat-head { position: absolute; top: 78px; left: 0; right: 0; text-align: center; padding: 0 20px; animation: cat-in .5s ease both; }
-.tour-cat-head .step { font: 600 11px "DM Mono", monospace; letter-spacing: .2em; color: var(--exp-muted); }
-.tour-cat-head h2 { margin: 6px 0 2px; font-family: "Playfair Display", Georgia, serif; font-weight: 500; font-size: clamp(24px, 3.4vw, 38px); }
-.tour-cat-head .note { margin: 0; color: var(--exp-muted); font-size: 14px; }
+/* --- a category stop: the composite + hotspots (.tour-catvis) fade in/out ---
+   the cart + features live in their own regions (see below). */
 
 /* the selected option, placed in the frame at room scale.
    Size + grounding are per-category (experience.json "hero": { scale, bottom }):
@@ -157,12 +162,15 @@ body.exp-body {
 .tour-hero-ph b { font: 600 clamp(14px,1.8vw,20px) "DM Sans", sans-serif; color: var(--exp-cream); }
 .tour-hero-ph small { font: 500 10px "DM Mono", monospace; letter-spacing: .1em; color: var(--exp-muted); text-transform: uppercase; }
 
-/* shared card look (left = name + selectors, right = features) */
+/* Desktop: the cart + features float over the video (bottom-left / bottom-right)
+   inside their slots; phones turn the slots into real regions (responsive block
+   at the end). */
 .tour-info, .tour-feats-card {
-  position: absolute; bottom: 112px; z-index: 6;
+  position: absolute; bottom: 112px; z-index: 6; opacity: 0; transition: opacity .42s ease;
   background: rgba(16,13,10,.62); backdrop-filter: blur(6px); border: 1px solid var(--exp-line);
-  border-radius: 14px; animation: cat-in .45s ease both;
+  border-radius: 14px;
 }
+.tour-info.is-shown, .tour-feats-card.is-shown { opacity: 1; }
 /* left card: unit name + size / colour selectors */
 .tour-info {
   left: 28px; width: min(330px, 80vw); padding: 18px 20px;
@@ -341,16 +349,83 @@ body.exp-body {
 @keyframes cat-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes hero-in { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
 
-@media (max-width: 820px) {
-  .tour-hero { --hero-h: min(42vh, 72vw); }
-  .tour-info { left: 14px; right: 14px; bottom: 96px; width: auto; }
-  .tour-feats-card { display: none; }
-  /* no features list / toggle on small screens — show the points so the
-     callouts remain reachable by tap, and bring the floating card back since
-     there's no Features panel to hold the description here */
-  .tour-cat .tour-spot { opacity: 1; visibility: visible; pointer-events: auto; }
-  .spot-card { display: block; }
-  .exp-cart { top: 46px; right: 10px; width: 46vw; max-width: 200px; }
-  .spot-card { max-width: 180px; }
+/* ============================================================================
+   Phones / small screens — lay the walk out in regions so the whole 16:9 frame
+   shows with nothing overlapping or cut. Portrait: cart / video / features(+nav)
+   top-to-bottom. Landscape: cart | video | features, nav along the bottom.
+   The video stays at exact 16:9 (contained); hotspots, fonts and paddings
+   shrink so the frame gets the most room.
+   ========================================================================== */
+@media (max-width: 820px), (orientation: landscape) and (max-height: 600px) {
+  .exp-cart { display: none; }               /* the floating cart would overlap */
+  .exp-topbar { display: none; }             /* brand/back bar would overlap the regions */
+  .tour-scrim { display: none; }
+  .tour-stage { position: relative; inset: auto; z-index: auto; min-width: 0; min-height: 0; background: #000; }
+  .tour-screen { width: min(100cqw, calc(100cqh * 16 / 9)); }   /* contain — full frame, never cut */
+  .tour-catvis, .tour-stage-cat { z-index: auto; }
+  /* cards flow into their regions instead of floating over the video */
+  .tour-info, .tour-feats-card {
+    position: static; inset: auto; bottom: auto; left: auto; right: auto;
+    width: auto; max-width: none; border-radius: 0; opacity: 1;
+    background: rgba(16,13,10,.9); backdrop-filter: none; border: 0;
+  }
+  .tour-info { gap: 8px; padding: 9px clamp(10px, 3vw, 16px); }
+  .tour-info h3 { font-size: 15px; }
+  .tour-info > .eyebrow { display: none; }
+  .tour-feats-card { padding: 8px clamp(10px, 3vw, 16px); }
+  .tour-feats-card .eyebrow { margin-bottom: 6px; font-size: 10px; }
+  .tour-feats { gap: 5px; }
+  .tour-feats li { font-size: 11.5px; line-height: 1.35; column-gap: 7px; }
+  .tour-feats .tf-desc { font-size: 10.5px; }
+  .tour-nav { position: static; inset: auto; z-index: auto; padding: 7px 14px calc(7px + env(safe-area-inset-bottom)); }
+  .tour-nav .btn { padding: 8px 15px; font-size: 12px; }
+  .tour-dots i { width: 6px; height: 6px; }
+  /* smaller hotspots for the smaller frame; no pop-up cards (description lives
+     in the features region now) */
+  .spot-dot { width: 10px; height: 10px; box-shadow: 0 0 0 1.5px rgba(20,16,12,.5), 0 1px 4px rgba(0,0,0,.4); }
+  .spot-dot::after { inset: -4px; border-width: 1.5px; }
+  .spot-card { display: none; }
+  .choose-pill { padding: 6px 11px; font-size: 12px; }
+  .choose-label { font-size: 9px; letter-spacing: .12em; }
+  .choose-swatch { width: 26px; height: 26px; }
+  .choose-swatch span { width: 21px; height: 21px; }
+  .tour-add { font-size: 12px; padding: 9px 14px; }
 }
+
+/* portrait: cart (top) / video (middle) / features + nav (bottom) */
+@media (max-width: 820px) and (orientation: portrait) {
+  .tour { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .tour-info-slot { grid-row: 1; min-width: 0; }
+  .tour-stage { grid-row: 2; width: 100%; aspect-ratio: 16 / 9; }
+  .tour-feats-slot { grid-row: 3; min-height: 0; display: flex; }
+  .tour-feats-card { flex: 1; overflow-y: auto; }
+  .tour-nav { grid-row: 4; }
+  /* compact horizontal cart bar */
+  .tour-info { flex-flow: row wrap; align-items: center; gap: 6px 12px; }
+  .tour-info h3 { flex: 1 1 100%; }
+  .tour-info .choose-group { flex-flow: row wrap; align-items: center; gap: 6px 8px; }
+  .tour-add { width: auto; margin: 0; }
+}
+
+/* landscape: cart | video | features, nav across the bottom */
+@media (orientation: landscape) and (max-height: 600px) {
+  .tour { display: grid; grid-template-columns: minmax(118px, 19%) 1fr minmax(132px, 23%); grid-template-rows: minmax(0, 1fr) auto; }
+  .tour-info-slot { grid-column: 1; grid-row: 1; min-height: 0; display: flex; }
+  .tour-stage { grid-column: 2; grid-row: 1; width: 100%; height: 100%; }
+  .tour-feats-slot { grid-column: 3; grid-row: 1; min-height: 0; display: flex; }
+  .tour-info, .tour-feats-card { flex: 1; overflow-y: auto; }
+  .tour-nav { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* very short landscape (phones): trim the begin-the-walk card so it fits without
+   scrolling — drop the modes preview and shrink the titles */
+@media (orientation: landscape) and (max-height: 460px) {
+  .tour-panel.has-cover .tour-intro-modes { display: none; }
+  .tour-panel.has-cover .tour-panel-inner { padding: 16px 22px; }
+  .tour-panel.has-cover h1 { font-size: clamp(22px, 5vw, 32px); margin: 4px 0 8px; }
+  .tour-panel.has-cover .tour-panel-inner > p { margin-bottom: 12px; }
+  .tour-curtain h1 { font-size: clamp(26px, 7vw, 46px); }
+  .tour-curtain p { font-size: clamp(13px, 2.4vw, 16px); }
+}
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }

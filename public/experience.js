@@ -107,30 +107,25 @@
     window.addEventListener("resize", placeHero);
     video.addEventListener("loadedmetadata", placeHero);
 
-    // Feature hotspots sit on the full-frame image (16:9, object-fit:cover), so
-    // they map through the same cover transform and track the image on resize.
-    let curSpots = []; // [{ el, x, y }] hover circles for the current stop
-    let curGlows = []; // [{ el, x, y, w, h }] light-glow overlays for the current stop
-    let curSprays = []; // [{ el, x, y }] fragrance-spray points for the current stop
-    function placeHotspots() {
-      if (!curSpots.length && !curGlows.length && !curSprays.length) return;
-      const vw = window.innerWidth, vh = window.innerHeight, a = 16 / 9;
-      const dw = Math.max(vw, vh * a), dh = dw / a, offX = (vw - dw) / 2, offY = (vh - dh) / 2;
-      const atPoint = (p) => { if (!p.el.isConnected) return; p.el.style.left = (offX + p.x * dw) + "px"; p.el.style.top = (offY + p.y * dh) + "px"; };
-      curSpots.forEach(atPoint);
-      curSprays.forEach(atPoint);
-      for (const g of curGlows) {
-        if (!g.el.isConnected) continue;
-        g.el.style.left = (offX + g.x * dw) + "px";
-        g.el.style.top = (offY + g.y * dh) + "px";
-        g.el.style.width = (g.w * dw) + "px";
-        g.el.style.height = (g.h * dh) + "px";
-      }
-    }
-    window.addEventListener("resize", placeHotspots);
+    // Feature hotspots/glows/sprays sit on the composite inside the 16:9 screen
+    // and are positioned by CSS percentage (set in buildFeatures), so they track
+    // the frame at any screen size without JS re-layout.
 
+    // The video + composite live in a fixed 16:9 "screen" inside the stage, so
+    // the whole frame always shows (never cut) and hotspots map onto it by
+    // percentage. The cart (choices) and features sit in their own regions so
+    // nothing overlaps: CSS floats them over the video on desktop, and stacks
+    // them into regions on phones (portrait: cart / video / features + nav;
+    // landscape: cart | video | features, nav along the bottom).
+    const stage = el("div", "tour-stage");
+    const screen = el("div", "tour-screen");
     const scrim = el("div", "tour-scrim");
-    const catWrap = el("div");
+    const stageCat = el("div", "tour-stage-cat");
+    screen.append(poster, video, scrim, stageCat);
+    stage.appendChild(screen);
+    const infoSlot = el("div", "tour-info-slot");
+    const featsSlot = el("div", "tour-feats-slot");
+    const clearCat = () => { stageCat.textContent = ""; infoSlot.textContent = ""; featsSlot.textContent = ""; };
 
     const introP = el("div", "tour-panel");
     introP.innerHTML =
@@ -169,7 +164,7 @@
     const nextBtn = el("button", "btn btn-primary"); nextBtn.type = "button"; nextBtn.textContent = "Next →";
     nav.append(backBtn, dots, nextBtn);
 
-    tour.append(poster, video, scrim, catWrap, nav, introP, outroP, curtainP);
+    tour.append(stage, infoSlot, featsSlot, nav, introP, outroP, curtainP);
     root.appendChild(tour);
 
     // Begin the walk: fade the cover intro out, settle on the video's first
@@ -329,7 +324,7 @@
       step = -1; busy = false;
       nav.style.display = "none";
       outroP.classList.remove("is-on");
-      catWrap.textContent = "";
+      clearCat();
       introP.classList.add("is-on");
       try { video.pause(); video.currentTime = 0; } catch (e) { /* not ready */ }
     }
@@ -338,9 +333,9 @@
     // so every transition — forward or back — is a clean fade, not a cut.
     const FADE_MS = 420;
     function fadeOutCurrent() {
-      const cur = catWrap.firstElementChild;
-      if (!cur) return Promise.resolve();
-      cur.classList.remove("is-shown");
+      const curs = [stageCat.firstElementChild, infoSlot.firstElementChild, featsSlot.firstElementChild].filter(Boolean);
+      if (!curs.length) return Promise.resolve();
+      curs.forEach((c) => c.classList.remove("is-shown"));
       return new Promise((res) => setTimeout(res, FADE_MS));
     }
 
@@ -351,7 +346,7 @@
       introP.classList.remove("is-on");
       outroP.classList.remove("is-on");
       await fadeOutCurrent();
-      catWrap.textContent = "";
+      clearCat();
       step = i;
       setDots();
       backBtn.textContent = i === 0 ? "← Intro" : "← Back";
@@ -366,7 +361,7 @@
       step = cats.length; busy = false;
       nav.style.display = "none";
       await fadeOutCurrent();
-      catWrap.textContent = "";
+      clearCat();
       outroP.innerHTML = outroHtml();
       outroP.classList.add("is-on");
       const r = outroP.querySelector("#tour-restart");
@@ -452,53 +447,57 @@
         }
         return "";
       };
-      const view = el("div", "tour-cat is-on");
-      view.innerHTML =
+      // The composite + hotspots overlay the video inside the 16:9 screen; the
+      // cart (choices) and features render into their own regions. All three fade
+      // together. Events query across the three, so the rest of renderCat is
+      // unchanged — `q`/`qa` stand in for the old single-view lookups.
+      const visEl = el("div", "tour-catvis");
+      visEl.innerHTML =
         `<div class="tour-hero${coverMode ? " is-cover" : ""}"><figure>${png ? `<img src="${esc(png)}" alt="${esc(cat.name || "")}">` : heroPh(cat.name)}</figure>${coverMode ? `<img class="tour-reveal" alt="">` : ""}</div>` +
         `<div class="tour-glows"></div>` +
         `<div class="tour-sprays"></div>` +
-        `<div class="tour-hotspots"></div>` +
-        // LEFT card: unit name + size / colour selectors
-        `<div class="tour-info">` +
-          `<p class="eyebrow">YOUR CHOICE</p>` +
-          `<h3>${esc(cat.name || "")}</h3>` +
-          (cat.sizes.length > 1
-            ? `<div class="choose-group"><span class="choose-label">Size</span><div class="choose-pills">` +
-                cat.sizes.map((sz, si) => `<button type="button" class="choose-pill${si === s.size ? " is-on" : ""}" data-size="${si}">${esc(sz.name)}</button>`).join("") +
-              `</div></div>`
-            : "") +
-          `<div class="choose-group"><span class="choose-label">Colour — <em id="color-name">${esc((cat.colors[s.color] || {}).name || "")}</em></span><div class="choose-swatches">` +
-            cat.colors.map((c, ci) => `<button type="button" class="choose-swatch${ci === s.color ? " is-on" : ""}" data-color="${ci}" title="${esc(c.name)}" style="--sw:${esc(c.swatch || "#999")}"><span></span></button>`).join("") +
-          `</div></div>` +
-          `<button type="button" class="tour-add">Add to cart</button>` +
-        `</div>` +
-        // RIGHT card: features (filled by buildFeatures for the current size)
-        `<div class="tour-feats-card">` +
-          `<p class="eyebrow">FEATURES</p>` +
-          `<div class="tour-feats-body"></div>` +
-        `</div>`;
+        `<div class="tour-hotspots"></div>`;
+      const infoEl = el("div", "tour-info");
+      infoEl.innerHTML =
+        `<p class="eyebrow">YOUR CHOICE</p>` +
+        `<h3>${esc(cat.name || "")}</h3>` +
+        (cat.sizes.length > 1
+          ? `<div class="choose-group"><span class="choose-label">Size</span><div class="choose-pills">` +
+              cat.sizes.map((sz, si) => `<button type="button" class="choose-pill${si === s.size ? " is-on" : ""}" data-size="${si}">${esc(sz.name)}</button>`).join("") +
+            `</div></div>`
+          : "") +
+        `<div class="choose-group"><span class="choose-label">Colour — <em id="color-name">${esc((cat.colors[s.color] || {}).name || "")}</em></span><div class="choose-swatches">` +
+          cat.colors.map((c, ci) => `<button type="button" class="choose-swatch${ci === s.color ? " is-on" : ""}" data-color="${ci}" title="${esc(c.name)}" style="--sw:${esc(c.swatch || "#999")}"><span></span></button>`).join("") +
+        `</div></div>` +
+        `<button type="button" class="tour-add">Add to cart</button>`;
+      const featsEl = el("div", "tour-feats-card");
+      featsEl.innerHTML =
+        `<p class="eyebrow">FEATURES</p>` +
+        `<div class="tour-feats-body"></div>`;
 
-      catWrap.textContent = "";
-      catWrap.appendChild(view);
-      // Fade this category in (image + cards). rAF so the transition runs.
-      requestAnimationFrame(() => requestAnimationFrame(() => view.classList.add("is-shown")));
+      clearCat();
+      stageCat.appendChild(visEl); infoSlot.appendChild(infoEl); featsSlot.appendChild(featsEl);
+      const view = visEl; // hero/hotspots live here
+      const q = (sel) => visEl.querySelector(sel) || infoEl.querySelector(sel) || featsEl.querySelector(sel);
+      const qa = (sel) => [...infoEl.querySelectorAll(sel), ...featsEl.querySelectorAll(sel), ...visEl.querySelectorAll(sel)];
+      // Fade this category in (video composite + cart + features). rAF so it runs.
+      requestAnimationFrame(() => requestAnimationFrame(() => { visEl.classList.add("is-shown"); infoEl.classList.add("is-shown"); featsEl.classList.add("is-shown"); }));
 
       // Build the FEATURES list + hotspots/glows/reveal for the CURRENT size.
       // A feature hover (or its list item) highlights the circle and, optionally,
       // blooms a light glow and/or cross-fades the frame to a "reveal" render
       // (e.g. shutters opening, pelmet fascia lifting to show the mechanism).
-      const spotLayer = view.querySelector(".tour-hotspots");
-      const glowLayer = view.querySelector(".tour-glows");
-      const sprayLayer = view.querySelector(".tour-sprays");
-      const featsBody = view.querySelector(".tour-feats-body");
-      const revealImg = view.querySelector(".tour-reveal");
+      const spotLayer = q(".tour-hotspots");
+      const glowLayer = q(".tour-glows");
+      const sprayLayer = q(".tour-sprays");
+      const featsBody = q(".tour-feats-body");
+      const revealImg = q(".tour-reveal");
       function buildFeatures() {
         const feats = catFeats();
         featsBody.innerHTML = feats.length
           ? `<ul class="tour-feats">${feats.map((f, fi) => `<li data-feat="${fi}"><span class="tf-name">${esc(fName(f))}</span>${fDesc(f) ? `<span class="tf-desc">${esc(fDesc(f))}</span>` : ""}</li>`).join("")}</ul>`
           : `<p class="feats-empty">Details coming soon.</p>`;
         spotLayer.textContent = ""; glowLayer.textContent = ""; if (sprayLayer) sprayLayer.textContent = "";
-        curSpots = []; curGlows = []; curSprays = [];
         if (revealImg) { revealImg.classList.remove("is-on"); revealImg.removeAttribute("src"); }
         feats.forEach((f, fi) => {
           if (!f || typeof f !== "object") return;
@@ -506,8 +505,10 @@
           const myGlows = [];
           glowDefs.forEach((g) => {
             if (g && g.x != null && g.y != null) {
-              const ge = el("div", "tour-glow" + (g.rgb ? " is-rgb" : "")); glowLayer.appendChild(ge);
-              curGlows.push({ el: ge, x: g.x, y: g.y, w: g.w || 0.05, h: g.h || 0.05 });
+              const ge = el("div", "tour-glow" + (g.rgb ? " is-rgb" : ""));
+              ge.style.left = (g.x * 100) + "%"; ge.style.top = (g.y * 100) + "%";
+              ge.style.width = ((g.w || 0.05) * 100) + "%"; ge.style.height = ((g.h || 0.05) * 100) + "%";
+              glowLayer.appendChild(ge);
               myGlows.push(ge);
             }
           });
@@ -519,8 +520,8 @@
             if (sxp != null && syp != null) {
               sprayEl = el("div", "tour-spray");
               sprayEl.innerHTML = "<i></i><i></i><i></i><i></i><i></i><i></i>";
+              sprayEl.style.left = (sxp * 100) + "%"; sprayEl.style.top = (syp * 100) + "%";
               sprayLayer.appendChild(sprayEl);
-              curSprays.push({ el: sprayEl, x: sxp, y: syp });
             }
           }
           if (f.x == null || f.y == null) return;
@@ -528,8 +529,8 @@
           b.type = "button"; b.dataset.feat = fi;
           b.setAttribute("aria-label", fName(f));
           b.innerHTML = `<span class="spot-dot"></span><span class="spot-card"><b>${esc(fName(f))}</b>${fDesc(f) ? `<span>${esc(fDesc(f))}</span>` : ""}</span>`;
+          b.style.left = (f.x * 100) + "%"; b.style.top = (f.y * 100) + "%";
           spotLayer.appendChild(b);
-          curSpots.push({ el: b, x: f.x, y: f.y });
           const li = featsBody.querySelector(`li[data-feat="${fi}"]`);
           const hasReveal = !!(f.render || f.renderPattern);
           const on = () => {
@@ -548,15 +549,14 @@
           b.addEventListener("focus", on); b.addEventListener("blur", off);
           if (li) { li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off); }
         });
-        placeHotspots();
       }
       buildFeatures();
 
       // Per-category placement. cover → full-frame (handled by class, no pinning).
       // Else frame coords pin the product into the room — width span (x0/x1/baseY)
       // or height (cx/baseY/h). Fallback: scale/bottom, else centred default.
-      const heroWrap = view.querySelector(".tour-hero");
-      const heroFig = view.querySelector(".tour-hero figure");
+      const heroWrap = q(".tour-hero");
+      const heroFig = q(".tour-hero figure");
       const framePinned = !coverMode && hero.baseY != null &&
         ((hero.x0 != null && hero.x1 != null) || hero.h > 0);
       placed = null;
@@ -575,7 +575,7 @@
           heroWrap.classList.add("is-grounded");
         }
       }
-      const heroImg = view.querySelector(".tour-hero img");
+      const heroImg = q(".tour-hero img");
       if (heroImg) heroImg.onerror = () => { heroImg.outerHTML = heroPh(cat.name); };
 
       // Seamless swap for full-frame (cover) renders: decode the next image
@@ -620,12 +620,12 @@
           if (im) { im.onerror = () => { im.outerHTML = heroPh(cat.name); }; if (placed) im.addEventListener("load", placeHero); }
           if (placed) placeHero();
         }
-        const cn = view.querySelector("#color-name"); if (cn) cn.textContent = (cat.colors[s.color] || {}).name || "";
+        const cn = q("#color-name"); if (cn) cn.textContent = (cat.colors[s.color] || {}).name || "";
         syncAddBtn();
       };
 
       // Add-to-cart for the current variant (toggles; warns on same-category dup).
-      const addBtn = view.querySelector(".tour-add");
+      const addBtn = q(".tour-add");
       function syncAddBtn() {
         if (!addBtn) return;
         const inCart = cartIndexExact(itemFor(cat, s)) >= 0;
@@ -645,19 +645,19 @@
       });
       syncAddBtn();
 
-      view.querySelectorAll(".choose-pill").forEach((b) => b.addEventListener("click", () => {
+      qa(".choose-pill").forEach((b) => b.addEventListener("click", () => {
         const si = Number(b.dataset.size);
         if (si === s.size) return;
         s.size = si;
-        view.querySelectorAll(".choose-pill").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.size) === si));
+        qa(".choose-pill").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.size) === si));
         refresh();
         buildFeatures(); // features can differ per size (e.g. the TV)
       }));
-      view.querySelectorAll(".choose-swatch").forEach((b) => b.addEventListener("click", () => {
+      qa(".choose-swatch").forEach((b) => b.addEventListener("click", () => {
         const ci = Number(b.dataset.color);
         if (ci === s.color) return;
         s.color = ci;
-        view.querySelectorAll(".choose-swatch").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.color) === ci));
+        qa(".choose-swatch").forEach((x) => x.classList.toggle("is-on", Number(x.dataset.color) === ci));
         refresh();
       }));
     }
