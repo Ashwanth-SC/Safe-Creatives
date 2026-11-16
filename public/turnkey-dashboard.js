@@ -2729,6 +2729,27 @@
     return v.supplier_company_name || v.spoc || "Unnamed vendor";
   }
 
+  // Distinct labour names from the Turnkey database (turnkey_labour), for the
+  // attendance name dropdown. Returns [] if the table isn't reachable so the
+  // field still works as free text.
+  async function loadLabourNames() {
+    const { data, error } = await sb
+      .from("turnkey_labour")
+      .select("name")
+      .order("name", { ascending: true });
+    if (error) return [];
+    const seen = new Set();
+    const out = [];
+    (data || []).forEach((r) => {
+      const n = (r.name || "").trim();
+      if (n && !seen.has(n.toLowerCase())) {
+        seen.add(n.toLowerCase());
+        out.push(n);
+      }
+    });
+    return out;
+  }
+
   async function loadAttendance() {
     const { data, error } = await sb
       .from("turnkey_attendance")
@@ -2759,9 +2780,19 @@
 
   // ---- Attendance panel ----
   async function attendancePanel() {
-    const [projects, rows] = await Promise.all([loadProjects(), loadAttendance()]);
+    const [projects, rows, labourNames] = await Promise.all([loadProjects(), loadAttendance(), loadLabourNames()]);
     const projectsById = new Map(projects.map((p) => [p.id, p]));
     const frag = document.createDocumentFragment();
+
+    // Shared datalist of labour names from the database — the person inputs
+    // reference it by id, so each is a dropdown that also accepts a typed name.
+    const nameList = el("datalist");
+    nameList.id = "tk-labour-names";
+    labourNames.forEach((n) => {
+      const o = el("option");
+      o.value = n;
+      nameList.appendChild(o);
+    });
 
     // ---- Log a day's attendance ----
     const block = el("details", "admin-package tk-add");
@@ -2777,7 +2808,9 @@
     function personRow() {
       const r = el("div", "admin-inline tk-att-row");
       const nameI = input("text");
-      nameI.placeholder = "Name of who came";
+      nameI.placeholder = labourNames.length ? "Type or pick a labour name" : "Name of who came";
+      nameI.setAttribute("list", "tk-labour-names");
+      nameI.autocomplete = "off";
       const amtI = input("number");
       amtI.min = "0";
       amtI.step = "1";
@@ -2833,7 +2866,7 @@
 
     const actions = el("div", "admin-row-actions");
     actions.append(addBtn, saveBtn);
-    block.append(head, el("span", "admin-field-label", "Who came & what we paid"), peopleWrap, actions, msg);
+    block.append(head, el("span", "admin-field-label", "Who came & what we paid"), nameList, peopleWrap, actions, msg);
     frag.appendChild(block);
 
     // ---- Report & export ----
